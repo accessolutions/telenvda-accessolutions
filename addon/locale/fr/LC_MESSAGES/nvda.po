@@ -339,6 +339,20 @@ msgstr ""
 "Ouvre le panneau des paramètres de l'extension dans la boîte de dialogue des "
 "paramètres de NVDA"
 
+#. Translators: label of a choice control to select the transport type used for the connection.
+msgid "&Transport:"
+msgstr "&Transport :"
+
+msgid "Standard (TCP)"
+msgstr "Standard (TCP)"
+
+msgid "WebSocket over HTTPS"
+msgstr "WebSocket sur HTTPS"
+
+#. Translators: label of an edit field to enter the path used when connecting over WebSocket.
+msgid "WebSocket &path:"
+msgstr "&Chemin WebSocket :"
+
 #. Translators: The label of an edit field in connect dialog to enter name or address of the remote computer.
 msgid "&Host:"
 msgstr "&Hôte :"
@@ -350,6 +364,10 @@ msgstr "&Clé :"
 #. Translators: The button used to generate a random key/password.
 msgid "&Generate Key"
 msgstr "&Générer la clé"
+
+#. Translators: Label of an edit field to enter a second password to exchange encrypted data.
+msgid "En&cryption password (optional):"
+msgstr "Mot de passe de &chiffrement (facultatif) :"
 
 msgid "Host must be set."
 msgstr "L'adresse du serveur doit être renseignée."
@@ -419,6 +437,67 @@ msgstr "Permettre le contrôle de cet ordinateur"
 msgid "Both host and key must be set."
 msgstr "L'adresse du serveur et la clé doivent être tous deux renseignés."
 
+#. Translators: title of the connectivity test dialog.
+msgid "Connectivity test"
+msgstr "Test de connectivité"
+
+#. Translators: description text of the connectivity test dialog.
+msgid "Test a relay endpoint without joining a channel."
+msgstr "Teste un point d'accès du relais sans rejoindre de canal."
+
+#. Translators: label of the button that starts the connectivity test.
+msgid "&Test"
+msgstr "&Tester"
+
+#. Translators: label of the button that closes the connectivity test dialog.
+msgid "Close"
+msgstr "Fermer"
+
+#. Translators: default error message when a connectivity test fails without further details.
+msgid "Unknown error"
+msgstr "Erreur inconnue"
+
+#. Translators: label of an edit field to enter the host of an intermediary HTTP/SOCKS proxy server.
+msgid "HTTP/SOCKS &proxy host:"
+msgstr "&Hôte du proxy HTTP/SOCKS :"
+
+#. Translators: label of the port used by an intermediary HTTP/SOCKS proxy server, as opposed to the relay/server port.
+msgid "Proxy por&t:"
+msgstr "Por&t du proxy :"
+
+#. Translators: label of a choice control to select the type of an intermediary HTTP/SOCKS proxy server.
+msgid "Proxy &type:"
+msgstr "&Type de proxy :"
+
+#. Translators: label of an edit field to enter the username used to authenticate with an intermediary proxy server.
+msgid "Proxy &username:"
+msgstr "&Nom d'utilisateur du proxy :"
+
+#. Translators: label of an edit field to enter the password used to authenticate with an intermediary proxy server.
+msgid "Proxy pass&word:"
+msgstr "&Mot de passe du proxy :"
+
+#. Translators: label of the port used to reach the relay or server, as opposed to the proxy port below.
+msgid "&Port (server/relay):"
+msgstr "&Port (serveur/relais) :"
+
+#. Translators: tooltip clarifying that this port is used to reach the relay/server, not the proxy below.
+msgid ""
+"Port used to reach the relay or server (default 6837, or 443 for WebSocket "
+"over HTTPS). Unrelated to the proxy port below."
+msgstr ""
+"Port utilisé pour joindre le relais ou le serveur (par défaut 6837, ou 443 "
+"pour WebSocket sur HTTPS). Sans lien avec le port du proxy ci-dessous."
+
+#. Translators: tooltip clarifying that this port is the intermediary proxy port, not the relay/server port above.
+msgid ""
+"Port of an intermediary HTTP/SOCKS proxy server, if any. Left at 0 when no "
+"proxy is used. Unrelated to the relay/server port above."
+msgstr ""
+"Port d'un serveur proxy HTTP/SOCKS intermédiaire, le cas échéant. Laissé à 0 "
+"lorsqu'aucun proxy n'est utilisé. Sans lien avec le port du serveur/relais "
+"ci-dessus."
+
 #. Translators: error message for key/password length less than 6 characters
 msgid "The key must be longer than 6 characters."
 msgstr "La clé doit compter plus de 6 caractères."
@@ -437,6 +516,47 @@ msgstr "Le port et la clé doivent être tous deux renseignés."
 #. Translators: A checkbox in add-on options dialog to set whether remote server is started when NVDA starts.
 msgid "Auto-connect to control server on startup"
 msgstr "Se connecter automatiquement au serveur de contrôle au démarrage"
+
+#. Translators: A checkbox in add-on options dialog to enable update checks when NVDA starts.
+msgid "Check for TeleNVDA updates on startup"
+msgstr "Vérifier les mises à jour de TeleNVDA au démarrage"
+
+#. Translators: Select whether update checks use stable or development releases.
+msgid "Update channel"
+msgstr "Canal de mise à jour"
+
+msgid "Stable releases"
+msgstr "Versions stables"
+
+msgid "Development releases"
+msgstr "Versions de développement"
+
+#. Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a long period without any real remote control activity. {duration} is replaced by a duration such as "30 days".
+#, python-brace-format
+msgid ""
+"Automatically disable auto-connect after {duration} without any remote "
+"control activity"
+msgstr ""
+"Désactiver automatiquement la connexion automatique après {duration} sans "
+"aucune activité de contrôle à distance"
+
+#, python-brace-format
+msgid "{count} day"
+msgid_plural "{count} days"
+msgstr[0] "{count} jour"
+msgstr[1] "{count} jours"
+
+#, python-brace-format
+msgid "{count} minute"
+msgid_plural "{count} minutes"
+msgstr[0] "{count} minute"
+msgstr[1] "{count} minutes"
+
+#, python-brace-format
+msgid "{count} second"
+msgid_plural "{count} seconds"
+msgstr[0] "{count} seconde"
+msgstr[1] "{count} secondes"
 
 #. Translators: Whether or not to use a relay server when autoconnecting
 msgid "Use Remote Control Server"
