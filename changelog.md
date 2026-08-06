@@ -8,4 +8,4 @@ This release brings the following changes:
 
 Important: some anti-virus software may fla parts of this add-on as malicious. Specifically, `url_handler.exe`, which opens `remote://` and `tele://` links. If you don't use this feature, you can safely quarantine or delete the file. Otherwise, you must add it as an exception.
 
-SHA256: 2C04895BEE05D980CF201C42DCD4D1706C93366C17DF6C92C580EF27B8ABF7C8
+SHA256:
