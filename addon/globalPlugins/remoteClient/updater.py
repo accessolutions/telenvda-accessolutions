@@ -86,6 +86,37 @@ def is_newer_version(candidate: str, current: str) -> bool:
 	return _version_key(candidate) > _version_key(current)
 
 
+def _addons_dir() -> str | None:
+	"""Return the directory that contains installed add-ons, if known."""
+	try:
+		addon = addonHandler.getCodeAddon()
+	except (addonHandler.AddonError, AttributeError):
+		return None
+	return os.path.dirname(os.path.normpath(addon.path))
+
+
+def pending_install_path() -> str | None:
+	"""Return the path NVDA uses to stage a not-yet-completed TeleNVDA update."""
+	addons_dir = _addons_dir()
+	if not addons_dir:
+		return None
+	return os.path.join(addons_dir, ADDON_NAME + ".pendingInstall")
+
+
+def has_pending_install() -> bool:
+	"""Return whether a previous TeleNVDA update failed to complete.
+
+	When NVDA cannot finish moving a downloaded update into place (for
+	example because antivirus software is briefly locking the newly
+	written files), the ``.pendingInstall`` staging folder is left behind
+	and the installed add-on version never advances. Without this check,
+	the updater would keep finding the same "newer" release and asking to
+	download and install it again on every startup.
+	"""
+	path = pending_install_path()
+	return bool(path) and os.path.isdir(path)
+
+
 def _parse_sha256(data: bytes | str) -> str | None:
 	text = data.decode("ascii", errors="ignore") if isinstance(data, bytes) else data
 	match = re.search(r"(?i)\b([0-9a-f]{64})\b", text)

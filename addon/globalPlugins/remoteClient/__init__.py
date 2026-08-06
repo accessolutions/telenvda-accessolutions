@@ -165,7 +165,21 @@ class GlobalPlugin(_GlobalPlugin):
 			and configuration.get_config().get('updates', {}).get('check_at_startup', True)
 		):
 			self._startup_update_checked = True
-			self._start_update_check(manual=False)
+			if updater.has_pending_install():
+				# A previous update was downloaded but NVDA failed to finish
+				# installing it (for example because a file was briefly
+				# locked by antivirus software). Retrying now would just
+				# download and queue the same release again on every
+				# startup, so skip the automatic check until the pending
+				# install is resolved (restart NVDA, or delete the
+				# ".pendingInstall" folder next to the add-on if it persists).
+				log.warning(
+					"TeleNVDA: a previous update is still pending installation at %s; "
+					"skipping the automatic startup update check.",
+					updater.pending_install_path(),
+				)
+			else:
+				self._start_update_check(manual=False)
 
 	def _current_addon_version(self):
 		try:
