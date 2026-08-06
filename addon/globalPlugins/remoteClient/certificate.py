@@ -9,12 +9,17 @@ import base64
 import datetime
 import os
 import ssl
+import sys
 import tempfile
 
+import buildVersion
 import globalVars
+
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), "lib64" if buildVersion.version_year >= 2026 else "lib32"))
 from Cryptodome.Hash import SHA256
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Signature import pkcs1_15
+sys.path.remove(sys.path[-1])
 
 
 CERTIFICATE_FILENAME = "teleNVDA-server.pem"
