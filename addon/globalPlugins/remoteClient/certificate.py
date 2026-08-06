@@ -8,7 +8,6 @@ PyCryptodome copy bundled with TeleNVDA.
 import base64
 import datetime
 import os
-import secrets
 import ssl
 import tempfile
 
@@ -74,7 +73,7 @@ def _certificate_der(key):
 	tbs = _der(
 		0x30,
 		_der(0xA0, _integer(2))
-		+ _integer(secrets.randbits(128))
+		+ _integer(int.from_bytes(os.urandom(16), "big"))
 		+ _RSA_SHA256
 		+ name
 		+ _der(0x30, _utc_time(valid_from) + _utc_time(valid_to))

@@ -6,6 +6,7 @@ manifest.ini
 *.mo
 *.pot
 *.py[co]
+# Keep locally built add-on archives out of the public repository.
 *.nvda-addon
 server.pem
 teleNVDA-server.pem
