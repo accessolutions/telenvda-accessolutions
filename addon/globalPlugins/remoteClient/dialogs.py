@@ -48,13 +48,6 @@ class ClientPanel(wx.Panel):
 	def __init__(self, parent=None, id=wx.ID_ANY):
 		super().__init__(parent, id)
 		sizer = wx.BoxSizer(wx.HORIZONTAL)
-		# Translators: The label of an edit field in connect dialog to enter name or address of the remote computer.
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
-		self.host = wx.ComboBox(self, wx.ID_ANY)
-		sizer.Add(self.host)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Port:")))
-		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535, value="6837")
-		sizer.Add(self.port)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
 		self.transport_choice = wx.Choice(self, wx.ID_ANY, choices=(_("Standard (TCP)"), _("WebSocket over HTTPS")))
 		self.transport_choice.SetSelection(0)
@@ -63,6 +56,13 @@ class ClientPanel(wx.Panel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
 		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
 		sizer.Add(self.ws_path)
+		# Translators: The label of an edit field in connect dialog to enter name or address of the remote computer.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
+		self.host = wx.ComboBox(self, wx.ID_ANY)
+		sizer.Add(self.host)
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Port:")))
+		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535, value="6837")
+		sizer.Add(self.port)
 		# Translators: Label of the edit field to enter key (password) to secure the remote connection.
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Key:")))
 		self.key = wx.TextCtrl(self, wx.ID_ANY)
@@ -394,22 +394,26 @@ class OptionsDialog(SettingsPanel):
 		self.disable_autoconnect_inactivity = wx.CheckBox(self, wx.ID_ANY, label=_("Automatically disable auto-connect after {duration} without any remote control activity").format(duration=_describe_inactivity_threshold()))
 		self.disable_autoconnect_inactivity.Enable(False)
 		sizer.Add(self.disable_autoconnect_inactivity)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
-		self.host = wx.TextCtrl(self, wx.ID_ANY)
-		self.host.Enable(False)
-		sizer.Add(self.host)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
 		self.transport = wx.Choice(self, wx.ID_ANY, choices=(_("Standard (TCP)"), _("WebSocket over HTTPS")))
 		self.transport.SetSelection(0)
 		self.transport.Enable(False)
+		self.transport.Bind(wx.EVT_CHOICE, self.on_transport_changed)
 		sizer.Add(self.transport)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
 		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
 		self.ws_path.Enable(False)
 		sizer.Add(self.ws_path)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Port:")))
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
+		self.host = wx.TextCtrl(self, wx.ID_ANY)
+		self.host.Enable(False)
+		sizer.Add(self.host)
+		# Translators: label of the port used to reach the relay or server, as opposed to the proxy port below.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Port (server/relay):")))
 		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535)
 		self.port.Enable(False)
+		# Translators: tooltip clarifying that this port is used to reach the relay/server, not the proxy below.
+		self.port.SetToolTip(_("Port used to reach the relay or server (default 6837, or 443 for WebSocket over HTTPS). Unrelated to the proxy port below."))
 		sizer.Add(self.port)
 		# Translators: label of a checkbox which allows forwarding a port using UPNP
 		self.useUPNP = wx.CheckBox(self, wx.ID_ANY, label=_("Use &UPNP to forward this port if possible"))
@@ -431,6 +435,8 @@ class OptionsDialog(SettingsPanel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Proxy por&t:")))
 		self.proxy_port = wx.SpinCtrl(self, wx.ID_ANY, min=0, max=65535)
 		self.proxy_port.Enable(False)
+		# Translators: tooltip clarifying that this port is the intermediary proxy port, not the relay/server port above.
+		self.proxy_port.SetToolTip(_("Port of an intermediary HTTP/SOCKS proxy server, if any. Left at 0 when no proxy is used. Unrelated to the relay/server port above."))
 		sizer.Add(self.proxy_port)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Proxy &type:")))
 		self.proxy_type = wx.Choice(self, wx.ID_ANY, choices=SUPPORTED_PROXY_TYPES)
@@ -498,6 +504,13 @@ class OptionsDialog(SettingsPanel):
 	def on_client_or_server(self, evt):
 		evt.Skip()
 		self.set_controls()
+
+	def on_transport_changed(self, evt):
+		if self.transport.GetSelection() == 1 and self.port.GetValue() == socket_utils.SERVER_PORT:
+			self.port.SetValue(443)
+		elif self.transport.GetSelection() == 0 and self.port.GetValue() == 443:
+			self.port.SetValue(socket_utils.SERVER_PORT)
+		evt.Skip()
 
 	def onPanelActivated(self):
 		config = configuration.get_config()
