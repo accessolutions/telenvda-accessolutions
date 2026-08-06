@@ -881,6 +881,17 @@ class GlobalPlugin(_GlobalPlugin):
 		self.on_disconnect_item(None)
 
 	@script(
+		# Translators: description for the gesture that connects or disconnects a remote session.
+		_("""If a remote session is active, disconnects it; otherwise opens a dialog to start a remote session"""),
+		gesture="kb:NVDA+alt+r",
+		**speakOnDemand)
+	def script_toggle_connection(self, gesture):
+		if self.master_transport is None and self.slave_transport is None:
+			self.do_connect(None)
+		else:
+			self.on_disconnect_item(None)
+
+	@script(
 		# Translators: gesture description for the ignoreNextGesture script
 		_("""Set the host to ignore the next gesture completely, sending next gesture to the guest as is. Useful when you need to use the gesture asigned to toggle between guest and host, in the guest machine."""),
 		gesture = "kb:control+f11",
@@ -895,7 +906,7 @@ class GlobalPlugin(_GlobalPlugin):
 	@script(
 		# Translators: Documentation string for the script that toggles the control between guest and host machine.
 		description=_("Toggles the control between guest and host machine"),
-		gesture="kb:f11",
+		gesture="kb:NVDA+alt+tab",
 		**speakOnDemand)
 	def script_sendKeys(self, gesture):
 		if not self.master_transport:
