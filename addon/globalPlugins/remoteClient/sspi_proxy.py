@@ -367,7 +367,7 @@ def open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout=60):
 		proxy.type,
 		username=proxy.username,
 		password=proxy.password,
-		target_host=proxy.host,
+		target_host=target_host,
 	)
 	try:
 		sock = socket.create_connection((proxy.host, int(proxy.port)), timeout=timeout or None)

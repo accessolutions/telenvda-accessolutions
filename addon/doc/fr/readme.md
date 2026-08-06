@@ -37,6 +37,22 @@ sur le port choisi. Le transport WebSocket concerne les connexions à un
 serveur relais compatible ; il ne transforme pas le serveur direct local en
 serveur WebSocket.
 
+## Mises à jour
+
+TeleNVDA peut vérifier les Releases publiques du dépôt GitHub au démarrage de
+NVDA. Dans **Outils > TeleNVDA > Options**, activez ou désactivez cette
+vérification et choisissez le canal **Stable releases** ou **Development
+releases**. Une vérification manuelle est disponible avec **Outils > TeleNVDA
+> Check for updates**.
+
+Une mise à jour n'est jamais installée silencieusement. TeleNVDA demande une
+confirmation, télécharge le paquet `.nvda-addon` en HTTPS, vérifie son hash
+SHA-256 publié, puis demande s'il faut redémarrer NVDA. La vérification utilise
+le proxy configuré pour TeleNVDA, y compris les types HTTP, SOCKS, `negotiate`
+et `ntlm`. Les erreurs réseau d'une vérification automatique restent
+silencieuses et sont consignées dans le journal ; les erreurs d'une vérification
+manuelle sont affichées.
+
 ## Vérifier la connectivité
 
 La commande **Outils > TeleNVDA > Connectivity test** teste la résolution
@@ -53,8 +69,9 @@ par défaut. Le port peut être redirigé manuellement ou avec UPnP.
 Le certificat TLS du serveur est auto-signé et généré au premier démarrage
 dans le profil NVDA sous `teleNVDA-server.pem`. La clé privée n'est pas
 incluse dans les sources, dans l'extension ou dans le dépôt. Lors de la
-première connexion, vérifiez l'empreinte SHA-256 avant de l'enregistrer comme
-certificat de confiance.
+première connexion, l'empreinte SHA-256 est automatiquement enregistrée afin
+de ne pas bloquer la connexion sur une demande de confirmation. Vérifiez
+l'empreinte attendue avec l'administrateur du serveur avant cette connexion.
 
 ## Captures d'écran
 
@@ -78,9 +95,10 @@ le bureau sécurisé.
 ## Sécurité
 
 N'utilisez pas une clé de session prévisible et ne partagez pas votre clé
-avec une personne non autorisée. Les certificats non reconnus sont signalés
-avant la connexion. N'acceptez une empreinte qu'après l'avoir vérifiée avec
-l'administrateur du serveur.
+avec une personne non autorisée. Les certificats non reconnus sont acceptés
+et mémorisés automatiquement pour éviter de bloquer la connexion. Vérifiez
+l'empreinte attendue avec l'administrateur du serveur avant la première
+connexion.
 
 Les journaux et fichiers de configuration locaux peuvent contenir des
 paramètres sensibles : ne les publiez pas. En particulier, ne copiez jamais

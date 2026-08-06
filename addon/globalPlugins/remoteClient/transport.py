@@ -287,6 +287,7 @@ class WebSocketTransport(TCPTransport):
 		self.connection_type = connection_type
 		self.protocol_version = protocol_version
 		self.websocket = None
+		self._certificate_authentication_failed = False
 
 	def _websocket_url(self):
 		host, port = self.address
@@ -331,6 +332,7 @@ class WebSocketTransport(TCPTransport):
 			raise
 
 	def create_websocket(self):
+		self._certificate_authentication_failed = False
 		conf = configuration.get_config().get("controlserver", {})
 		proxy_settings = proxy_utils.from_config(conf)
 		ssl_options = {"cert_reqs": ssl.CERT_NONE if self.insecure else ssl.CERT_REQUIRED}
@@ -369,6 +371,7 @@ class WebSocketTransport(TCPTransport):
 				self.insecure = True
 				return self.create_websocket()
 			self.last_fail_fingerprint = fingerprint
+			self._certificate_authentication_failed = True
 			self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
 
@@ -377,11 +380,12 @@ class WebSocketTransport(TCPTransport):
 		try:
 			self.websocket = self.create_websocket()
 		except ssl.SSLCertVerificationError:
-			self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
-			self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+			if not self._certificate_authentication_failed:
+				self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
 		except Exception:
-			self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+			if not self._certificate_authentication_failed:
+				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
 			raise
 		self.transport_connected()
 		while self.websocket is not None and not self.closed:

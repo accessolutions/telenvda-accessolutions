@@ -52,8 +52,9 @@ else:
 from . import local_machine
 from . import serializer
 from . import server
+from . import updater
 from . import url_handler
-from .socket_utils import SERVER_PORT, address_to_hostport, hostport_to_address, wrap_socket
+from .socket_utils import SERVER_PORT, address_to_hostport, wrap_socket
 from .transport import RelayTransport, WebSocketRelayTransport, TransportEvents
 
 from .session import MasterSession, SlaveSession
@@ -80,6 +81,9 @@ class GlobalPlugin(_GlobalPlugin):
 			if addon.name == "remote" and not addon.isDisabled:
 				raise RuntimeError("TeleNVDA cannot be used while NVDA Remote is running. Please, disable NVDA Remote and restart NVDA.")
 		self.local_machine = local_machine.LocalMachine()
+		self.update_manager = updater.UpdateManager()
+		self._startup_update_checked = False
+		self._terminated = False
 		self.slave_session = None
 		self.master_session = None
 		self.create_menu()
@@ -119,7 +123,32 @@ class GlobalPlugin(_GlobalPlugin):
 		globalVars.teleNVDA = None
 		client = self
 
+	def _manage_native_remote(self):
+		if configuration.readonly:
+			return
+		try:
+			remote = nvda_conf.get('remote')
+			if remote is None or 'enabled' not in remote:
+				return
+			managed, original_enabled = configuration.get_native_remote_state()
+			if managed and configuration.should_restore_native_remote_on_reactivation():
+				if remote['enabled'] != original_enabled:
+					remote['enabled'] = original_enabled
+					nvda_conf.save()
+				configuration.clear_native_remote_state()
+				return
+			if not managed:
+				original_enabled = bool(remote['enabled'])
+				if not configuration.save_native_remote_state(original_enabled):
+					return
+			if remote['enabled'] is not False:
+				remote['enabled'] = False
+				nvda_conf.save()
+		except Exception:
+			log.exception("Unable to manage native NVDA Remote configuration")
+
 	def postStartupHandler(self):
+		self._manage_native_remote()
 		cs = configuration.get_config()['controlserver']
 		if globalVars.appArgs.secure:
 			self.handle_secure_desktop()
@@ -130,6 +159,118 @@ class GlobalPlugin(_GlobalPlugin):
 			log.info("TeleNVDA: auto-connect was automatically disabled after a long period without any remote control activity.")
 		if cs['autoconnect'] and not self.master_session and not self.slave_session:
 			wx.CallLater(50,self.perform_autoconnect)
+		if (
+			not self._startup_update_checked
+			and not globalVars.appArgs.secure
+			and configuration.get_config().get('updates', {}).get('check_at_startup', True)
+		):
+			self._startup_update_checked = True
+			self._start_update_check(manual=False)
+
+	def _current_addon_version(self):
+		try:
+			addon = addonHandler.getCodeAddon()
+			return addon.version
+		except (addonHandler.AddonError, AttributeError):
+			return "0.0.0"
+
+	def _start_update_check(self, manual):
+		channel = configuration.get_config().get('updates', {}).get('channel', 'stable')
+		started = self.update_manager.check_async(
+			channel=channel,
+			current_version=self._current_addon_version(),
+			callback=self._on_update_check_finished,
+			manual=manual,
+		)
+		if started:
+			self.update_item.Enable(False)
+		elif manual:
+			gui.messageBox(
+				_("An update check is already in progress."),
+				_("TeleNVDA update"),
+				wx.OK | wx.ICON_INFORMATION,
+			)
+
+	def _on_update_check_finished(self, update, error, manual):
+		wx.CallAfter(self._handle_update_check_finished, update, error, manual)
+
+	def _handle_update_check_finished(self, update, error, manual):
+		if self._terminated:
+			return
+		self.update_item.Enable(True)
+		if error:
+			if manual:
+				gui.messageBox(
+					_("Unable to check for TeleNVDA updates.\n\n{error}").format(error=error),
+					_("TeleNVDA update"),
+					wx.OK | wx.ICON_ERROR,
+				)
+			return
+		if update is None:
+			if manual:
+				gui.messageBox(
+					_("TeleNVDA is up to date."),
+					_("TeleNVDA update"),
+					wx.OK | wx.ICON_INFORMATION,
+				)
+			return
+		message = _(
+			"A TeleNVDA {channel} update is available: version {version}.\n\n"
+			"Do you want to download and install it now?"
+		).format(
+			channel=_("development") if update.prerelease else _("stable"),
+			version=update.version,
+		)
+		if gui.messageBox(message, _("TeleNVDA update"), wx.YES | wx.NO | wx.ICON_INFORMATION) != wx.YES:
+			return
+		self.update_item.Enable(False)
+		if not self.update_manager.download_async(update, self._on_update_download_finished):
+			self.update_item.Enable(True)
+			gui.messageBox(
+				_("Another TeleNVDA update operation is already in progress."),
+				_("TeleNVDA update"),
+				wx.OK | wx.ICON_INFORMATION,
+			)
+
+	def _on_update_download_finished(self, path, error):
+		wx.CallAfter(self._handle_update_download_finished, path, error)
+
+	def _handle_update_download_finished(self, path, error):
+		if self._terminated:
+			if path:
+				try:
+					os.unlink(path)
+				except OSError:
+					pass
+			return
+		self.update_item.Enable(True)
+		if error:
+			gui.messageBox(
+				_("Unable to download or verify the TeleNVDA update.\n\n{error}").format(error=error),
+				_("TeleNVDA update"),
+				wx.OK | wx.ICON_ERROR,
+			)
+			return
+		try:
+			updater.install_package(path)
+		except Exception as error:
+			gui.messageBox(
+				_("NVDA could not install the TeleNVDA update.\n\n{error}").format(error=error),
+				_("TeleNVDA update"),
+				wx.OK | wx.ICON_ERROR,
+			)
+		else:
+			if gui.messageBox(
+				_("The TeleNVDA update was installed. NVDA must be restarted to finish the installation. Restart NVDA now?"),
+				_("TeleNVDA update"),
+				wx.YES | wx.NO | wx.ICON_INFORMATION,
+			) == wx.YES:
+				core.restart()
+		finally:
+			try:
+				os.unlink(path)
+			except OSError:
+				pass
 
 	def perform_autoconnect(self):
 		cs = configuration.get_config()['controlserver']
@@ -191,6 +332,9 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: Menu item in TeleNVDA submenu to open add-on options.
 		self.options_item = self.menu.Append(wx.ID_ANY, _("&Options..."), _("Options"))
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_options_item, self.options_item)
+		# Translators: Item in TeleNVDA submenu to check for updates.
+		self.update_item = self.menu.Append(wx.ID_ANY, _("Check for &updates..."), _("Check for TeleNVDA updates"))
+		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_update_item, self.update_item)
 		# Translators: Item in TeleNVDA submenu to test relay connectivity.
 		self.connectivity_test_item = self.menu.Append(wx.ID_ANY, _("Connectivity &test..."), _("Test DNS, TLS and WebSocket connectivity"))
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_connectivity_test_item, self.connectivity_test_item)
@@ -204,9 +348,17 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def terminate(self):
 		global client
+		self._terminated = True
+		self.update_manager.terminate()
 		if post_secureDesktopStateChange:
 			post_secureDesktopStateChange.unregister(self.onSecureDesktopChange)
 		configuration.flush_activity()
+		try:
+			addon = addonHandler.getCodeAddon()
+			if getattr(addon, 'isPendingDisable', False):
+				configuration.mark_native_remote_for_reactivation()
+		except addonHandler.AddonError:
+			pass
 		self.disconnect()
 		self.local_machine.terminate()
 		self.local_machine = None
@@ -247,6 +399,9 @@ class GlobalPlugin(_GlobalPlugin):
 		self.menu.Remove(self.options_item.Id)
 		self.options_item.Destroy()
 		self.options_item=None
+		self.menu.Remove(self.update_item.Id)
+		self.update_item.Destroy()
+		self.update_item=None
 		self.menu.Remove(self.connectivity_test_item.Id)
 		self.connectivity_test_item.Destroy()
 		self.connectivity_test_item = None
@@ -426,6 +581,10 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def on_options_item(self, evt):
 		wx.CallAfter(gui.mainFrame.popupSettingsDialog if hasattr(gui.mainFrame, "popupSettingsDialog") else gui.mainFrame._popupSettingsDialog, gui.NVDASettingsDialog, dialogs.OptionsDialog)
+		evt.Skip()
+
+	def on_update_item(self, evt):
+		self._start_update_check(manual=True)
 		evt.Skip()
 
 	def on_connectivity_test_item(self, evt):
@@ -647,13 +806,9 @@ class GlobalPlugin(_GlobalPlugin):
 		self.disconnect()
 		try:
 			cert_hash = transport.last_fail_fingerprint
-			wnd = dialogs.CertificateUnauthorizedDialog(None, fingerprint=cert_hash)
-			a = wnd.ShowModal()
-			if a == wx.ID_YES:
-				config = configuration.get_config()
-				config['trusted_certs'][hostport_to_address(self.last_fail_address)]=cert_hash
-				config.write()
-			if a == wx.ID_YES or a == wx.ID_NO: return True
+			if configuration.trust_certificate(self.last_fail_address, cert_hash):
+				return True
+			log.warning("Unable to automatically trust the server certificate")
 		except Exception as ex:
 			log.error(ex)
 		return False

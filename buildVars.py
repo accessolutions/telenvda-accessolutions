@@ -4,12 +4,9 @@ from site_scons.site_tools.NVDATool.typings import AddonInfo, BrailleTables, Sym
 from site_scons.site_tools.NVDATool.utils import _
 from datetime import datetime
 
-# Base add-on version. The build date/time suffix (.MMdd.HHmm) is appended
-# automatically below at each build, so this only needs the original version.
-_BASE_ADDON_VERSION = "2026.7.19"
-# Automatically append the build date and time so every generated add-on gets a
-# fresh, higher version number without editing this file manually.
-_ADDON_VERSION = _BASE_ADDON_VERSION + datetime.now().strftime(".%m%d.%H%M")
+# Use the same date-based version format for ordinary and development builds.
+# Release builds override this value from the Git tag in sconstruct.
+_ADDON_VERSION = datetime.now().strftime("%Y.%m.%d.%H%M")
 
 # Add-on information variables
 addon_info = AddonInfo(

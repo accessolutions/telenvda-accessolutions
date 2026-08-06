@@ -43,7 +43,7 @@ When no explicit proxy is configured, the Windows system proxy is used automatic
 Some corporate proxies terminate and re-encrypt TLS, presenting their own certificate instead of the relay's:
 
 - If the proxy's certificate authority is trusted by the Windows certificate store (e.g. deployed by group policy), the connection is verified and established automatically, because certificate validation loads the Windows system certificate store.
-- Otherwise the certificate is unverifiable. In that case the client retrieves the certificate fingerprint **through the proxy tunnel** (so it reflects the certificate actually presented on the wire) and prompts the user to trust it. Once trusted, the fingerprint is remembered for subsequent connections.
+- Otherwise the certificate is unverifiable. In that case the client retrieves the certificate fingerprint **through the proxy tunnel** (so it reflects the certificate actually presented on the wire), automatically trusts it, and remembers it for subsequent connections so automatic connections are not blocked by a prompt. The expected fingerprint should be verified with the relay administrator before the first connection.
 
 ## Message Format
 

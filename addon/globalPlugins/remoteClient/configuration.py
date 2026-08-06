@@ -58,6 +58,15 @@ configspec = StringIO("""
 [activity]
 	last_activity_timestamp = float(default=0.0)
 
+[native_remote]
+	managed = boolean(default=False)
+	original_enabled = boolean(default=True)
+	restore_on_reactivation = boolean(default=False)
+
+[updates]
+	check_at_startup = boolean(default=True)
+	channel = option("stable", "dev", default="stable")
+
 [ui]
 	play_sounds = boolean(default=True)
 	alert_before_slave_disconnect = boolean(default=True)
@@ -74,6 +83,58 @@ def get_config():
 		val = validate.Validator()
 		_config.validate(val, copy=True)
 	return _config
+
+def get_native_remote_state():
+	"""Return whether TeleNVDA manages native NVDA Remote and its original state."""
+	state = get_config()['native_remote']
+	return state['managed'], state['original_enabled']
+
+def save_native_remote_state(original_enabled):
+	"""Remember the native NVDA Remote state before TeleNVDA disables it."""
+	if readonly:
+		return False
+	state = get_config()['native_remote']
+	state['managed'] = True
+	state['original_enabled'] = bool(original_enabled)
+	state['restore_on_reactivation'] = False
+	get_config().write()
+	return True
+
+def should_restore_native_remote_on_reactivation():
+	"""Return whether native NVDA Remote must be restored after re-enabling TeleNVDA."""
+	return get_config()['native_remote'].get('restore_on_reactivation', False)
+
+def mark_native_remote_for_reactivation():
+	"""Remember that TeleNVDA is being disabled before the next NVDA restart."""
+	if readonly:
+		return False
+	state = get_config()['native_remote']
+	if not state['managed']:
+		return False
+	state['restore_on_reactivation'] = True
+	get_config().write()
+	return True
+
+def clear_native_remote_state():
+	"""Forget the native NVDA Remote state after restoring it."""
+	if readonly:
+		return False
+	state = get_config()['native_remote']
+	state['managed'] = False
+	state['original_enabled'] = True
+	state['restore_on_reactivation'] = False
+	get_config().write()
+	return True
+
+def trust_certificate(address, fingerprint):
+	"""Trust a server certificate when its fingerprint was obtained successfully."""
+	if not fingerprint:
+		return False
+	config = get_config()
+	config['trusted_certs'][socket_utils.hostport_to_address(address)] = fingerprint
+	if not readonly:
+		config.write()
+	return True
 
 def write_connection_to_config(address):
 	"""Writes an address to the last connected section of the config.

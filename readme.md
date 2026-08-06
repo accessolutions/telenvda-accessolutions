@@ -34,6 +34,20 @@ For secure-desktop access, install the add-on on the secure desktop through
 NVDA's General Settings, using **Use currently saved settings on the logon and
 other secure screens**. This requires administrator privileges.
 
+## Updates
+
+TeleNVDA can check the public GitHub Releases repository when NVDA starts.
+Open **NVDA menu > Tools > Remote > Options** to enable or disable this check
+and to choose **Stable releases** or **Development releases**. A manual check
+is also available through **NVDA menu > Tools > Remote > Check for updates**.
+
+An update is never installed silently. TeleNVDA asks for confirmation, downloads
+the `.nvda-addon` package over HTTPS, verifies its published SHA-256 hash, and
+then asks whether NVDA should be restarted. The update check uses the proxy
+configured for TeleNVDA, including HTTP, SOCKS, `negotiate`, and `ntlm` proxy
+types. Automatic network errors are only written to the log; manual errors are
+shown to the user.
+
 ## Relay connections
 
 A relay connection is the recommended choice when the computers are behind
@@ -77,9 +91,11 @@ The direct TCP/TLS server connection does not use the WebSocket proxy path.
 Use WebSocket over HTTPS when an enterprise HTTP proxy must be traversed.
 
 TLS certificates are verified. If a relay uses a certificate that Windows does
-not recognize, TeleNVDA displays its fingerprint. Only accept and save a
-fingerprint after verifying it with the relay administrator. Saved fingerprints
-can be removed with **Delete all trusted fingerprints** in the options.
+not recognize, TeleNVDA automatically accepts the certificate and saves its
+fingerprint so that manual and automatic connections are not blocked by a
+dialog. Verify the expected fingerprint with the relay administrator before
+the first connection. Saved fingerprints can be removed with **Delete all
+trusted fingerprints** in the options.
 
 ## Direct server mode
 
@@ -138,7 +154,8 @@ it does not require or record a session access key.
 ## Security recommendations
 
 * Use relay servers and hosts that you trust.
-* Verify TLS fingerprints out of band before saving a new fingerprint.
+* Verify TLS fingerprints out of band before the first connection to a relay
+  whose certificate is not recognized by Windows.
 * Use unique, high-entropy access and encryption keys and rotate them if they
   may have been exposed.
 * Do not commit private keys, passwords, access keys, screenshots, or generated

@@ -64,10 +64,10 @@ env.Append(
 )
 
 if env["dev"]:
-	from datetime import date
+	from datetime import datetime
 
-	versionTimestamp = date.today().strftime('%Y%m%d')
-	version = f"{versionTimestamp}.0.0"
+	versionTimestamp = datetime.now().strftime('%Y.%m.%d.%H%M')
+	version = versionTimestamp
 	env["addon_info"]["addon_version"] = version
 	env["versionNumber"] = version
 	env["channel"] = "dev"
@@ -145,6 +145,9 @@ env.Depends(mergePot, i18nFiles)
 manifest = env.NVDAManifest(env.File(addonDir/"manifest.ini"), "manifest.ini.tpl")
 # Ensure manifest is rebuilt if buildVars is updated.
 env.Depends(manifest, "buildVars.py")
+# buildVars.py contains a timestamped version evaluated at build time. The
+# tracked manifest must therefore be regenerated for every package build.
+env.AlwaysBuild(manifest)
 
 env.Depends(addon, manifest)
 env.Default(addon)
