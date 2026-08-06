@@ -82,7 +82,7 @@ class SlaveSession(RemoteSession):
 		super().__init__(*args, **kwargs)
 		self.transport.callback_manager.register_callback('msg_client_joined', self.handle_client_connected)
 		self.transport.callback_manager.register_callback('msg_client_left', self.handle_client_disconnected)
-		self.transport.callback_manager.register_callback('msg_key', self.local_machine.send_key)
+		self.transport.callback_manager.register_callback('msg_key', self.handle_key)
 		self.masters = defaultdict(dict)
 		self.master_display_sizes = []
 
@@ -91,19 +91,43 @@ class SlaveSession(RemoteSession):
 		self.patcher = nvda_patcher.NVDASlavePatcher()
 		self.patch_callbacks_added = False
 		self.transport.callback_manager.register_callback('msg_channel_joined', self.handle_channel_joined)
-		self.transport.callback_manager.register_callback('msg_set_clipboard_text', self.local_machine.set_clipboard_text)
-		self.transport.callback_manager.register_callback('msg_file_transfer', self.local_machine.file_transfer)
+		self.transport.callback_manager.register_callback('msg_set_clipboard_text', self.handle_set_clipboard_text)
+		self.transport.callback_manager.register_callback('msg_file_transfer', self.handle_file_transfer)
 		self.transport.callback_manager.register_callback('msg_set_braille_info', self.handle_braille_info)
 		self.transport.callback_manager.register_callback('msg_set_display_size', self.set_display_size)
 		if buildVersion.version_year >= 2023 and buildVersion.version_year < 2025:
 			braille.filter_displaySize.register(self.local_machine.handle_filter_displaySize)
 		if buildVersion.version_year >= 2025:
 			braille.filter_displayDimensions.register(self.local_machine.handle_filter_displayDimensions)
-		self.transport.callback_manager.register_callback('msg_braille_input', self.local_machine.braille_input)
-		self.transport.callback_manager.register_callback('msg_send_SAS', self.local_machine.send_SAS)
+		self.transport.callback_manager.register_callback('msg_braille_input', self.handle_braille_input)
+		self.transport.callback_manager.register_callback('msg_send_SAS', self.handle_send_SAS)
 		self.transport.callback_manager.register_callback('msg_request_screenshot', self.handle_screenshot_request)
 		self.transport.callback_manager.register_callback('msg_request_screenshot_powershell', self.handle_screenshot_request)
 
+	def handle_key(self, **kwargs):
+		"""A master performed a key action on this slave: record it as remote control activity."""
+		configuration.record_activity()
+		return self.local_machine.send_key(**kwargs)
+
+	def handle_set_clipboard_text(self, **kwargs):
+		"""A master pushed clipboard content to this slave: record it as remote control activity."""
+		configuration.record_activity()
+		return self.local_machine.set_clipboard_text(**kwargs)
+
+	def handle_file_transfer(self, **kwargs):
+		"""A master sent a file to this slave: record it as remote control activity."""
+		configuration.record_activity()
+		return self.local_machine.file_transfer(**kwargs)
+
+	def handle_braille_input(self, **kwargs):
+		"""A master performed braille input on this slave: record it as remote control activity."""
+		configuration.record_activity()
+		return self.local_machine.braille_input(**kwargs)
+
+	def handle_send_SAS(self, **kwargs):
+		"""A master sent Ctrl+Alt+Delete to this slave: record it as remote control activity."""
+		configuration.record_activity()
+		return self.local_machine.send_SAS(**kwargs)
 
 	def get_connection_info(self):
 		hostname, port = self.transport.address
@@ -327,6 +351,7 @@ class MasterSession(RemoteSession):
 
 	def braille_input(self,**kwargs):
 		self.transport.send(type="braille_input", **kwargs)
+		configuration.record_activity()
 
 	def add_patch_callbacks(self):
 		patcher_callbacks = (('braille_input', self.braille_input), ('set_display', self.send_braille_info))

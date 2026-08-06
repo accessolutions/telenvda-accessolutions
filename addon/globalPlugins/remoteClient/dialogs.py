@@ -30,6 +30,19 @@ del sys.path[-1]
 WX_VERSION = int(wx.version()[0])
 WX_CENTER = wx.Center if WX_VERSION>=4 else wx.CENTER_ON_SCREEN
 
+def _describe_inactivity_threshold():
+	"""Return a human readable description of configuration.INACTIVITY_AUTO_DISABLE_SECONDS,
+	e.g. "30 days" or, during testing, "1 minute"."""
+	seconds = configuration.INACTIVITY_AUTO_DISABLE_SECONDS
+	if seconds >= 86400 and seconds % 86400 == 0:
+		count = seconds // 86400
+		return ngettext("{count} day", "{count} days", count).format(count=count)
+	elif seconds >= 60 and seconds % 60 == 0:
+		count = seconds // 60
+		return ngettext("{count} minute", "{count} minutes", count).format(count=count)
+	else:
+		return ngettext("{count} second", "{count} seconds", seconds).format(count=seconds)
+
 class ClientPanel(wx.Panel):
 
 	def __init__(self, parent=None, id=wx.ID_ANY):
@@ -368,6 +381,10 @@ class OptionsDialog(SettingsPanel):
 		self.connection_type.SetSelection(0)
 		self.connection_type.Enable(False)
 		sizer.Add(self.connection_type)
+		# Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a long period without any real remote control activity. {duration} is replaced by a duration such as "30 days".
+		self.disable_autoconnect_inactivity = wx.CheckBox(self, wx.ID_ANY, label=_("Automatically disable auto-connect after {duration} without any remote control activity").format(duration=_describe_inactivity_threshold()))
+		self.disable_autoconnect_inactivity.Enable(False)
+		sizer.Add(self.disable_autoconnect_inactivity)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
 		self.host = wx.TextCtrl(self, wx.ID_ANY)
 		self.host.Enable(False)
@@ -444,12 +461,18 @@ class OptionsDialog(SettingsPanel):
 		sizer.Add(self.delete_fingerprints)
 
 	def on_autoconnect(self, evt):
+		if self.autoconnect.GetValue() and not self._autoconnect_was_enabled:
+			# Translators note: default to "Allow this machine to be controlled" whenever auto-connect
+			# is turned on, rather than keeping a possibly stale "Control another machine" selection.
+			self.connection_type.SetSelection(0)
+		self._autoconnect_was_enabled = bool(self.autoconnect.GetValue())
 		self.set_controls()
 
 	def set_controls(self):
 		state = bool(self.autoconnect.GetValue())
 		self.client_or_server.Enable(state)
 		self.connection_type.Enable(state)
+		self.disable_autoconnect_inactivity.Enable(state)
 		self.key.Enable(state)
 		self.encryption_key.Enable(state)
 		self.host.Enable(not bool(self.client_or_server.GetSelection()) and state)
@@ -473,6 +496,8 @@ class OptionsDialog(SettingsPanel):
 		self_hosted = cs['self_hosted']
 		connection_type = cs['connection_type']
 		self.autoconnect.SetValue(cs['autoconnect'])
+		self._autoconnect_was_enabled = bool(cs['autoconnect'])
+		self.disable_autoconnect_inactivity.SetValue(cs['disable_autoconnect_after_inactivity'])
 		self.client_or_server.SetSelection(int(self_hosted))
 		self.connection_type.SetSelection(connection_type)
 		self.host.SetValue(cs['host'])
@@ -540,6 +565,7 @@ class OptionsDialog(SettingsPanel):
 		config = configuration.get_config()
 		cs = config['controlserver']
 		cs['autoconnect'] = self.autoconnect.GetValue()
+		cs['disable_autoconnect_after_inactivity'] = self.disable_autoconnect_inactivity.GetValue()
 		self_hosted = bool(self.client_or_server.GetSelection())
 		connection_type = self.connection_type.GetSelection()
 		cs['self_hosted'] = self_hosted

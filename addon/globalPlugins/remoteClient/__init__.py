@@ -123,6 +123,11 @@ class GlobalPlugin(_GlobalPlugin):
 		cs = configuration.get_config()['controlserver']
 		if globalVars.appArgs.secure:
 			self.handle_secure_desktop()
+		if configuration.should_disable_autoconnect_for_inactivity():
+			cs['autoconnect'] = False
+			if not configuration.readonly:
+				configuration.get_config().write()
+			log.info("TeleNVDA: auto-connect was automatically disabled after a long period without any remote control activity.")
 		if cs['autoconnect'] and not self.master_session and not self.slave_session:
 			wx.CallLater(50,self.perform_autoconnect)
 
@@ -201,6 +206,7 @@ class GlobalPlugin(_GlobalPlugin):
 		global client
 		if post_secureDesktopStateChange:
 			post_secureDesktopStateChange.unregister(self.onSecureDesktopChange)
+		configuration.flush_activity()
 		self.disconnect()
 		self.local_machine.terminate()
 		self.local_machine = None
@@ -311,6 +317,7 @@ class GlobalPlugin(_GlobalPlugin):
 		connector = self.slave_transport or self.master_transport
 		try:
 			connector.send(type='set_clipboard_text', text=api.getClipData())
+			configuration.record_activity()
 			cues.clipboard_pushed()
 		except TypeError:
 			log.exception("Unable to push clipboard")
@@ -364,6 +371,7 @@ class GlobalPlugin(_GlobalPlugin):
 		if result == wx.YES:
 			file_content = base64.b64encode(file_content)
 			connector.send(type='file_transfer', name=filename, content=file_content.decode("utf-8"))
+			configuration.record_activity()
 			cues.clipboard_pushed()
 			# Translators: message spoken when the file has been sent successfully
 			ui.message(_("File sent"))
@@ -400,6 +408,7 @@ class GlobalPlugin(_GlobalPlugin):
 			return
 		try:
 			connector.send(type='set_clipboard_text', text=api.getClipData())
+			configuration.record_activity()
 			cues.clipboard_pushed()
 			ui.message(_("Clipboard pushed"))
 		except (TypeError, OSError):
@@ -437,6 +446,7 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def on_send_ctrl_alt_del(self, evt):
 		self.master_transport.send('send_SAS')
+		configuration.record_activity()
 		# Translators: message spoken when the Ctrl+Alt+Delete has been sent to the remote machine successfully
 		ui.message(_("Ctrl+Alt+Delete has been sent to the remote machine"))
 
@@ -520,7 +530,11 @@ class GlobalPlugin(_GlobalPlugin):
 		last_cons = configuration.get_config()['connections']['last_connected']
 		# Translators: Title of the connect dialog.
 		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("Connect"))
-		dlg.panel.host.SetItems(list(reversed(last_cons)))
+		host_items = list(reversed(last_cons))
+		for default_host in configuration.DEFAULT_SERVER_HOSTS:
+			if default_host not in host_items:
+				host_items.append(default_host)
+		dlg.panel.host.SetItems(host_items)
 		dlg.panel.host.SetSelection(0)
 		def handle_dlg_complete(dlg_result):
 			if dlg_result != wx.ID_OK:
@@ -704,6 +718,7 @@ class GlobalPlugin(_GlobalPlugin):
 				wx.CallAfter(script, gesture)
 				return True
 		self.master_transport.send(type="key", **kwargs)
+		configuration.record_activity()
 		return True #Don't pass it on
 
 	def set_receiving_braille(self, state):
@@ -962,6 +977,7 @@ class GlobalPlugin(_GlobalPlugin):
 				wx.CallAfter(script, gesture)
 				return False
 		self.master_transport.send(type="key", vk_code=vkCode, scan_code=scanCode, extended=extended, pressed=pressed)
+		configuration.record_activity()
 		return False
 
 	def onSessionLockStateChange(self, isNowLocked):
