@@ -24,15 +24,22 @@ def from_config(config):
 	return ProxySettings(
 		host=section.get("proxy_host", ""),
 		port=int(section.get("proxy_port", 0) or 0),
-		type=section.get("proxy_type", "http"),
+		type=str(section.get("proxy_type", "http")).lower(),
 		username=section.get("proxy_username", ""),
 		password=section.get("proxy_password", ""),
 	)
 
 
+def uses_sspi(settings):
+	"""Return whether the proxy requires the Windows SSPI CONNECT path."""
+	return settings.enabled and settings.type in ("negotiate", "ntlm")
+
+
 def websocket_options(settings):
-	"""Return websocket-client proxy kwargs without exposing credentials in logs."""
+	"""Return websocket-client options for proxy types it supports natively."""
 	if not settings.enabled:
+		return {}
+	if settings.type in ("negotiate", "ntlm"):
 		return {}
 	options = {
 		"http_proxy_host": settings.host,

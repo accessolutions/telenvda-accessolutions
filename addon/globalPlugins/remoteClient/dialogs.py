@@ -18,6 +18,7 @@ except addonHandler.AddonError:
 		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad."
 	)
 from . import configuration
+from .proxy_utils import SUPPORTED_PROXY_TYPES
 import config as NVDAConfig
 import os
 import sys
@@ -406,7 +407,7 @@ class OptionsDialog(SettingsPanel):
 		self.proxy_port.Enable(False)
 		sizer.Add(self.proxy_port)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Proxy &type:")))
-		self.proxy_type = wx.Choice(self, wx.ID_ANY, choices=("http", "socks4", "socks4a", "socks5", "socks5h", "negotiate", "ntlm"))
+		self.proxy_type = wx.Choice(self, wx.ID_ANY, choices=SUPPORTED_PROXY_TYPES)
 		self.proxy_type.SetSelection(0)
 		self.proxy_type.Enable(False)
 		sizer.Add(self.proxy_type)

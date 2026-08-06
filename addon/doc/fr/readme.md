@@ -17,12 +17,20 @@ WebSocket sécurisé :
   HTTPS 443 par défaut ;
 * le chemin WebSocket est configurable, par exemple `/remote` ;
 * les proxies HTTP et SOCKS peuvent être configurés dans les options ;
+* les proxies HTTP d'entreprise peuvent utiliser `negotiate` (Kerberos ou
+  NTLM via Windows SSPI) ou `ntlm` ;
 * la reconnexion automatique et le chiffrement applicatif AES-GCM facultatif
   sont conservés.
 
 Dans **Outils > TeleNVDA > Se connecter**, choisissez le transport, le port
 et le chemin WebSocket. Pour un relais, le même serveur, chemin, port et clé
 doivent être utilisés par les deux ordinateurs.
+
+Les modes `negotiate` et `ntlm` authentifient TeleNVDA auprès du proxy HTTP
+avant le tunnel TLS/WebSocket. Si le nom d'utilisateur est vide, la session
+Windows courante est utilisée. Pour des identifiants explicites, indiquez par
+exemple `DOMAINE\\utilisateur` et le mot de passe. Le relais NVDA Remote n'a
+pas besoin d'être modifié et ne reçoit pas ces identifiants.
 
 Le mode **Serveur** direct est volontairement une connexion TCP/TLS classique
 sur le port choisi. Le transport WebSocket concerne les connexions à un

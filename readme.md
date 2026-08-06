@@ -66,9 +66,15 @@ traffic while retaining the NVDA Remote session protocol.
 ### Proxies and certificate warnings
 
 Open **NVDA menu > Tools > Remote > Options** to configure an HTTP or SOCKS
-proxy. The proxy settings also support authenticated HTTP proxy negotiation
-and NTLM/Kerberos environments when the required Windows credentials are
-available.
+proxy. HTTP, SOCKS4/4a, and SOCKS5/5h are supported. For WebSocket relay
+connections, **negotiate** uses the Windows SSPI provider and can select
+Kerberos or NTLM, while **ntlm** forces NTLM authentication. Leaving the
+proxy username empty uses the current Windows session; explicit credentials
+can be entered as `DOMAIN\\user` and a password. These two SSPI modes apply to
+the HTTP proxy CONNECT handshake, not to the NVDA Remote relay itself.
+
+The direct TCP/TLS server connection does not use the WebSocket proxy path.
+Use WebSocket over HTTPS when an enterprise HTTP proxy must be traversed.
 
 TLS certificates are verified. If a relay uses a certificate that Windows does
 not recognize, TeleNVDA displays its fingerprint. Only accept and save a

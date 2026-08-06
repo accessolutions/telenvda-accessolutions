@@ -15,7 +15,7 @@ from logging import getLogger
 log = getLogger('transport')
 from . import callback_manager
 from . import configuration
-from . import proxy_utils, ws_protocol
+from . import proxy_utils, sspi_proxy, ws_protocol
 from .socket_utils import SERVER_PORT, address_to_hostport, hostport_to_address
 from enum import Enum
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), "lib64" if buildVersion.version_year >= 2026 else "lib32"))
@@ -292,16 +292,58 @@ class WebSocketTransport(TCPTransport):
 		host, port = self.address
 		return ws_protocol.websocket_url(host, port, self.ws_path)
 
+	def _create_sspi_websocket(self, proxy_settings, insecure=None):
+		"""Create a WebSocket over an HTTP CONNECT tunnel authenticated by SSPI."""
+		if insecure is None:
+			insecure = self.insecure
+		host, port = self.address
+		raw_socket = sspi_proxy.open_sspi_proxy_tunnel(
+			proxy_settings,
+			host,
+			port,
+			timeout=self.timeout or 60,
+		)
+		tls_socket = None
+		try:
+			context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+			context.minimum_version = ssl.TLSVersion.TLSv1_2
+			if insecure:
+				context.check_hostname = False
+				context.verify_mode = ssl.CERT_NONE
+			else:
+				context.load_default_certs()
+				context.check_hostname = True
+				context.verify_mode = ssl.CERT_REQUIRED
+			tls_socket = context.wrap_socket(raw_socket, server_hostname=host)
+			raw_socket = None
+			return websocket.create_connection(
+				self._websocket_url(),
+				socket=tls_socket,
+				subprotocols=["nvdaremote/2.0"],
+				sslopt={"cert_reqs": ssl.CERT_NONE if insecure else ssl.CERT_REQUIRED},
+				timeout=self.timeout or None,
+			)
+		except Exception:
+			if tls_socket is not None:
+				tls_socket.close()
+			elif raw_socket is not None:
+				raw_socket.close()
+			raise
+
 	def create_websocket(self):
 		conf = configuration.get_config().get("controlserver", {})
+		proxy_settings = proxy_utils.from_config(conf)
 		ssl_options = {"cert_reqs": ssl.CERT_NONE if self.insecure else ssl.CERT_REQUIRED}
 		kwargs = {
 			"subprotocols": ["nvdaremote/2.0"],
 			"sslopt": ssl_options,
 			"timeout": self.timeout or None,
 		}
-		kwargs.update(proxy_utils.websocket_options(proxy_utils.from_config(conf)))
+		use_sspi = proxy_utils.uses_sspi(proxy_settings)
 		try:
+			if use_sspi:
+				return self._create_sspi_websocket(proxy_settings)
+			kwargs.update(proxy_utils.websocket_options(proxy_settings))
 			return websocket.create_connection(self._websocket_url(), **kwargs)
 		except Exception as error:
 			ssl_error = error if isinstance(error, ssl.SSLError) else error.__cause__
@@ -309,9 +351,14 @@ class WebSocketTransport(TCPTransport):
 				raise
 			fingerprint = None
 			try:
-				probe_options = dict(kwargs, sslopt={"cert_reqs": ssl.CERT_NONE, "check_hostname": False})
-				probe = websocket.create_connection(self._websocket_url(), **probe_options)
-				certificate_socket = getattr(getattr(probe, "sock", None), "sock", None)
+				if use_sspi:
+					probe = self._create_sspi_websocket(proxy_settings, insecure=True)
+				else:
+					probe_options = dict(kwargs, sslopt={"cert_reqs": ssl.CERT_NONE, "check_hostname": False})
+					probe = websocket.create_connection(self._websocket_url(), **probe_options)
+				certificate_socket = getattr(probe, "sock", None)
+				if certificate_socket is not None and not isinstance(certificate_socket, ssl.SSLSocket):
+					certificate_socket = getattr(certificate_socket, "sock", None)
 				if certificate_socket:
 					fingerprint = hashlib.sha256(certificate_socket.getpeercert(True)).hexdigest().lower()
 				probe.close()
