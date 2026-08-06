@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import ssl
 import sys
@@ -115,6 +116,80 @@ def has_pending_install() -> bool:
 	"""
 	path = pending_install_path()
 	return bool(path) and os.path.isdir(path)
+
+
+def _installed_addon():
+	"""Return the currently installed TeleNVDA add-on, if available."""
+	try:
+		return addonHandler.getCodeAddon()
+	except (addonHandler.AddonError, AttributeError):
+		return None
+
+
+def request_remove_installed_addon() -> bool:
+	"""Mark the currently installed TeleNVDA add-on for removal on restart.
+
+	NVDA's :func:`addonHandler.installAddonBundle` only stages the new
+	version inside a ``.pendingInstall`` folder; it never removes the
+	previous version. When an update is installed through the add-on store
+	GUI, NVDA calls ``requestRemove()`` on the old version first, so its
+	folder is deleted on restart and ``completeInstall`` can rename the
+	staged folder into place. Installing a bundle directly (as this updater
+	does) skips that step, leaving the old ``TeleNVDA`` folder behind. On
+	the next start ``completeInstall`` then fails with a "permission denied"
+	error because it cannot replace the still-present folder.
+
+	Requesting the removal here reproduces the add-on store's behaviour.
+
+	:return: ``True`` if a removal was newly requested, ``False`` if it was
+		already pending or could not be performed.
+	"""
+	addon = _installed_addon()
+	if addon is None:
+		return False
+	try:
+		if getattr(addon, "isPendingRemove", False):
+			return False
+		addon.requestRemove()
+		return True
+	except Exception:
+		log.error("Failed to mark the installed TeleNVDA add-on for removal", exc_info=True)
+		return False
+
+
+def _remove_stale_pending_install() -> None:
+	"""Delete a leftover ``.pendingInstall`` folder before staging an update.
+
+	A previous, unfinished update may have left a partial staging folder
+	behind. Extracting a new bundle on top of it would merge the two file
+	sets, so remove it first to guarantee a clean install.
+	"""
+	path = pending_install_path()
+	if path and os.path.isdir(path):
+		log.debug("Removing stale pending install folder %s", path)
+		shutil.rmtree(path, ignore_errors=True)
+
+
+def recover_pending_install() -> bool:
+	"""Try to unblock a TeleNVDA update NVDA could not finalize.
+
+	When a ``.pendingInstall`` folder is present but the previously
+	installed version was never marked for removal, NVDA keeps failing to
+	complete the installation on every restart. Marking the installed
+	version for removal lets NVDA delete it and finish the pending update
+	on the next restart.
+
+	:return: ``True`` if a restart is required to finish the pending update.
+	"""
+	if not has_pending_install():
+		return False
+	addon = _installed_addon()
+	if addon is None:
+		return False
+	if getattr(addon, "isPendingRemove", False):
+		# Already scheduled for removal; a plain restart will finish it.
+		return True
+	return request_remove_installed_addon()
 
 
 def _parse_sha256(data: bytes | str) -> str | None:
@@ -385,6 +460,12 @@ def install_package(path: str):
 		bundle = bundle_type(path)
 		if bundle.manifest.get("name") != ADDON_NAME:
 			raise UpdateError("The downloaded package is not a TeleNVDA add-on")
+		# Mirror the add-on store: remove any leftover staging folder and
+		# mark the currently installed version for removal so NVDA can
+		# replace it with the staged update on restart instead of failing
+		# with a "permission denied" error.
+		_remove_stale_pending_install()
+		request_remove_installed_addon()
 		if installer(bundle) is None:
 			raise UpdateError("NVDA could not install the add-on package")
 		return

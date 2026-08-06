@@ -169,19 +169,42 @@ class GlobalPlugin(_GlobalPlugin):
 			self._startup_update_checked = True
 			if updater.has_pending_install():
 				# A previous update was downloaded but NVDA failed to finish
-				# installing it (for example because a file was briefly
-				# locked by antivirus software). Retrying now would just
-				# download and queue the same release again on every
-				# startup, so skip the automatic check until the pending
-				# install is resolved (restart NVDA, or delete the
-				# ".pendingInstall" folder next to the add-on if it persists).
-				log.warning(
-					"TeleNVDA: a previous update is still pending installation at %s; "
-					"skipping the automatic startup update check.",
-					updater.pending_install_path(),
-				)
+				# installing it. This usually happens because the older
+				# version was never marked for removal, so NVDA cannot
+				# replace it with the staged update and fails on every
+				# restart. Try to unblock it by requesting the removal of the
+				# installed version, then offer to restart so NVDA can
+				# complete the pending installation.
+				if updater.recover_pending_install():
+					log.warning(
+						"TeleNVDA: a previous update is still pending installation at %s; "
+						"the installed version has been scheduled for removal so NVDA can "
+						"finish the update on the next restart.",
+						updater.pending_install_path(),
+					)
+					wx.CallLater(100, self._prompt_finish_pending_update)
+				else:
+					log.warning(
+						"TeleNVDA: a previous update is still pending installation at %s; "
+						"skipping the automatic startup update check.",
+						updater.pending_install_path(),
+					)
 			else:
 				self._start_update_check(manual=False)
+
+	def _prompt_finish_pending_update(self):
+		if self._terminated:
+			return
+		if gui.messageBox(
+			_(
+				"A previously downloaded TeleNVDA update could not be finished "
+				"automatically. NVDA must be restarted to complete the "
+				"installation. Restart NVDA now?"
+			),
+			_("TeleNVDA update"),
+			wx.YES | wx.NO | wx.ICON_INFORMATION,
+		) == wx.YES:
+			core.restart()
 
 	def _current_addon_version(self):
 		try:
