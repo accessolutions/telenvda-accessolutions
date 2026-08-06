@@ -1,0 +1,161 @@
+[[!meta title="Telenvda by Accessolutions"]]
+
+# Telenvda by Accessolutions
+
+TeleNVDA is an NVDA add-on for remote assistance. It allows a trusted person
+to control an NVDA computer, or to provide access to another computer running
+NVDA. This project is maintained by Accessolutions and remains compatible with
+the NVDA Remote protocol where the relay server supports it.
+
+The project includes work from the NVDA Spanish community and other
+contributors. Original work includes contributions by Tyler Spivey and
+Christopher Toth. It is distributed under the GNU General Public License,
+version 2 or later.
+
+## Main features
+
+* TCP/TLS connections through the traditional NVDA Remote protocol.
+* Secure WebSocket connections (`wss://`) through HTTPS-compatible relays.
+* WebSocket subprotocol `nvdaremote/2.0`, with port 443 as the usual choice.
+* Configurable HTTP and SOCKS proxies, including authenticated HTTP proxies.
+* Optional AES-GCM application-layer encryption for compatible TeleNVDA peers.
+* Direct server mode for connections that do not use a relay.
+* File transfer, clipboard sharing, remote speech, braille, and secure-desktop support.
+* A connectivity test that can check a controller using TCP or WebSocket.
+* Two remote screenshot workflows described below.
+
+## Installation
+
+Install the `.nvda-addon` package through NVDA's Add-ons Manager. NVDA must
+be installed on every participating computer. Restart NVDA if it requests a
+restart after installation or an update.
+
+For secure-desktop access, install the add-on on the secure desktop through
+NVDA's General Settings, using **Use currently saved settings on the logon and
+other secure screens**. This requires administrator privileges.
+
+## Relay connections
+
+A relay connection is the recommended choice when the computers are behind
+routers or restrictive firewalls.
+
+### Computer to be controlled
+
+1. Open **NVDA menu > Tools > Remote > Connect**.
+2. Select **Client** and **Allow this machine to be controlled**.
+3. Enter the relay host and access key. The controlled computer and controller
+   must use the same key.
+4. Optionally enter an AES-GCM encryption password. Every TeleNVDA participant
+   must use the same password; this option is not compatible with all NVDA
+   Remote clients.
+5. Select **WebSocket over HTTPS** when the relay provides WebSocket support.
+   Use port **443** unless the relay administrator specifies another port.
+   The WebSocket path is normally `/` and can be changed in the add-on options.
+6. Press **OK**.
+
+### Controlling computer
+
+Use the same connection dialog, select **Client**, and choose **Control another
+machine**. Enter the same relay host, protocol, port, WebSocket path, access
+key, and optional encryption password.
+
+For a WebSocket connection, TeleNVDA uses `wss://` and the
+`nvdaremote/2.0` subprotocol. This makes the traffic resemble ordinary HTTPS
+traffic while retaining the NVDA Remote session protocol.
+
+### Proxies and certificate warnings
+
+Open **NVDA menu > Tools > Remote > Options** to configure an HTTP or SOCKS
+proxy. The proxy settings also support authenticated HTTP proxy negotiation
+and NTLM/Kerberos environments when the required Windows credentials are
+available.
+
+TLS certificates are verified. If a relay uses a certificate that Windows does
+not recognize, TeleNVDA displays its fingerprint. Only accept and save a
+fingerprint after verifying it with the relay administrator. Saved fingerprints
+can be removed with **Delete all trusted fingerprints** in the options.
+
+## Direct server mode
+
+The **Server** option in the connection dialog starts a local direct server.
+The other participant connects to the external address and port shown by the
+server. Port 6837 is the default; Windows Firewall and router port forwarding
+may be required. UPnP forwarding is available when the router supports it.
+
+The direct server uses TLS and creates a unique self-signed certificate in the
+NVDA user configuration directory on first use. The private key is not part of
+the add-on source or package. Never copy a generated `teleNVDA-server.pem`
+file into this repository or share it publicly.
+
+Direct Server mode intentionally listens on the classic TCP/TLS protocol.
+WebSocket is a relay transport; selecting WebSocket does not turn the local
+direct server into a WebSocket server.
+
+Use a long, randomly generated access key. The access key is an authentication
+secret and must not be put in source code, issue reports, screenshots, or logs.
+
+## Remote screenshots
+
+The Remote menu contains two distinct commands:
+
+* **Remote screenshot** uses the native TeleNVDA screenshot messages. It is
+  the preferred method when TeleNVDA is installed on the controlled computer.
+* **Request screenshot (PowerShell)** runs a temporary Windows PowerShell
+  capture on the controlled computer and transfers the resulting PNG through
+  the TeleNVDA session.
+
+The beta workflow does not install or require the separate Python screenshot
+helper. PowerShell must be available on the controlled Windows computer.
+
+A screenshot is received as image data and opened on the controlling computer.
+Treat screenshots as potentially sensitive information and share them only
+with authorized people.
+
+## Controlling the remote computer
+
+Press **F11** to switch between controlling the local and remote computer.
+When remote control is active, keyboard and braille input are sent to the
+controlled computer. The gesture can be changed in NVDA's Input Gestures
+dialog. For best results, use matching keyboard layouts on both computers.
+
+The Remote menu also provides commands for sending Ctrl+Alt+Delete, muting
+remote speech, pushing clipboard text, and sending files. File transfers are
+available to session members and should only be used with trusted peers.
+
+## Connectivity testing
+
+Open **NVDA menu > Tools > Remote > Connectivity test**. Enter the relay
+address, protocol, port, and WebSocket path when applicable. The test records
+DNS, TLS, and WebSocket diagnostic information in the local connectivity log;
+it does not require or record a session access key.
+
+## Security recommendations
+
+* Use relay servers and hosts that you trust.
+* Verify TLS fingerprints out of band before saving a new fingerprint.
+* Use unique, high-entropy access and encryption keys and rotate them if they
+  may have been exposed.
+* Do not commit private keys, passwords, access keys, screenshots, or generated
+  `.nvda-addon` files to source control.
+* Keep the add-on and NVDA updated on every participating computer.
+* Direct server mode is intended for trusted, controlled environments; expose
+  its port only when necessary.
+
+## Building from source
+
+This repository targets Python 3.13 and uses SCons. Install the dependencies
+from `pyproject.toml`, then run `scons` from the repository root. The generated
+`.nvda-addon` file is written to the root directory and is intentionally
+ignored by Git.
+
+The build copies this file into the English documentation directory and
+converts the translated Markdown files to HTML. Keep the root `readme.md` as
+the English source instead of editing generated files under `addon/doc/en/`.
+
+## Repository
+
+Source code and issue tracking are available at:
+
+<https://github.com/Accessolutions/telenvda-accessolutions>
+
+[[!tag dev stable]]

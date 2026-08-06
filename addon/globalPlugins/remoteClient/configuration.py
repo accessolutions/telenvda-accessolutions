@@ -1,0 +1,65 @@
+from io import StringIO
+import os
+import configobj
+from configobj import validate
+import globalVars
+from . import socket_utils
+readonly = globalVars.appArgs.secure or globalVars.appArgs.launcher
+
+CONFIG_FILE_NAME = 'teleNVDA.ini'
+
+_config = None
+configspec = StringIO("""
+[connections]
+	last_connected = list(default=list("remote.nvda.es"))
+[controlserver]
+	autoconnect = boolean(default=False)
+	self_hosted = boolean(default=False)
+	UPNP = boolean(default=False)
+	connection_type = integer(default=0)
+	host = string(default="remote.nvda.es")
+	port = integer(default=6837)
+	key = string(default="")
+	encryption_key = string(default="")
+	transport = option("tcp", "websocket", default="tcp")
+	ws_path = string(default="/")
+	proxy_host = string(default="")
+	proxy_port = integer(default=0)
+	proxy_username = string(default="")
+	proxy_password = string(default="")
+	proxy_type = option("http", "socks4", "socks4a", "socks5", "socks5h", "negotiate", "ntlm", default="http")
+
+[seen_motds]
+	__many__ = string(default="")
+
+[trusted_certs]
+	__many__ = string(default="")
+
+[ui]
+	play_sounds = boolean(default=True)
+	alert_before_slave_disconnect = boolean(default=True)
+	mute_when_controlling_local_machine = boolean(default=False)
+	allow_speech_commands = boolean(default=True)
+	display_motd_once = boolean(default=False)
+	portcheck = string(default="https://nvda.es/portcheck.php?port={port}")
+""")
+def get_config():
+	global _config
+	if not _config:
+		path = os.path.abspath(os.path.join(globalVars.appArgs.configPath, CONFIG_FILE_NAME))
+		_config = configobj.ConfigObj(infile=path, configspec=configspec, default_encoding='utf8', create_empty=not readonly)
+		val = validate.Validator()
+		_config.validate(val, copy=True)
+	return _config
+
+def write_connection_to_config(address):
+	"""Writes an address to the last connected section of the config.
+	If the address is already in the config, move it to the end."""
+	conf = get_config()
+	last_cons = conf['connections']['last_connected']
+	address = socket_utils.hostport_to_address(address)
+	if address in last_cons:
+		conf['connections']['last_connected'].remove(address)
+	conf['connections']['last_connected'].append(address)
+	if not readonly:
+		conf.write()
