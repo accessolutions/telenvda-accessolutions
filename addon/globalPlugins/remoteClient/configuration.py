@@ -42,6 +42,7 @@ configspec = StringIO("""
 	encryption_key = string(default="")
 	transport = option("tcp", "websocket", default="tcp")
 	ws_path = string(default="/")
+	proxy_mode = option("manual", "auto", "none", default="manual")
 	proxy_host = string(default="")
 	proxy_port = integer(default=0)
 	proxy_username = string(default="")

@@ -17,6 +17,8 @@ WebSocket sécurisé :
   HTTPS 443 par défaut ;
 * le chemin WebSocket est configurable, par exemple `/remote` ;
 * les proxies HTTP et SOCKS peuvent être configurés dans les options ;
+* le mode proxy propose une configuration manuelle, une détection automatique
+  Windows (WinHTTP, PAC/WPAD et exclusions) ou l'absence de proxy ;
 * les proxies HTTP d'entreprise peuvent utiliser `negotiate` (Kerberos ou
   NTLM via Windows SSPI) ou `ntlm` ;
 * la reconnexion automatique et le chiffrement applicatif AES-GCM facultatif
@@ -25,6 +27,14 @@ WebSocket sécurisé :
 Dans **Outils > TeleNVDA > Se connecter**, choisissez le transport, le port
 et le chemin WebSocket. Pour un relais, le même serveur, chemin, port et clé
 doivent être utilisés par les deux ordinateurs.
+
+Le mode **Configuration manuelle** conserve le comportement historique. Si
+aucun hôte n'est indiqué, les variables d'environnement de proxy peuvent être
+utilisées par les bibliothèques réseau. Le mode **Détection automatique du
+proxy Windows** suit la configuration WinHTTP de l'utilisateur, y compris les
+scripts PAC/WPAD et les exclusions par destination. Il n'enregistre ni
+n'extrait le mot de passe Windows. Le mode **Aucun proxy** ignore aussi les
+variables d'environnement.
 
 Les modes `negotiate` et `ntlm` authentifient TeleNVDA auprès du proxy HTTP
 avant le tunnel TLS/WebSocket. Si le nom d'utilisateur est vide, la session
@@ -48,8 +58,9 @@ releases**. Une vérification manuelle est disponible avec **Outils > TeleNVDA
 Une mise à jour n'est jamais installée silencieusement. TeleNVDA demande une
 confirmation, télécharge le paquet `.nvda-addon` en HTTPS, vérifie son hash
 SHA-256 publié, puis demande s'il faut redémarrer NVDA. La vérification utilise
-le proxy configuré pour TeleNVDA, y compris les types HTTP, SOCKS, `negotiate`
-et `ntlm`. Les erreurs réseau d'une vérification automatique restent
+le mode proxy configuré pour TeleNVDA, y compris les types HTTP, SOCKS,
+`negotiate` et `ntlm`, ainsi que la détection automatique Windows lorsqu'elle
+est sélectionnée. Les erreurs réseau d'une vérification automatique restent
 silencieuses et sont consignées dans le journal ; les erreurs d'une vérification
 manuelle sont affichées.
 

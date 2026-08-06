@@ -400,10 +400,6 @@ class OptionsDialog(SettingsPanel):
 		self.transport.Enable(False)
 		self.transport.Bind(wx.EVT_CHOICE, self.on_transport_changed)
 		sizer.Add(self.transport)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
-		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
-		self.ws_path.Enable(False)
-		sizer.Add(self.ws_path)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
 		self.host = wx.TextCtrl(self, wx.ID_ANY)
 		self.host.Enable(False)
@@ -428,6 +424,24 @@ class OptionsDialog(SettingsPanel):
 		self.encryption_key = wx.TextCtrl(self, wx.ID_ANY)
 		self.encryption_key.Enable(False)
 		sizer.Add(self.encryption_key)
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
+		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
+		self.ws_path.Enable(False)
+		sizer.Add(self.ws_path)
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Proxy &mode:")))
+		self.proxy_mode = wx.Choice(
+			self,
+			wx.ID_ANY,
+			choices=(
+				_("Manual configuration"),
+				_("Automatic Windows proxy detection"),
+				_("No proxy"),
+			),
+		)
+		self.proxy_mode.SetSelection(0)
+		self.proxy_mode.Enable(False)
+		self.proxy_mode.Bind(wx.EVT_CHOICE, self.on_proxy_mode_changed)
+		sizer.Add(self.proxy_mode)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("HTTP/SOCKS &proxy host:")))
 		self.proxy_host = wx.TextCtrl(self, wx.ID_ANY)
 		self.proxy_host.Enable(False)
@@ -493,15 +507,22 @@ class OptionsDialog(SettingsPanel):
 		self.host.Enable(not bool(self.client_or_server.GetSelection()) and state)
 		self.transport.Enable(not bool(self.client_or_server.GetSelection()) and state)
 		self.ws_path.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		self.proxy_host.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		self.proxy_port.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		self.proxy_type.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		self.proxy_username.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		self.proxy_password.Enable(not bool(self.client_or_server.GetSelection()) and state)
+		proxy_state = not bool(self.client_or_server.GetSelection()) and state
+		self.proxy_mode.Enable(proxy_state)
+		manual_proxy = self.proxy_mode.GetSelection() == 0
+		self.proxy_host.Enable(proxy_state and manual_proxy)
+		self.proxy_port.Enable(proxy_state and manual_proxy)
+		self.proxy_type.Enable(proxy_state and manual_proxy)
+		self.proxy_username.Enable(proxy_state and manual_proxy)
+		self.proxy_password.Enable(proxy_state and manual_proxy)
 		self.port.Enable(bool(self.client_or_server.GetSelection()) and state)
 		self.useUPNP.Enable(bool(self.client_or_server.GetSelection()) and state)
 
 	def on_client_or_server(self, evt):
+		evt.Skip()
+		self.set_controls()
+
+	def on_proxy_mode_changed(self, evt):
 		evt.Skip()
 		self.set_controls()
 
@@ -528,6 +549,9 @@ class OptionsDialog(SettingsPanel):
 		self.host.SetValue(cs['host'])
 		self.transport.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
 		self.ws_path.SetValue(cs.get('ws_path', '/'))
+		proxy_modes = ("manual", "auto", "none")
+		configured_proxy_mode = cs.get('proxy_mode', 'manual')
+		self.proxy_mode.SetSelection(max(0, proxy_modes.index(configured_proxy_mode) if configured_proxy_mode in proxy_modes else 0))
 		self.port.SetValue(str(cs['port']))
 		self.useUPNP.SetValue(cs['UPNP'])
 		self.key.SetValue(cs['key'])
@@ -604,6 +628,7 @@ class OptionsDialog(SettingsPanel):
 		cs['encryption_key'] = self.encryption_key.GetValue()
 		cs['transport'] = 'websocket' if self.transport.GetSelection() == 1 else 'tcp'
 		cs['ws_path'] = self.ws_path.GetValue() or '/'
+		cs['proxy_mode'] = ("manual", "auto", "none")[self.proxy_mode.GetSelection()]
 		cs['proxy_host'] = self.proxy_host.GetValue()
 		cs['proxy_port'] = int(self.proxy_port.GetValue())
 		cs['proxy_type'] = self.proxy_type.GetStringSelection()

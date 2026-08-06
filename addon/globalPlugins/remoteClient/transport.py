@@ -334,7 +334,10 @@ class WebSocketTransport(TCPTransport):
 	def create_websocket(self):
 		self._certificate_authentication_failed = False
 		conf = configuration.get_config().get("controlserver", {})
-		proxy_settings = proxy_utils.from_config(conf)
+		proxy_settings = proxy_utils.resolve_for_url(
+			proxy_utils.from_config(conf),
+			self._websocket_url(),
+		)
 		ssl_options = {"cert_reqs": ssl.CERT_NONE if self.insecure else ssl.CERT_REQUIRED}
 		kwargs = {
 			"subprotocols": ["nvdaremote/2.0"],

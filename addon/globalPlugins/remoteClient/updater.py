@@ -149,8 +149,10 @@ def _fetch_with_urllib(url: str, settings: proxy_utils.ProxySettings) -> bytes:
 			raise UpdateError(f"Unsupported urllib proxy type: {settings.type}")
 		proxy = _proxy_url(settings)
 		handlers.append(ProxyHandler({"http": proxy, "https": proxy}))
-	else:
+	elif settings.use_environment:
 		handlers.append(ProxyHandler())
+	else:
+		handlers.append(ProxyHandler({}))
 	handlers.append(HttpsRedirectHandler())
 	opener = build_opener(*handlers)
 	request = Request(
@@ -248,10 +250,11 @@ def _fetch_over_socket(url: str, settings: proxy_utils.ProxySettings) -> tuple[i
 
 def _fetch_bytes(url: str, settings: proxy_utils.ProxySettings) -> bytes:
 	"""Fetch an HTTPS resource, including GitHub's asset redirects."""
-	if not settings.enabled or settings.type == "http":
-		return _fetch_with_urllib(url, settings)
 	for _ in range(_MAX_REDIRECTS + 1):
-		status, headers, data = _fetch_over_socket(url, settings)
+		resolved_settings = proxy_utils.resolve_for_url(settings, url)
+		if not resolved_settings.enabled or resolved_settings.type == "http":
+			return _fetch_with_urllib(url, resolved_settings)
+		status, headers, data = _fetch_over_socket(url, resolved_settings)
 		if status in (301, 302, 303, 307, 308):
 			location = headers.get("location")
 			if not location:

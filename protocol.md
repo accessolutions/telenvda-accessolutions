@@ -36,7 +36,16 @@ The WebSocket transport can reach the relay through several proxy types, selecte
 - `socks4`, `socks4a`, `socks5`, `socks5h` — SOCKS proxies. The `a`/`h` variants perform DNS resolution on the proxy side.
 - `negotiate`, `ntlm` — Windows Integrated Authentication proxies. The tunnel is authenticated with the credentials of the current Windows session via SSPI (single sign-on, no password stored).
 
-When no explicit proxy is configured, the Windows system proxy is used automatically.
+The add-on offers three proxy modes in its Options dialog:
+
+- **Manual configuration** (the default) preserves the historical behavior.
+  Explicit HTTP/SOCKS fields are used when filled; otherwise the underlying
+  network libraries may use their proxy environment variables.
+- **Automatic Windows proxy detection** resolves the current destination with
+  WinHTTP, including PAC/WPAD scripts and bypass rules, and uses the current
+  Windows session for integrated authentication when required.
+- **No proxy** forces a direct connection and ignores proxy environment
+  variables.
 
 #### TLS-inspecting proxies (SSL inspection)
 

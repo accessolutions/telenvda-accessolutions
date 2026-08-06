@@ -77,6 +77,8 @@ class GlobalPlugin(_GlobalPlugin):
 	def __init__(self, *args, **kwargs):
 		global client
 		super().__init__(*args, **kwargs)
+		if client is not None and not getattr(client, "_terminated", False):
+			raise RuntimeError("TeleNVDA is already running. Only one instance can be loaded at a time.")
 		for addon in addonHandler.getAvailableAddons(): 
 			if addon.name == "remote" and not addon.isDisabled:
 				raise RuntimeError("TeleNVDA cannot be used while NVDA Remote is running. Please, disable NVDA Remote and restart NVDA.")
@@ -305,6 +307,8 @@ class GlobalPlugin(_GlobalPlugin):
 			self.connect_as_master(address, channel, encryption_key, transport_type=transport_type, ws_path=cs.get('ws_path', '/'))
 
 	def create_menu(self):
+		if getattr(self, "_terminated", False) or getattr(self, "remote_item", None) is not None:
+			return
 		self.menu = wx.Menu()
 		tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
 		# Translators: Item in TeleNVDA submenu to connect to a remote computer.
