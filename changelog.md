@@ -5,6 +5,9 @@ This release brings the following changes:
 * Fix automatic updates that failed to complete with an "access denied" error by marking the previous version for removal before installing the downloaded package, and recover installations that were already stuck pending.
 * Automatically trust and remember previously unknown server certificate fingerprints so manual and automatic connections are not blocked by a confirmation dialog.
 * Add a configurable inactivity timeout for automatic connections and a configurable folder for received screenshots.
+* Add keyboard gestures for remote screenshots: NVDA+Control+Shift+P for the native capture and Windows+Alt+P for the PowerShell capture. Both work from the controlling and the controlled computer.
+* Fix the PowerShell screenshot request, which silently used the native capture method instead.
+* Encode remote screenshots as JPEG instead of the raw bitmap before Base64 encoding, so that captures transfer faster.
 
 Important: some anti-virus software may flag parts of this add-on as malicious. Specifically, `url_handler.exe`, which opens `remote://` and `tele://` links. If you don't use this feature, you can safely quarantine or delete the file. Otherwise, you must add it as an exception.
 

@@ -478,6 +478,14 @@ class OptionsDialog(SettingsPanel):
 		# Translators: A checkbox in add-on options dialog to set whether server welcome messages are displayed only once
 		self.motd_once = wx.CheckBox(self, wx.ID_ANY, label=_("Show server welcome messages only once"))
 		sizer.Add(self.motd_once)
+		# Translators: A checkbox in add-on options dialog to prevent the computer from going to sleep when it is left unattended.
+		self.keep_awake = wx.CheckBox(self, wx.ID_ANY, label=_("Prevent this computer from going to sleep when it is not used"))
+		self.keep_awake.Bind(wx.EVT_CHECKBOX, self.on_keep_awake)
+		sizer.Add(self.keep_awake)
+		# Translators: Label for the delay after which an F15 key press is sent to keep the computer awake.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Delay without activity before keeping the computer awake (in seconds):")))
+		self.keep_awake_delay = wx.SpinCtrl(self, wx.ID_ANY, min=5, max=3600)
+		sizer.Add(self.keep_awake_delay)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -496,6 +504,10 @@ class OptionsDialog(SettingsPanel):
 		self.screenshot_directory_browse.Bind(wx.EVT_BUTTON, self.on_browse_screenshot_directory)
 		screenshot_directory_sizer.Add(self.screenshot_directory_browse, 0, wx.LEFT, 5)
 		sizer.Add(screenshot_directory_sizer, 0, wx.EXPAND)
+
+	def on_keep_awake(self, evt):
+		self.keep_awake_delay.Enable(bool(self.keep_awake.GetValue()))
+		evt.Skip()
 
 	def on_autoconnect(self, evt):
 		if self.autoconnect.GetValue() and not self._autoconnect_was_enabled:
@@ -584,6 +596,9 @@ class OptionsDialog(SettingsPanel):
 		self.mute_when_controlling_local_machine.SetValue(config['ui']['mute_when_controlling_local_machine'])
 		self.speech_commands.SetValue(config['ui']['allow_speech_commands'])
 		self.motd_once.SetValue(config['ui']['display_motd_once'])
+		self.keep_awake.SetValue(config['keep_awake']['enabled'])
+		self.keep_awake_delay.SetValue(int(config['keep_awake']['delay_seconds']))
+		self.keep_awake_delay.Enable(bool(config['keep_awake']['enabled']))
 		self.portcheck.SetValue(config['ui']['portcheck'])
 		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
@@ -689,6 +704,8 @@ class OptionsDialog(SettingsPanel):
 		config['ui']['allow_speech_commands'] = self.speech_commands.GetValue()
 		config['ui']['display_motd_once'] = self.motd_once.GetValue()
 		config['ui']['portcheck'] = self.portcheck.GetValue()
+		config['keep_awake']['enabled'] = self.keep_awake.GetValue()
+		config['keep_awake']['delay_seconds'] = int(self.keep_awake_delay.GetValue())
 		config['screenshots']['directory'] = self.screenshot_directory.GetValue().strip()
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		config['updates']['channel'] = 'dev' if self.update_channel.GetSelection() == 1 else 'stable'
@@ -698,6 +715,7 @@ class OptionsDialog(SettingsPanel):
 		plugin = getattr(plugin_module, 'client', None)
 		if plugin is not None and not getattr(plugin, '_terminated', False):
 			plugin.restart_inactivity_monitor()
+			plugin.keep_awake.reload()
 
 class CertificateUnauthorizedDialog(wx.MessageDialog):
 

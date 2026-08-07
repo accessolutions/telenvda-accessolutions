@@ -102,7 +102,7 @@ class SlaveSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_braille_input', self.handle_braille_input)
 		self.transport.callback_manager.register_callback('msg_send_SAS', self.handle_send_SAS)
 		self.transport.callback_manager.register_callback('msg_request_screenshot', self.handle_screenshot_request)
-		self.transport.callback_manager.register_callback('msg_request_screenshot_powershell', self.handle_screenshot_request)
+		self.transport.callback_manager.register_callback('msg_request_screenshot_powershell', self.handle_powershell_screenshot_request)
 
 	def handle_key(self, **kwargs):
 		"""A master performed a key action on this slave: record it as remote control activity."""
@@ -249,7 +249,16 @@ class SlaveSession(RemoteSession):
 		pass  # speech index approach changed in 2019.3
 
 	def handle_screenshot_request(self, method="native", **kwargs):
+		configuration.record_activity()
 		self.local_machine.capture_screenshot(method=method, callback=self._send_screenshot)
+
+	def handle_powershell_screenshot_request(self, **kwargs):
+		"""The controlling machine asked for the PowerShell (beta) capture method."""
+		self.handle_screenshot_request(method="powershell")
+
+	def send_screenshot(self, method="native"):
+		"""Capture this controlled machine's screen and push it to the controlling machine."""
+		self.handle_screenshot_request(method=method)
 
 	def _send_screenshot(self, data):
 		if data:
@@ -260,6 +269,9 @@ class MasterSession(RemoteSession):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.slaves = defaultdict(dict)
+		# True once the relay has told us who is in the channel.
+		# Until then we must not assume that no controlled computer is available.
+		self.slave_state_known = False
 		self.patcher = nvda_patcher.NVDAMasterPatcher()
 		self.patch_callbacks_added = False
 		self.transport.callback_manager.register_callback('msg_speak', self.local_machine.speak)
@@ -302,7 +314,14 @@ class MasterSession(RemoteSession):
 		encryption_key = self.transport.encryption_key
 		return connection_info.ConnectionInfo(hostname=hostname, port=port, key=key, mode='master', encryption_key=encryption_key)
 
+	def has_slaves(self):
+		"""Whether at least one controlled (slave) computer is known to be in the channel."""
+		return bool(self.slaves)
+
 	def handle_nvda_not_connected(self):
+		# The relay told us that no controlled computer is in the channel.
+		self.slaves.clear()
+		self.slave_state_known = True
 		speech.cancelSpeech()
 		ui.message(_("Remote NVDA not connected."))
 
@@ -317,6 +336,8 @@ class MasterSession(RemoteSession):
 	def handle_channel_joined(self, channel=None, clients=None, origin=None, **kwargs):
 		if clients is None:
 			clients = []
+		self.slaves.clear()
+		self.slave_state_known = True
 		for client in clients:
 			self.handle_client_connected(client)
 		self.client_count = len(clients)+1
@@ -326,15 +347,22 @@ class MasterSession(RemoteSession):
 		if not self.patch_callbacks_added:
 			self.add_patch_callbacks()
 			self.patch_callbacks_added = True
+		if isinstance(client, dict) and client.get('connection_type') == 'slave':
+			self.slaves[client['id']]['active'] = True
+			self.slave_state_known = True
 		self.send_braille_info()
 		cues.client_connected()
 		self.client_count += 1
 
 	def handle_client_disconnected(self, client=None, **kwargs):
-		self.patcher.unpatch()
-		if self.patch_callbacks_added:
-			self.remove_patch_callbacks()
-			self.patch_callbacks_added = False
+		if isinstance(client, dict) and client.get('connection_type') == 'slave':
+			self.slaves.pop(client['id'], None)
+			self.slave_state_known = True
+		if not self.has_slaves():
+			self.patcher.unpatch()
+			if self.patch_callbacks_added:
+				self.remove_patch_callbacks()
+				self.patch_callbacks_added = False
 		cues.client_disconnected()
 		self.client_count -= 1
 

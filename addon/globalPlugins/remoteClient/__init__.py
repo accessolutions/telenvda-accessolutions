@@ -26,6 +26,7 @@ import shlobj
 import speech
 import socket
 import ssl
+import subprocess
 import sys
 import threading
 import ui
@@ -35,14 +36,99 @@ import base64
 from config import conf as nvda_conf
 from globalPluginHandler import GlobalPlugin as _GlobalPlugin
 from keyboardHandler import KeyboardInputGesture
+try:
+	# Added in NVDA 2025.1, used by NVDA's own Remote Access to avoid triggering an
+	# action on the controlled computer when releasing modifiers.
+	from keyboardHandler import canModifiersPerformAction
+except ImportError:
+	canModifiersPerformAction = None
 from logHandler import log
 from scriptHandler import script
 from winUser import WM_QUIT
+try:
+	from winUser import VK_NONE
+except ImportError:
+	#: Reserved virtual key code used to notify the controlled computer that its key state changed.
+	VK_NONE = 0xFF
 
 logger = logging.getLogger(__name__)
 
 _INACTIVITY_MONITOR_MAX_DELAY_SECONDS = 24 * 24 * 60 * 60
 _INACTIVITY_MONITOR_IDLE_DELAY_SECONDS = 60
+
+#: Mouse buttons which must be held together to restart NVDA.
+_MOUSE_RESTART_BUTTONS = frozenset(("right",))
+#: How long, in seconds, those buttons must be held before NVDA is restarted.
+_MOUSE_RESTART_DELAY = 5
+
+_SW_SHOW = 5
+_SW_RESTORE = 9
+
+def _get_user32():
+	"""Return a private user32 binding with the prototypes needed to force a window to the foreground.
+
+	A dedicated ctypes.WinDLL instance is used so that the restype/argtypes set here
+	cannot interfere with the ones NVDA sets on its own user32 binding.
+	"""
+	user32 = getattr(_get_user32, "_cached", None)
+	if user32 is not None:
+		return user32
+	user32 = ctypes.WinDLL("user32")
+	user32.GetForegroundWindow.restype = ctypes.wintypes.HWND
+	user32.GetForegroundWindow.argtypes = []
+	user32.SetForegroundWindow.restype = ctypes.wintypes.BOOL
+	user32.SetForegroundWindow.argtypes = [ctypes.wintypes.HWND]
+	user32.BringWindowToTop.restype = ctypes.wintypes.BOOL
+	user32.BringWindowToTop.argtypes = [ctypes.wintypes.HWND]
+	user32.SetActiveWindow.restype = ctypes.wintypes.HWND
+	user32.SetActiveWindow.argtypes = [ctypes.wintypes.HWND]
+	user32.ShowWindow.restype = ctypes.wintypes.BOOL
+	user32.ShowWindow.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+	user32.IsWindow.restype = ctypes.wintypes.BOOL
+	user32.IsWindow.argtypes = [ctypes.wintypes.HWND]
+	user32.IsIconic.restype = ctypes.wintypes.BOOL
+	user32.IsIconic.argtypes = [ctypes.wintypes.HWND]
+	user32.GetWindowThreadProcessId.restype = ctypes.wintypes.DWORD
+	user32.GetWindowThreadProcessId.argtypes = [ctypes.wintypes.HWND, ctypes.c_void_p]
+	user32.AttachThreadInput.restype = ctypes.wintypes.BOOL
+	user32.AttachThreadInput.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.DWORD, ctypes.wintypes.BOOL]
+	_get_user32._cached = user32
+	return user32
+
+def force_window_to_foreground(handle):
+	"""Try hard to bring the given window to the foreground.
+
+	Windows refuses SetForegroundWindow when the calling thread does not own the
+	foreground window, so its input queue is temporarily attached to the foreground one.
+	Returns True only if the window really ended up in the foreground.
+	"""
+	if not handle:
+		return False
+	try:
+		user32 = _get_user32()
+		handle = ctypes.wintypes.HWND(int(handle))
+		if not user32.IsWindow(handle):
+			return False
+		foreground = user32.GetForegroundWindow()
+		if foreground == handle.value:
+			return True
+		current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+		foreground_thread = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+		attached = False
+		if foreground_thread and foreground_thread != current_thread:
+			attached = bool(user32.AttachThreadInput(foreground_thread, current_thread, True))
+		try:
+			user32.ShowWindow(handle, _SW_RESTORE if user32.IsIconic(handle) else _SW_SHOW)
+			user32.BringWindowToTop(handle)
+			user32.SetForegroundWindow(handle)
+			user32.SetActiveWindow(handle)
+		finally:
+			if attached:
+				user32.AttachThreadInput(foreground_thread, current_thread, False)
+		return user32.GetForegroundWindow() == handle.value
+	except Exception:
+		logger.debug("Unable to force a window to the foreground", exc_info=True)
+		return False
 
 from . import bridge
 from . import configuration
@@ -52,6 +138,7 @@ if buildVersion.version_year < 2025:
 	from . import keyboard_hook
 else:
 	import inputCore
+from . import keep_awake
 from . import local_machine
 from . import mouse_hook
 from . import serializer
@@ -112,12 +199,13 @@ class GlobalPlugin(_GlobalPlugin):
 		self.sending_keys = False
 		self.key_modifiers = set()
 		self.hostPendingModifiers = set()
-		self.pending_modifier_events = []
-		self.pending_modifier_keys = set()
+		self.hostPendingNonmodifier = None
 		self.master_connection_interrupted = False
 		self.master_disconnect_requested = False
 		self.ignoreGesture = False
 		self.guestScripts = (self.script_sendKeys, self.script_ignoreNextGesture)
+		self.is_connect_dialog_open = False
+		self._connect_dialog = None
 		self.sd_server = None
 		self.sd_relay = None
 		self.sd_bridge = None
@@ -139,6 +227,15 @@ class GlobalPlugin(_GlobalPlugin):
 			self.postStartupHandler()
 		core.postNvdaStartup.register(self.postStartupHandler)
 		globalVars.teleNVDA = None
+		self.keep_awake = keep_awake.KeepAwake()
+		self.keep_awake.start()
+		self.start_mouse_hook()
+		if buildVersion.version_year >= 2025:
+			# Like NVDA's own Remote Access, the handler stays registered for the whole life of
+			# the plugin and simply returns early when keys are not being sent to the remote
+			# computer. Registering and unregistering it on every toggle made the local keyboard
+			# unusable whenever the two operations got out of sync.
+			inputCore.decide_handleRawKey.register(self.handleRawKeys)
 		client = self
 
 	def _manage_native_remote(self):
@@ -485,23 +582,28 @@ class GlobalPlugin(_GlobalPlugin):
 		self.mouse_hook_thread = None
 
 	def mouse_hook_callback(self, button, pressed):
+		self.keep_awake.notify_local_input()
 		with self.mouse_button_lock:
 			if pressed:
 				self.mouse_buttons.add(button)
 				if (
-					self._is_master_connected()
-					and self.mouse_buttons == {"left", "right"}
+					self.mouse_buttons == set(_MOUSE_RESTART_BUTTONS)
 					and self.mouse_restart_timer is None
 					and not self.mouse_restart_triggered
 				):
-					self.mouse_restart_timer = threading.Timer(1, self._check_mouse_restart)
+					self.mouse_restart_timer = threading.Timer(
+						_MOUSE_RESTART_DELAY, self._check_mouse_restart
+					)
 					self.mouse_restart_timer.daemon = True
 					self.mouse_restart_timer.start()
 			else:
 				self.mouse_buttons.discard(button)
 				if not self.mouse_buttons:
 					self.mouse_restart_triggered = False
-				if self.mouse_restart_timer is not None and self.mouse_buttons != {"left", "right"}:
+				if (
+					self.mouse_restart_timer is not None
+					and self.mouse_buttons != set(_MOUSE_RESTART_BUTTONS)
+				):
 					self.mouse_restart_timer.cancel()
 					self.mouse_restart_timer = None
 
@@ -509,8 +611,7 @@ class GlobalPlugin(_GlobalPlugin):
 		with self.mouse_button_lock:
 			self.mouse_restart_timer = None
 			if (
-				self.mouse_buttons != {"left", "right"}
-				or not self._is_master_connected()
+				self.mouse_buttons != set(_MOUSE_RESTART_BUTTONS)
 				or self.mouse_restart_triggered
 			):
 				return
@@ -518,15 +619,31 @@ class GlobalPlugin(_GlobalPlugin):
 		wx.CallAfter(self._restart_nvda_from_mouse)
 
 	def _restart_nvda_from_mouse(self):
-		if self._terminated or not self._is_master_connected():
+		if self._terminated:
 			return
-		log.warning("Restarting NVDA after holding the left and right mouse buttons together")
-		core.restart()
+		log.warning(
+			"Restarting NVDA after holding the right mouse button for %d seconds"
+			% _MOUSE_RESTART_DELAY
+		)
+		slave_path = os.path.join(globalVars.appDir, "nvda_slave.exe")
+		if not os.path.isfile(slave_path):
+			slave_path = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "NVDA", "nvda_slave.exe")
+		if not os.path.isfile(slave_path):
+			log.error("Unable to find nvda_slave.exe, falling back to core.restart()")
+			core.restart()
+			return
+		try:
+			subprocess.Popen([slave_path, "launchNVDA", "-r"], close_fds=True)
+		except Exception:
+			log.exception("Unable to launch %s" % slave_path)
 
 	def terminate(self):
 		global client
 		self._terminated = True
+		if buildVersion.version_year >= 2025:
+			inputCore.decide_handleRawKey.unregister(self.handleRawKeys)
 		self.stop_mouse_hook()
+		self.keep_awake.stop()
 		if self._inactivity_timer is not None:
 			self._inactivity_timer.Stop()
 			self._inactivity_timer = None
@@ -750,6 +867,42 @@ class GlobalPlugin(_GlobalPlugin):
 		except (TypeError, OSError):
 			ui.message(_("Unable to push clipboard"))
 
+	def _screenshot(self, method):
+		"""Get a screenshot of the controlled computer, whichever end the gesture was pressed on.
+
+		On the controlling computer the capture is requested from the controlled computer.
+		On the controlled computer the local screen is captured and pushed to the controller.
+		"""
+		if self.master_session is not None and self._is_master_connected():
+			self.master_session.request_screenshot(method)
+			configuration.record_activity()
+			# Translators: message spoken when a screenshot of the remote computer has been requested
+			ui.message(_("Screenshot requested"))
+			return
+		if self.slave_session is not None and self._is_slave_connected():
+			self.slave_session.send_screenshot(method)
+			configuration.record_activity()
+			# Translators: message spoken when this computer sends a screenshot to the controlling computer
+			ui.message(_("Sending screenshot"))
+			return
+		ui.message(_("Not connected."))
+
+	@script(
+		# Translators: remote screenshot gesture description
+		_("Takes a screenshot of the controlled computer and opens it on the controlling computer"),
+		gesture="kb:control+shift+NVDA+p",
+		**speakOnDemand)
+	def script_screenshot(self, gesture):
+		self._screenshot("native")
+
+	@script(
+		# Translators: remote screenshot using PowerShell gesture description
+		_("Takes a screenshot of the controlled computer using the PowerShell beta method and opens it on the controlling computer"),
+		gesture="kb:windows+alt+p",
+		**speakOnDemand)
+	def script_screenshot_powershell(self, gesture):
+		self._screenshot("powershell")
+
 	def on_copy_link_remote_item(self, evt):
 		session = self.master_session or self.slave_session
 		url = session.get_connection_info().get_url_to_connect(0)
@@ -775,13 +928,11 @@ class GlobalPlugin(_GlobalPlugin):
 		evt.Skip()
 
 	def on_screenshot_item(self, evt):
-		if self.master_session:
-			self.master_session.request_screenshot("native")
+		self._screenshot("native")
 		evt.Skip()
 
 	def on_screenshot_powershell_item(self, evt):
-		if self.master_session:
-			self.master_session.request_screenshot("powershell")
+		self._screenshot("powershell")
 		evt.Skip()
 
 	def on_send_ctrl_alt_del(self, evt):
@@ -820,43 +971,70 @@ class GlobalPlugin(_GlobalPlugin):
 	def _is_slave_connected(self):
 		return self.slave_transport is not None and self.slave_transport.connected
 
+	def _remote_slave_available(self):
+		"""Whether a controlled computer is actually reachable.
+
+		Being connected to the relay is not enough: the controlled computer may have
+		left the channel. While the relay has not reported the channel content yet,
+		we optimistically assume that a controlled computer is available.
+		"""
+		if not self._is_master_connected():
+			return False
+		if self.master_session is None:
+			return False
+		if not self.master_session.slave_state_known:
+			return True
+		return self.master_session.has_slaves()
+
+	def _abort_remote_control(self):
+		"""Give keyboard control back to the local machine because the controlled computer is gone."""
+		if not self.sending_keys:
+			return
+		self._return_to_local_control()
+		# Translators: Presented when the controlled computer left the session while keyboard control was remote.
+		ui.message(_("The remote computer is no longer connected. Control returned to local machine."))
+
+	def on_master_client_left(self, client=None, **kwargs):
+		if self._remote_slave_available():
+			return
+		self._abort_remote_control()
+
+	def on_remote_nvda_not_connected(self, **kwargs):
+		self._abort_remote_control()
+
 	def on_request_local_control(self, **kwargs):
 		if not self._is_master_connected() or not self.sending_keys:
 			return
 		self._return_to_local_control(release_keys=True)
 		ui.message(_("Controlling local machine."))
 
-	def _clear_pending_modifiers(self):
-		self.pending_modifier_events.clear()
-		self.pending_modifier_keys.clear()
+	def _release_remote_keys(self):
+		"""Release every modifier still held down on the controlled computer.
 
-	def _flush_pending_modifiers(self):
-		if not self.pending_modifier_events:
-			return
+		This mirrors NVDA's own Remote Access: when the modifiers being released could
+		perform an action on their own (alt opening the menu bar for instance), a reserved
+		VK_NONE key press is sent first so that the controlled computer records a key state
+		change instead of acting on the release.
+		"""
 		if not self._is_master_connected():
-			self._clear_pending_modifiers()
+			self.key_modifiers = set()
 			return
-		for vk_code, scan_code, extended, pressed in self.pending_modifier_events:
-			self.master_transport.send(
-				type="key",
-				vk_code=vk_code,
-				scan_code=scan_code,
-				extended=extended,
-				pressed=pressed,
-			)
-		self._clear_pending_modifiers()
-
-	def _discard_pending_modifiers(self):
-		for vk_code, scan_code, extended, pressed in self.pending_modifier_events:
-			self.key_modifiers.discard((vk_code, extended))
-		self._clear_pending_modifiers()
+		if self.key_modifiers and canModifiersPerformAction is not None:
+			try:
+				generalized = KeyboardInputGesture._generalizeModifiers(self.key_modifiers)
+			except AttributeError:
+				generalized = None
+			if generalized is not None and canModifiersPerformAction(generalized):
+				self.master_transport.send(type="key", vk_code=VK_NONE, extended=False, pressed=True)
+				self.master_transport.send(type="key", vk_code=VK_NONE, extended=False, pressed=False)
+		for k in self.key_modifiers:
+			self.master_transport.send(type="key", vk_code=k[0], extended=k[1], pressed=False)
+		self.key_modifiers = set()
 
 	def _return_to_local_control(self, release_keys=False, stop_hook=False):
 		was_sending_keys = self.sending_keys
-		self._discard_pending_modifiers()
-		if release_keys and self._is_master_connected():
-			for k in self.key_modifiers:
-				self.master_transport.send(type="key", vk_code=k[0], extended=k[1], pressed=False)
+		if release_keys:
+			self._release_remote_keys()
 		self.sending_keys = False
 		if self.master_session is not None:
 			self.set_receiving_braille(False)
@@ -865,9 +1043,8 @@ class GlobalPlugin(_GlobalPlugin):
 				security.postSessionLockStateChanged.unregister(self.onSessionLockStateChange)
 			elif buildVersion.version_year>=2023:
 				security.post_sessionLockStateChanged.unregister(self.onSessionLockStateChange)
-			if buildVersion.version_year >= 2025:
-				inputCore.decide_handleRawKey.unregister(self.handleRawKeys)
 		self.hostPendingModifiers = set()
+		self.hostPendingNonmodifier = None
 		self.key_modifiers = set()
 		if stop_hook and buildVersion.version_year < 2025:
 			if self.hook_thread is not None:
@@ -902,7 +1079,6 @@ class GlobalPlugin(_GlobalPlugin):
 			self.copy_link_tele_item.Enable(False)
 			self.send_ctrl_alt_del_item.Enable(False)
 		self._return_to_local_control(stop_hook=True)
-		self.stop_mouse_hook()
 		self.local_machine.is_muted = False
 
 	def disconnect_as_slave(self):
@@ -918,17 +1094,75 @@ class GlobalPlugin(_GlobalPlugin):
 			# Translators: Message shown when cannot connect to the remote computer.
 			message=_("Unable to connect to the remote computer"), style=wx.OK | wx.ICON_WARNING)
 
+	def _get_open_connect_dialog(self):
+		"""Return the connect dialog currently open, or None if there is none left."""
+		dlg = getattr(self, '_connect_dialog', None)
+		if dlg is None:
+			return None
+		try:
+			if not dlg:
+				# The underlying C++ object has already been destroyed.
+				return None
+			if not dlg.IsShown():
+				return None
+		except RuntimeError:
+			return None
+		return dlg
+
+	def _raise_connect_dialog(self, dlg):
+		"""Bring an already open connect dialog to the foreground.
+
+		Returns True if the dialog really is in the foreground afterwards.
+		"""
+		try:
+			if dlg.IsIconized():
+				dlg.Iconize(False)
+			dlg.Raise()
+			handle = dlg.GetHandle()
+		except RuntimeError:
+			return False
+		# Activating the top level window restores the focus on the control the user
+		# was on, so no explicit SetFocus is done here.
+		return force_window_to_foreground(handle)
+
+	def _close_connect_dialog(self, dlg):
+		"""Force the given connect dialog to close, whether it is modal or not."""
+		if self._connect_dialog is dlg:
+			self._connect_dialog = None
+		self.is_connect_dialog_open = False
+		try:
+			if dlg.IsModal():
+				dlg.EndModal(wx.ID_CANCEL)
+			else:
+				dlg.Hide()
+				dlg.Destroy()
+		except RuntimeError:
+			pass
+
 	def do_connect(self, evt):
 		if evt:
 			evt.Skip()
-		# Check if the connect dialog is already open
-		if getattr(self, 'is_connect_dialog_open', False):
+		dlg = self._get_open_connect_dialog()
+		if dlg is not None:
+			if self._raise_connect_dialog(dlg):
+				return
+			# The dialog is stuck behind another window: close it and open a fresh one
+			# so that the user always ends up on a dialog in the foreground.
+			self._close_connect_dialog(dlg)
+			wx.CallLater(100, self._show_connect_dialog)
 			return
+		if self.is_connect_dialog_open:
+			# The dialog is being created or closed; nothing to raise yet.
+			return
+		self._show_connect_dialog()
+
+	def _show_connect_dialog(self):
 		# Set the flag to True, indicating that the connect dialog is open
-		setattr(self, 'is_connect_dialog_open', True)
+		self.is_connect_dialog_open = True
 		last_cons = configuration.get_config()['connections']['last_connected']
 		# Translators: Title of the connect dialog.
 		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("Connect"))
+		self._connect_dialog = dlg
 		host_items = list(reversed(last_cons))
 		for default_host in configuration.DEFAULT_SERVER_HOSTS:
 			if default_host not in host_items:
@@ -936,9 +1170,11 @@ class GlobalPlugin(_GlobalPlugin):
 		dlg.panel.host.SetItems(host_items)
 		dlg.panel.host.SetSelection(0)
 		def handle_dlg_complete(dlg_result):
+			if self._connect_dialog is dlg:
+				self._connect_dialog = None
 			if dlg_result != wx.ID_OK:
 				# Reset the flag to False when the dialog is closed
-				setattr(self, 'is_connect_dialog_open', False)
+				self.is_connect_dialog_open = False
 				return
 			if dlg.client_or_server.GetSelection() == 0: #client
 				server_addr, port = dlg.panel.get_address()
@@ -959,8 +1195,16 @@ class GlobalPlugin(_GlobalPlugin):
 				else:
 					self.connect_as_slave(('127.0.0.1', int(dlg.panel.port.GetValue())), channel, insecure=True, encryption_key=encryption_key)
 			# Reset the flag to False when the dialog is closed
-			setattr(self, 'is_connect_dialog_open', False)
+			self.is_connect_dialog_open = False
 		gui.runScriptModalDialog(dlg, callback=handle_dlg_complete)
+		# The dialog is shown asynchronously and may be created behind the window the
+		# user was working in, so explicitly push it to the foreground once it exists.
+		wx.CallLater(150, self._ensure_connect_dialog_foreground)
+
+	def _ensure_connect_dialog_foreground(self):
+		dlg = self._get_open_connect_dialog()
+		if dlg is not None:
+			self._raise_connect_dialog(dlg)
 
 	def on_connected_as_master(self):
 		was_interrupted = self.master_connection_interrupted
@@ -997,7 +1241,6 @@ class GlobalPlugin(_GlobalPlugin):
 			self.local_machine.is_muted = True
 
 	def on_disconnected_as_master(self):
-		self.stop_mouse_hook()
 		if self.master_disconnect_requested:
 			return
 		was_sending_keys = self._return_to_local_control(stop_hook=True)
@@ -1033,6 +1276,8 @@ class GlobalPlugin(_GlobalPlugin):
 		transport.callback_manager.register_callback(TransportEvents.CLOSING, self.disconnecting_as_master)
 		transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.on_disconnected_as_master)
 		transport.callback_manager.register_callback('msg_request_local_control', self.on_request_local_control)
+		transport.callback_manager.register_callback('msg_client_left', self.on_master_client_left)
+		transport.callback_manager.register_callback('msg_nvda_not_connected', self.on_remote_nvda_not_connected)
 		self.master_transport = transport
 		self.master_transport.reconnector_thread.start()
 
@@ -1109,36 +1354,37 @@ class GlobalPlugin(_GlobalPlugin):
 		keyhook.free()
 
 	def hook_callback(self, **kwargs):
+		self.keep_awake.notify_local_input()
 		#Prevent disabling sending keys if another key is held down
 		if not self.sending_keys:
 			return False
 		if not self._is_master_connected():
-			self._return_to_local_control(stop_hook=True)
+			# Never join the hook thread from the hook thread itself.
+			wx.CallAfter(self._return_to_local_control, False, True)
+			return False
+		if not self._remote_slave_available():
+			wx.CallAfter(self._abort_remote_control)
 			return False
 		keyCode = (kwargs['vk_code'], kwargs['extended'])
 		if not kwargs['pressed'] and keyCode in self.hostPendingModifiers:
 			self.hostPendingModifiers.discard(keyCode)
 			return False
+		if not kwargs['pressed'] and keyCode == self.hostPendingNonmodifier:
+			self.hostPendingNonmodifier = None
+			return False
 		gesture = KeyboardInputGesture(self.key_modifiers, keyCode[0], kwargs['scan_code'], keyCode[1])
 		if gesture.isModifier:
 			if kwargs['pressed']:
 				self.key_modifiers.add(keyCode)
-				self.pending_modifier_keys.add(keyCode)
-				self.pending_modifier_events.append((kwargs['vk_code'], kwargs['scan_code'], kwargs['extended'], kwargs['pressed']))
 			else:
-				if keyCode in self.pending_modifier_keys:
-					self._flush_pending_modifiers()
 				self.key_modifiers.discard(keyCode)
 		elif kwargs['pressed']:
 			script = gesture.script
 			if self.ignoreGesture:
 				self.ignoreGesture = False
 			elif script in self.guestScripts:
-				if script == self.script_sendKeys:
-					self._discard_pending_modifiers()
 				wx.CallAfter(script, gesture)
 				return True
-			self._flush_pending_modifiers()
 		self.master_transport.send(type="key", **kwargs)
 		configuration.record_activity()
 		return True #Don't pass it on
@@ -1355,54 +1601,74 @@ class GlobalPlugin(_GlobalPlugin):
 			# Translators: Presented when Insert+Alt+Tab is pressed without an active remote connection.
 			ui.message(_("No remote computer is connected."))
 			return
-		self.sending_keys = not self.sending_keys
-		self.set_receiving_braille(self.sending_keys)
+		if not self.sending_keys and not self._remote_slave_available():
+			# Connected to the relay, but no controlled computer is in the channel.
+			# Taking control now would swallow every keystroke locally.
+			# Translators: Presented when Insert+Alt+Tab is pressed without an active remote connection.
+			ui.message(_("No remote computer is connected."))
+			return
 		if self.sending_keys:
-			if buildVersion.version_year==2022 and buildVersion.version_major==4:
-				security.postSessionLockStateChanged.register(self.onSessionLockStateChange)
-			elif buildVersion.version_year>=2023:
-				security.post_sessionLockStateChanged.register(self.onSessionLockStateChange)
-			self.hostPendingModifiers = set(gesture.modifiers)
-			# Translators: Presented when sending keyboard keys from the controlling computer to the controlled computer.
-			ui.message(_("Controlling remote machine."))
-			if buildVersion.version_year >= 2025:
-				inputCore.decide_handleRawKey.register(self.handleRawKeys)
-			if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.muted:
-				# Only change this value if user didn't explicitly mute the remote machine
-				self.local_machine.is_muted = False
+			self._switch_to_local_control()
 		else:
-			# Translators: Presented when keyboard control is back to the controlling computer.
-			self._return_to_local_control(release_keys=True)
-			ui.message(_("Controlling local machine."))
+			self._switch_to_remote_control(gesture)
+
+	def _switch_to_remote_control(self, gesture):
+		"""Start sending the local keyboard to the controlled computer."""
+		self.sending_keys = True
+		self.set_receiving_braille(True)
+		if buildVersion.version_year==2022 and buildVersion.version_major==4:
+			security.postSessionLockStateChanged.register(self.onSessionLockStateChange)
+		elif buildVersion.version_year>=2023:
+			security.post_sessionLockStateChanged.register(self.onSessionLockStateChange)
+		if gesture is not None:
+			# The keys of the toggling gesture are still held down locally, so their release
+			# must be handled by the local machine rather than forwarded to the remote one.
+			self.hostPendingModifiers = set(gesture.modifiers)
+			self.hostPendingNonmodifier = (gesture.vkCode, gesture.isExtended)
+		else:
+			self.hostPendingModifiers = set()
+			self.hostPendingNonmodifier = None
+		# Translators: Presented when sending keyboard keys from the controlling computer to the controlled computer.
+		ui.message(_("Controlling remote machine."))
+		if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.muted:
+			# Only change this value if user didn't explicitly mute the remote machine
+			self.local_machine.is_muted = False
+
+	def _switch_to_local_control(self):
+		"""Give the keyboard back to the controlling computer."""
+		self._return_to_local_control(release_keys=True)
+		# Translators: Presented when keyboard control is back to the controlling computer.
+		ui.message(_("Controlling local machine."))
 
 	def handleRawKeys(self, vkCode, scanCode, extended, pressed):
+		if not self.sending_keys:
+			return True
 		if not self._is_master_connected():
-			self._return_to_local_control()
-			return False
+			wx.CallAfter(self._return_to_local_control)
+			return True
+		if not self._remote_slave_available():
+			wx.CallAfter(self._abort_remote_control)
+			return True
 		keyCode = (vkCode, extended)
 		if not pressed and keyCode in self.hostPendingModifiers:
 			self.hostPendingModifiers.discard(keyCode)
+			return True
+		if not pressed and keyCode == self.hostPendingNonmodifier:
+			self.hostPendingNonmodifier = None
 			return True
 		gesture = KeyboardInputGesture(self.key_modifiers, keyCode[0], scanCode, keyCode[1])
 		if gesture.isModifier:
 			if pressed:
 				self.key_modifiers.add(keyCode)
-				self.pending_modifier_keys.add(keyCode)
-				self.pending_modifier_events.append((vkCode, scanCode, extended, pressed))
 			else:
-				if keyCode in self.pending_modifier_keys:
-					self._flush_pending_modifiers()
 				self.key_modifiers.discard(keyCode)
 		elif pressed:
 			script = gesture.script
 			if self.ignoreGesture:
 				self.ignoreGesture = False
 			elif script in self.guestScripts:
-				if script == self.script_sendKeys:
-					self._discard_pending_modifiers()
 				wx.CallAfter(script, gesture)
 				return False
-			self._flush_pending_modifiers()
 		self.master_transport.send(type="key", vk_code=vkCode, scan_code=scanCode, extended=extended, pressed=pressed)
 		configuration.record_activity()
 		return False

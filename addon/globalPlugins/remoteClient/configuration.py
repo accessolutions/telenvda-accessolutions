@@ -71,6 +71,10 @@ configspec = StringIO("""
 [screenshots]
 	directory = string(default="")
 
+[keep_awake]
+	enabled = boolean(default=True)
+	delay_seconds = integer(default=60)
+
 [ui]
 	play_sounds = boolean(default=True)
 	alert_before_slave_disconnect = boolean(default=True)

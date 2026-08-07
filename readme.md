@@ -129,14 +129,22 @@ The Remote menu contains two distinct commands:
 
 * **Remote screenshot** uses the native TeleNVDA screenshot messages. It is
   the preferred method when TeleNVDA is installed on the controlled computer.
+  Default gesture: **NVDA+Control+Shift+P**.
 * **Request screenshot (PowerShell)** runs a temporary Windows PowerShell
   capture on the controlled computer and transfers the resulting PNG through
-  the TeleNVDA session.
+  the TeleNVDA session. Default gesture: **Windows+Alt+P**.
+
+Both gestures work from either end of the session. On the controlling computer
+they request a capture from the controlled computer; on the controlled computer
+they capture the local screen and push it to the controller.
 
 The beta workflow does not install or require the separate Python screenshot
 helper. PowerShell must be available on the controlled Windows computer.
 
 A screenshot is received as image data and opened on the controlling computer.
+The capture is converted to JPEG before being Base64 encoded, so that it
+transfers quickly. It is saved in the folder configured in the add-on options,
+or in the user's temporary folder when no folder is configured.
 Treat screenshots as potentially sensitive information and share them only
 with authorized people.
 
@@ -150,9 +158,8 @@ computer, the same gesture requests that the controller return control to the
 local machine. For best results, use matching keyboard layouts on both
 computers.
 
-On the controlling computer, holding the left and right mouse buttons together
-for one second restarts NVDA without confirmation. This recovery gesture is
-only active while a controller session is connected.
+On the controlling computer, holding the right mouse button down for five
+seconds restarts NVDA without confirmation.
 
 The Remote menu also provides commands for sending Ctrl+Alt+Delete, muting
 remote speech, pushing clipboard text, and sending files. File transfers are

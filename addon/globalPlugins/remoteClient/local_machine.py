@@ -36,6 +36,10 @@ except addonHandler.AddonError:
 		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad.",
 	)
 
+# Screenshots are converted from the raw screen bitmap to JPEG before being Base64 encoded,
+# so that the resulting message stays small enough for the relay.
+SCREENSHOT_SUFFIX = ".jpg"
+
 
 def setSpeechCancelledToFalse():
 	"""
@@ -175,10 +179,12 @@ class LocalMachine:
 		dc = wx.MemoryDC(bitmap)
 		dc.Blit(0, 0, width, height, wx.ScreenDC(), 0, 0)
 		dc.SelectObject(wx.NullBitmap)
-		fd, path = tempfile.mkstemp(prefix="teleNVDA-screenshot-", suffix=".png")
+		fd, path = tempfile.mkstemp(prefix="teleNVDA-screenshot-", suffix=SCREENSHOT_SUFFIX)
 		os.close(fd)
 		try:
-			bitmap.SaveFile(path, wx.BITMAP_TYPE_PNG)
+			# The raw bitmap is converted to JPEG to keep the transferred message small.
+			if not bitmap.ConvertToImage().SaveFile(path, wx.BITMAP_TYPE_JPEG):
+				raise RuntimeError("Unable to encode the screenshot as JPEG")
 			with open(path, "rb") as stream:
 				return base64.b64encode(stream.read()).decode("ascii")
 		finally:
@@ -188,7 +194,7 @@ class LocalMachine:
 				pass
 
 	def _capture_powershell_screenshot(self):
-		fd, path = tempfile.mkstemp(prefix="teleNVDA-screenshot-", suffix=".png")
+		fd, path = tempfile.mkstemp(prefix="teleNVDA-screenshot-", suffix=SCREENSHOT_SUFFIX)
 		os.close(fd)
 		script = (
 			"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
@@ -199,9 +205,11 @@ class LocalMachine:
 			"$i.Save('"
 		)
 		# Keep the script plain PowerShell so it works on Windows PowerShell 5.1.
-		script += path.replace("'", "''") + "',[System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose(); $i.Dispose()"
+		# The bitmap is saved as JPEG to keep the transferred message small. The explicit GDI+
+		# encoder API is deliberately avoided here because anti-virus heuristics flag it.
+		script += path.replace("'", "''") + "',[System.Drawing.Imaging.ImageFormat]::Jpeg); $g.Dispose(); $i.Dispose()"
 		try:
-			result = subprocess.run(("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script), capture_output=True, timeout=20)
+			result = subprocess.run(("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script), capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
 			if result.returncode:
 				raise RuntimeError(result.stderr.decode(errors="replace"))
 			with open(path, "rb") as stream:
@@ -213,26 +221,30 @@ class LocalMachine:
 				pass
 
 	def capture_screenshot(self, method="native", callback=None):
-		def worker():
+		def capture(capturer):
 			try:
-				data = self._capture_native_screenshot() if method == "native" else self._capture_powershell_screenshot()
+				data = capturer()
 			except Exception:
 				logger.exception("Unable to capture screenshot")
 				data = None
 			if callback:
 				callback(data)
 
-		threading.Thread(target=worker, name="TeleNVDA screenshot", daemon=True).start()
+		if method == "native":
+			# wx drawing objects must only be used from the GUI thread.
+			wx.CallAfter(capture, self._capture_native_screenshot)
+			return
+		threading.Thread(target=capture, args=(self._capture_powershell_screenshot,), name="TeleNVDA screenshot", daemon=True).start()
 
 	def open_received_screenshot(self, data, **kwargs):
 		try:
 			directory = configuration.get_screenshot_directory()
 			try:
-				fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=".png", dir=directory)
+				fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=SCREENSHOT_SUFFIX, dir=directory)
 			except OSError:
 				# The configured directory can become unavailable after the options were saved.
 				logger.warning("Unable to use screenshot directory %s; falling back to the user temp directory", directory)
-				fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=".png", dir=tempfile.gettempdir())
+				fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=SCREENSHOT_SUFFIX, dir=tempfile.gettempdir())
 			with os.fdopen(fd, "wb") as stream:
 				stream.write(base64.b64decode(data.encode("ascii"), validate=True))
 			os.startfile(path)
