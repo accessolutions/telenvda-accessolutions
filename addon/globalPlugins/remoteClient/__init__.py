@@ -53,6 +53,7 @@ if buildVersion.version_year < 2025:
 else:
 	import inputCore
 from . import local_machine
+from . import mouse_hook
 from . import serializer
 from . import server
 from . import updater
@@ -102,6 +103,12 @@ class GlobalPlugin(_GlobalPlugin):
 		self.slave_transport = None
 		self.server = None
 		self.hook_thread = None
+		self.mouse_hook_thread = None
+		self.mouse_hook = None
+		self.mouse_button_lock = threading.Lock()
+		self.mouse_buttons = set()
+		self.mouse_restart_timer = None
+		self.mouse_restart_triggered = False
 		self.sending_keys = False
 		self.key_modifiers = set()
 		self.hostPendingModifiers = set()
@@ -426,9 +433,100 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: Label of menu in NVDA tools menu.
 		self.remote_item=tools_menu.AppendSubMenu(self.menu, _("R&emote"), _("TeleNVDA"))
 
+	def start_mouse_hook(self):
+		if self.mouse_hook_thread is not None:
+			return
+		self.mouse_hook_ready = threading.Event()
+		self.mouse_hook_thread = threading.Thread(target=self.mouse_hook_loop)
+		self.mouse_hook_thread.daemon = True
+		self.mouse_hook_thread.start()
+
+	def mouse_hook_loop(self):
+		log.debug("Mouse hook thread start")
+		hook = None
+		try:
+			hook = mouse_hook.MouseHook()
+			if not hook.handle:
+				log.error("Unable to install the mouse hook")
+				return
+			hook.register_callback(self.mouse_hook_callback)
+			self.mouse_hook = hook
+			self.mouse_hook_ready.set()
+			msg = ctypes.wintypes.MSG()
+			while True:
+				result = ctypes.windll.user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+				if result <= 0:
+					break
+			log.debug("Mouse hook thread end")
+		except Exception:
+			log.exception("Unable to run the mouse hook")
+		finally:
+			self.mouse_hook_ready.set()
+			if hook is not None:
+				hook.free()
+			self.mouse_hook = None
+
+	def stop_mouse_hook(self):
+		with self.mouse_button_lock:
+			if self.mouse_restart_timer is not None:
+				self.mouse_restart_timer.cancel()
+				self.mouse_restart_timer = None
+			self.mouse_buttons.clear()
+			self.mouse_restart_triggered = False
+		thread = self.mouse_hook_thread
+		if thread is None:
+			return
+		if hasattr(self, "mouse_hook_ready"):
+			self.mouse_hook_ready.wait(timeout=1)
+		if thread.is_alive() and thread.ident is not None:
+			thread_id = getattr(thread, "native_id", None) or thread.ident
+			ctypes.windll.user32.PostThreadMessageW(thread_id, WM_QUIT, 0, 0)
+			thread.join()
+		self.mouse_hook_thread = None
+
+	def mouse_hook_callback(self, button, pressed):
+		with self.mouse_button_lock:
+			if pressed:
+				self.mouse_buttons.add(button)
+				if (
+					self._is_master_connected()
+					and self.mouse_buttons == {"left", "right"}
+					and self.mouse_restart_timer is None
+					and not self.mouse_restart_triggered
+				):
+					self.mouse_restart_timer = threading.Timer(1, self._check_mouse_restart)
+					self.mouse_restart_timer.daemon = True
+					self.mouse_restart_timer.start()
+			else:
+				self.mouse_buttons.discard(button)
+				if not self.mouse_buttons:
+					self.mouse_restart_triggered = False
+				if self.mouse_restart_timer is not None and self.mouse_buttons != {"left", "right"}:
+					self.mouse_restart_timer.cancel()
+					self.mouse_restart_timer = None
+
+	def _check_mouse_restart(self):
+		with self.mouse_button_lock:
+			self.mouse_restart_timer = None
+			if (
+				self.mouse_buttons != {"left", "right"}
+				or not self._is_master_connected()
+				or self.mouse_restart_triggered
+			):
+				return
+			self.mouse_restart_triggered = True
+		wx.CallAfter(self._restart_nvda_from_mouse)
+
+	def _restart_nvda_from_mouse(self):
+		if self._terminated or not self._is_master_connected():
+			return
+		log.warning("Restarting NVDA after holding the left and right mouse buttons together")
+		core.restart()
+
 	def terminate(self):
 		global client
 		self._terminated = True
+		self.stop_mouse_hook()
 		if self._inactivity_timer is not None:
 			self._inactivity_timer.Stop()
 			self._inactivity_timer = None
@@ -719,6 +817,15 @@ class GlobalPlugin(_GlobalPlugin):
 	def _is_master_connected(self):
 		return self.master_transport is not None and self.master_transport.connected
 
+	def _is_slave_connected(self):
+		return self.slave_transport is not None and self.slave_transport.connected
+
+	def on_request_local_control(self, **kwargs):
+		if not self._is_master_connected() or not self.sending_keys:
+			return
+		self._return_to_local_control(release_keys=True)
+		ui.message(_("Controlling local machine."))
+
 	def _clear_pending_modifiers(self):
 		self.pending_modifier_events.clear()
 		self.pending_modifier_keys.clear()
@@ -795,6 +902,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.copy_link_tele_item.Enable(False)
 			self.send_ctrl_alt_del_item.Enable(False)
 		self._return_to_local_control(stop_hook=True)
+		self.stop_mouse_hook()
 		self.local_machine.is_muted = False
 
 	def disconnect_as_slave(self):
@@ -871,6 +979,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.copy_link_remote_item.Enable(True)
 		self.copy_link_tele_item.Enable(True)
 		self.send_ctrl_alt_del_item.Enable(True)
+		self.start_mouse_hook()
 		if buildVersion.version_year < 2025:
 			# We might have already created a hook thread before if we're restoring an
 			# interrupted connection. We must not create another.
@@ -888,6 +997,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.local_machine.is_muted = True
 
 	def on_disconnected_as_master(self):
+		self.stop_mouse_hook()
 		if self.master_disconnect_requested:
 			return
 		was_sending_keys = self._return_to_local_control(stop_hook=True)
@@ -922,6 +1032,7 @@ class GlobalPlugin(_GlobalPlugin):
 		transport.callback_manager.register_callback(TransportEvents.CONNECTION_FAILED, self.on_connected_as_master_failed)
 		transport.callback_manager.register_callback(TransportEvents.CLOSING, self.disconnecting_as_master)
 		transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.on_disconnected_as_master)
+		transport.callback_manager.register_callback('msg_request_local_control', self.on_request_local_control)
 		self.master_transport = transport
 		self.master_transport.reconnector_thread.start()
 
@@ -1236,6 +1347,9 @@ class GlobalPlugin(_GlobalPlugin):
 		**speakOnDemand)
 	def script_sendKeys(self, gesture):
 		if not self._is_master_connected():
+			if self._is_slave_connected():
+				self.slave_transport.send(type="request_local_control")
+				return
 			if self.sending_keys:
 				self._return_to_local_control()
 			# Translators: Presented when Insert+Alt+Tab is pressed without an active remote connection.

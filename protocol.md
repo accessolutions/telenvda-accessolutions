@@ -142,6 +142,13 @@ Below is a detailed specification of each message type using JSONSchema:
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "request_local_control": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "request_local_control" }
+      },
+      "required": ["type"]
+    },
     "key": {
       "type": "object",
       "properties": {

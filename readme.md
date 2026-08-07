@@ -142,10 +142,17 @@ with authorized people.
 
 ## Controlling the remote computer
 
-Press **F11** to switch between controlling the local and remote computer.
-When remote control is active, keyboard and braille input are sent to the
-controlled computer. The gesture can be changed in NVDA's Input Gestures
-dialog. For best results, use matching keyboard layouts on both computers.
+Press **NVDA+Alt+Tab** (Insert+Alt+Tab with the default NVDA key) to switch
+between controlling the local and remote computer. When remote control is
+active, keyboard and braille input are sent to the controlled computer. The
+gesture can be changed in NVDA's Input Gestures dialog. On a controlled
+computer, the same gesture requests that the controller return control to the
+local machine. For best results, use matching keyboard layouts on both
+computers.
+
+On the controlling computer, holding the left and right mouse buttons together
+for one second restarts NVDA without confirmation. This recovery gesture is
+only active while a controller session is connected.
 
 The Remote menu also provides commands for sending Ctrl+Alt+Delete, muting
 remote speech, pushing clipboard text, and sending files. File transfers are
