@@ -63,7 +63,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
     needs: ["build"]
     steps:
-    - uses: actions/checkout@v7.0.0
+    - uses: actions/checkout@v7.0.1
     - name: Remove old packages
       run: rm -f ./*.nvda-addon
     - name: download releases files
