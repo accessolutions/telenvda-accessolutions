@@ -41,6 +41,9 @@ from winUser import WM_QUIT
 
 logger = logging.getLogger(__name__)
 
+_INACTIVITY_MONITOR_MAX_DELAY_SECONDS = 24 * 24 * 60 * 60
+_INACTIVITY_MONITOR_IDLE_DELAY_SECONDS = 60
+
 from . import bridge
 from . import configuration
 from . import cues
@@ -86,6 +89,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.update_manager = updater.UpdateManager()
 		self._startup_update_checked = False
 		self._terminated = False
+		self._inactivity_timer = None
 		self.slave_session = None
 		self.master_session = None
 		self.create_menu()
@@ -101,6 +105,10 @@ class GlobalPlugin(_GlobalPlugin):
 		self.sending_keys = False
 		self.key_modifiers = set()
 		self.hostPendingModifiers = set()
+		self.pending_modifier_events = []
+		self.pending_modifier_keys = set()
+		self.master_connection_interrupted = False
+		self.master_disconnect_requested = False
 		self.ignoreGesture = False
 		self.guestScripts = (self.script_sendKeys, self.script_ignoreNextGesture)
 		self.sd_server = None
@@ -111,6 +119,7 @@ class GlobalPlugin(_GlobalPlugin):
 		except configobj.ParseError:
 			os.remove(os.path.abspath(os.path.join(globalVars.appArgs.configPath, configuration.CONFIG_FILE_NAME)))
 			queueHandler.queueFunction(queueHandler.eventQueue, wx.CallAfter, wx.MessageBox, _("Your NVDA Remote configuration was corrupted and has been reset."), _("NVDA Remote Configuration Error"), wx.OK|wx.ICON_EXCLAMATION)
+		self._schedule_inactivity_monitor()
 		if hasattr(shlobj, 'SHGetKnownFolderPath'):
 			self.temp_location = os.path.join(shlobj.SHGetKnownFolderPath(shlobj.FolderId.PROGRAM_DATA), 'temp')
 		else:
@@ -149,16 +158,46 @@ class GlobalPlugin(_GlobalPlugin):
 		except Exception:
 			log.exception("Unable to manage native NVDA Remote configuration")
 
+	def _schedule_inactivity_monitor(self):
+		if self._terminated:
+			return
+		if self._inactivity_timer is not None:
+			self._inactivity_timer.Stop()
+		remaining = configuration.get_inactivity_timeout_remaining()
+		if remaining is None:
+			delay = _INACTIVITY_MONITOR_IDLE_DELAY_SECONDS
+		else:
+			delay = max(1, min(remaining, _INACTIVITY_MONITOR_MAX_DELAY_SECONDS))
+		self._inactivity_timer = wx.CallLater(int(delay * 1000), self._check_inactivity)
+
+	def restart_inactivity_monitor(self):
+		self._schedule_inactivity_monitor()
+
+	def _check_inactivity(self):
+		self._inactivity_timer = None
+		if self._terminated:
+			return
+		self._disable_autoconnect_for_inactivity()
+		self._schedule_inactivity_monitor()
+
+	def _disable_autoconnect_for_inactivity(self):
+		if not configuration.should_disable_autoconnect_for_inactivity():
+			return False
+		cs = configuration.get_config()['controlserver']
+		cs['autoconnect'] = False
+		if not configuration.readonly:
+			configuration.get_config().write()
+		# Translators: Spoken when auto-connect is automatically disabled after a long period without remote control activity.
+		ui.message(_("The auto-connect option was automatically disabled after a long period without any remote control activity."))
+		log.info("TeleNVDA: auto-connect was automatically disabled after a long period without any remote control activity.")
+		return True
+
 	def postStartupHandler(self):
 		self._manage_native_remote()
 		cs = configuration.get_config()['controlserver']
 		if globalVars.appArgs.secure:
 			self.handle_secure_desktop()
-		if configuration.should_disable_autoconnect_for_inactivity():
-			cs['autoconnect'] = False
-			if not configuration.readonly:
-				configuration.get_config().write()
-			log.info("TeleNVDA: auto-connect was automatically disabled after a long period without any remote control activity.")
+		self._disable_autoconnect_for_inactivity()
 		if cs['autoconnect'] and not self.master_session and not self.slave_session:
 			wx.CallLater(50,self.perform_autoconnect)
 		if (
@@ -390,6 +429,9 @@ class GlobalPlugin(_GlobalPlugin):
 	def terminate(self):
 		global client
 		self._terminated = True
+		if self._inactivity_timer is not None:
+			self._inactivity_timer.Stop()
+			self._inactivity_timer = None
 		self.update_manager.terminate()
 		if post_secureDesktopStateChange:
 			post_secureDesktopStateChange.unregister(self.onSecureDesktopChange)
@@ -674,7 +716,64 @@ class GlobalPlugin(_GlobalPlugin):
 		self.copy_link_remote_item.Enable(False)
 		self.copy_link_tele_item.Enable(False)
 
+	def _is_master_connected(self):
+		return self.master_transport is not None and self.master_transport.connected
+
+	def _clear_pending_modifiers(self):
+		self.pending_modifier_events.clear()
+		self.pending_modifier_keys.clear()
+
+	def _flush_pending_modifiers(self):
+		if not self.pending_modifier_events:
+			return
+		if not self._is_master_connected():
+			self._clear_pending_modifiers()
+			return
+		for vk_code, scan_code, extended, pressed in self.pending_modifier_events:
+			self.master_transport.send(
+				type="key",
+				vk_code=vk_code,
+				scan_code=scan_code,
+				extended=extended,
+				pressed=pressed,
+			)
+		self._clear_pending_modifiers()
+
+	def _discard_pending_modifiers(self):
+		for vk_code, scan_code, extended, pressed in self.pending_modifier_events:
+			self.key_modifiers.discard((vk_code, extended))
+		self._clear_pending_modifiers()
+
+	def _return_to_local_control(self, release_keys=False, stop_hook=False):
+		was_sending_keys = self.sending_keys
+		self._discard_pending_modifiers()
+		if release_keys and self._is_master_connected():
+			for k in self.key_modifiers:
+				self.master_transport.send(type="key", vk_code=k[0], extended=k[1], pressed=False)
+		self.sending_keys = False
+		if self.master_session is not None:
+			self.set_receiving_braille(False)
+		if was_sending_keys:
+			if buildVersion.version_year==2022 and buildVersion.version_major==4:
+				security.postSessionLockStateChanged.unregister(self.onSessionLockStateChange)
+			elif buildVersion.version_year>=2023:
+				security.post_sessionLockStateChanged.unregister(self.onSessionLockStateChange)
+			if buildVersion.version_year >= 2025:
+				inputCore.decide_handleRawKey.unregister(self.handleRawKeys)
+		self.hostPendingModifiers = set()
+		self.key_modifiers = set()
+		if stop_hook and buildVersion.version_year < 2025:
+			if self.hook_thread is not None:
+				ctypes.windll.user32.PostThreadMessageW(self.hook_thread.ident, WM_QUIT, 0, 0)
+				self.hook_thread.join()
+				self.hook_thread = None
+		if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.muted:
+			self.local_machine.is_muted = True
+		self.muted = False
+		return was_sending_keys
+
 	def disconnect_as_master(self):
+		self.master_disconnect_requested = True
 		self.master_transport.close()
 		self.master_transport = None
 		self.master_session = None
@@ -695,16 +794,8 @@ class GlobalPlugin(_GlobalPlugin):
 			self.copy_link_remote_item.Enable(False)
 			self.copy_link_tele_item.Enable(False)
 			self.send_ctrl_alt_del_item.Enable(False)
-		if self.local_machine:
-			self.local_machine.is_muted = False
-		self.sending_keys = False
-		self.muted = False
-		if buildVersion.version_year < 2025:
-			if self.hook_thread is not None:
-				ctypes.windll.user32.PostThreadMessageW(self.hook_thread.ident, WM_QUIT, 0, 0)
-				self.hook_thread.join()
-				self.hook_thread = None
-		self.key_modifiers = set()
+		self._return_to_local_control(stop_hook=True)
+		self.local_machine.is_muted = False
 
 	def disconnect_as_slave(self):
 		self.slave_transport.close()
@@ -764,6 +855,8 @@ class GlobalPlugin(_GlobalPlugin):
 		gui.runScriptModalDialog(dlg, callback=handle_dlg_complete)
 
 	def on_connected_as_master(self):
+		was_interrupted = self.master_connection_interrupted
+		self.master_connection_interrupted = False
 		configuration.write_connection_to_config(self.master_transport.address)
 		if not self.menu.FindItemById(self.disconnect_item.Id):
 			self.menu.Insert(0, self.disconnect_item)
@@ -787,13 +880,24 @@ class GlobalPlugin(_GlobalPlugin):
 				self.hook_thread.start()
 		# Translators: Presented when connected to the remote computer.
 		ui.message(_("Connected!"))
+		if was_interrupted:
+			# Translators: Presented when an interrupted remote connection becomes available again. Keyboard control remains local until the user toggles it.
+			ui.message(_("The remote computer is available again. Control remains local."))
 		cues.connected()
 		if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.sending_keys:
 			self.local_machine.is_muted = True
 
 	def on_disconnected_as_master(self):
-		# Translators: Presented when connection to a remote computer was interupted.
-		ui.message(_("Connection interrupted"))
+		if self.master_disconnect_requested:
+			return
+		was_sending_keys = self._return_to_local_control(stop_hook=True)
+		self.master_connection_interrupted = True
+		if was_sending_keys:
+			# Translators: Presented when the remote connection is interrupted while keyboard control is remote.
+			ui.message(_("Connection interrupted. Control returned to local machine."))
+		else:
+			# Translators: Presented when connection to a remote computer was interrupted.
+			ui.message(_("Connection interrupted"))
 
 	def _create_relay_transport(self, address, key, encryption_key, connection_type, insecure=False, transport_type="tcp", ws_path="/"):
 		transport_class = WebSocketRelayTransport if transport_type == "websocket" else RelayTransport
@@ -810,6 +914,7 @@ class GlobalPlugin(_GlobalPlugin):
 		return transport_class(**kwargs)
 
 	def connect_as_master(self, address, key, encryption_key, insecure=False, transport_type="tcp", ws_path="/"):
+		self.master_disconnect_requested = False
 		transport = self._create_relay_transport(address, key, encryption_key, 'master', insecure, transport_type, ws_path)
 		self.master_session = MasterSession(transport=transport, local_machine=self.local_machine)
 		transport.callback_manager.register_callback(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.on_certificate_as_master_failed)
@@ -896,6 +1001,9 @@ class GlobalPlugin(_GlobalPlugin):
 		#Prevent disabling sending keys if another key is held down
 		if not self.sending_keys:
 			return False
+		if not self._is_master_connected():
+			self._return_to_local_control(stop_hook=True)
+			return False
 		keyCode = (kwargs['vk_code'], kwargs['extended'])
 		if not kwargs['pressed'] and keyCode in self.hostPendingModifiers:
 			self.hostPendingModifiers.discard(keyCode)
@@ -904,15 +1012,22 @@ class GlobalPlugin(_GlobalPlugin):
 		if gesture.isModifier:
 			if kwargs['pressed']:
 				self.key_modifiers.add(keyCode)
+				self.pending_modifier_keys.add(keyCode)
+				self.pending_modifier_events.append((kwargs['vk_code'], kwargs['scan_code'], kwargs['extended'], kwargs['pressed']))
 			else:
+				if keyCode in self.pending_modifier_keys:
+					self._flush_pending_modifiers()
 				self.key_modifiers.discard(keyCode)
 		elif kwargs['pressed']:
 			script = gesture.script
 			if self.ignoreGesture:
 				self.ignoreGesture = False
 			elif script in self.guestScripts:
+				if script == self.script_sendKeys:
+					self._discard_pending_modifiers()
 				wx.CallAfter(script, gesture)
 				return True
+			self._flush_pending_modifiers()
 		self.master_transport.send(type="key", **kwargs)
 		configuration.record_activity()
 		return True #Don't pass it on
@@ -1108,7 +1223,7 @@ class GlobalPlugin(_GlobalPlugin):
 		gesture = "kb:control+f11",
 		**speakOnDemand)
 	def script_ignoreNextGesture(self, gesture):
-		if not self.master_transport or not self.sending_keys:
+		if not self._is_master_connected() or not self.sending_keys:
 			return gesture.send()
 		self.ignoreGesture = True
 		# Translators: Report when the next gesture will be send to the guest ignoring everything else.
@@ -1120,8 +1235,11 @@ class GlobalPlugin(_GlobalPlugin):
 		gesture="kb:NVDA+alt+tab",
 		**speakOnDemand)
 	def script_sendKeys(self, gesture):
-		if not self.master_transport:
-			gesture.send()
+		if not self._is_master_connected():
+			if self.sending_keys:
+				self._return_to_local_control()
+			# Translators: Presented when Insert+Alt+Tab is pressed without an active remote connection.
+			ui.message(_("No remote computer is connected."))
 			return
 		self.sending_keys = not self.sending_keys
 		self.set_receiving_braille(self.sending_keys)
@@ -1130,7 +1248,7 @@ class GlobalPlugin(_GlobalPlugin):
 				security.postSessionLockStateChanged.register(self.onSessionLockStateChange)
 			elif buildVersion.version_year>=2023:
 				security.post_sessionLockStateChanged.register(self.onSessionLockStateChange)
-			self.hostPendingModifiers = gesture.modifiers
+			self.hostPendingModifiers = set(gesture.modifiers)
 			# Translators: Presented when sending keyboard keys from the controlling computer to the controlled computer.
 			ui.message(_("Controlling remote machine."))
 			if buildVersion.version_year >= 2025:
@@ -1139,22 +1257,14 @@ class GlobalPlugin(_GlobalPlugin):
 				# Only change this value if user didn't explicitly mute the remote machine
 				self.local_machine.is_muted = False
 		else:
-			# release all pressed keys in the guest.
-			for k in self.key_modifiers:
-				self.master_transport.send(type="key", vk_code=k[0], extended=k[1], pressed=False)
-			self.key_modifiers = set()
-			if buildVersion.version_year==2022 and buildVersion.version_major==4:
-				security.postSessionLockStateChanged.unregister(self.onSessionLockStateChange)
-			elif buildVersion.version_year>=2023:
-				security.post_sessionLockStateChanged.unregister(self.onSessionLockStateChange)
 			# Translators: Presented when keyboard control is back to the controlling computer.
+			self._return_to_local_control(release_keys=True)
 			ui.message(_("Controlling local machine."))
-			if buildVersion.version_year >= 2025:
-				inputCore.decide_handleRawKey.unregister(self.handleRawKeys)
-			if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.muted:
-				self.local_machine.is_muted = True
 
 	def handleRawKeys(self, vkCode, scanCode, extended, pressed):
+		if not self._is_master_connected():
+			self._return_to_local_control()
+			return False
 		keyCode = (vkCode, extended)
 		if not pressed and keyCode in self.hostPendingModifiers:
 			self.hostPendingModifiers.discard(keyCode)
@@ -1163,21 +1273,28 @@ class GlobalPlugin(_GlobalPlugin):
 		if gesture.isModifier:
 			if pressed:
 				self.key_modifiers.add(keyCode)
+				self.pending_modifier_keys.add(keyCode)
+				self.pending_modifier_events.append((vkCode, scanCode, extended, pressed))
 			else:
+				if keyCode in self.pending_modifier_keys:
+					self._flush_pending_modifiers()
 				self.key_modifiers.discard(keyCode)
 		elif pressed:
 			script = gesture.script
 			if self.ignoreGesture:
 				self.ignoreGesture = False
 			elif script in self.guestScripts:
+				if script == self.script_sendKeys:
+					self._discard_pending_modifiers()
 				wx.CallAfter(script, gesture)
 				return False
+			self._flush_pending_modifiers()
 		self.master_transport.send(type="key", vk_code=vkCode, scan_code=scanCode, extended=extended, pressed=pressed)
 		configuration.record_activity()
 		return False
 
 	def onSessionLockStateChange(self, isNowLocked):
-		if isNowLocked:
+		if isNowLocked and self._is_master_connected() and self.sending_keys:
 			self.script_sendKeys(None)
 
 	@script(

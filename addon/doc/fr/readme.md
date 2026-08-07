@@ -24,6 +24,11 @@ WebSocket sécurisé :
 * la reconnexion automatique et le chiffrement applicatif AES-GCM facultatif
   sont conservés.
 
+Lorsque la reconnexion automatique est activée, elle peut être désactivée
+automatiquement après une durée configurable sans activité de contrôle à
+distance. La durée par défaut est de 30 jours et se règle au format
+`jj:hh:mm` dans les options.
+
 Dans **Outils > TeleNVDA > Se connecter**, choisissez le transport, le port
 et le chemin WebSocket. Pour un relais, le même serveur, chemin, port et clé
 doivent être utilisés par les deux ordinateurs.
@@ -94,7 +99,9 @@ capture depuis le menu TeleNVDA. Deux méthodes sont disponibles :
   pour les systèmes où la capture native n'est pas adaptée.
 
 L'image reçue est ouverte localement dans l'application associée aux fichiers
-PNG. Aucun helper Python séparé n'est installé ou publié.
+PNG. Le dossier d'enregistrement des captures reçues est configurable dans
+les options ; le dossier temporaire de l'utilisateur est utilisé par défaut.
+Aucun helper Python séparé n'est installé ou publié.
 
 ## Fonctions disponibles
 

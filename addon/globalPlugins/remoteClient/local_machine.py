@@ -226,19 +226,18 @@ class LocalMachine:
 
 	def open_received_screenshot(self, data, **kwargs):
 		try:
-			fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=".png")
+			directory = configuration.get_screenshot_directory()
+			try:
+				fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=".png", dir=directory)
+			except OSError:
+				# The configured directory can become unavailable after the options were saved.
+				logger.warning("Unable to use screenshot directory %s; falling back to the user temp directory", directory)
+				fd, path = tempfile.mkstemp(prefix="teleNVDA-remote-", suffix=".png", dir=tempfile.gettempdir())
 			with os.fdopen(fd, "wb") as stream:
 				stream.write(base64.b64decode(data.encode("ascii"), validate=True))
 			os.startfile(path)
-			threading.Timer(120, lambda: self._remove_temp_file(path)).start()
 		except Exception:
 			logger.exception("Unable to open received screenshot")
-
-	def _remove_temp_file(self, path):
-		try:
-			os.unlink(path)
-		except OSError:
-			pass
 
 	def file_transfer(self, name, content, **kwargs):
 		if globalVars.appArgs.secure:

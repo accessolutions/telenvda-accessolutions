@@ -17,7 +17,8 @@ version 2 or later.
 * TCP/TLS connections through the traditional NVDA Remote protocol.
 * Secure WebSocket connections (`wss://`) through HTTPS-compatible relays.
 * WebSocket subprotocol `nvdaremote/2.0`, with port 443 as the usual choice.
-* Configurable HTTP and SOCKS proxies, including authenticated HTTP proxies.
+* Manual proxy settings, automatic Windows proxy detection (WinHTTP, PAC/WPAD
+  and bypass rules), or an explicit no-proxy mode.
 * Optional AES-GCM application-layer encryption for compatible TeleNVDA peers.
 * Direct server mode for connections that do not use a relay.
 * File transfer, clipboard sharing, remote speech, braille, and secure-desktop support.
@@ -79,8 +80,14 @@ traffic while retaining the NVDA Remote session protocol.
 
 ### Proxies and certificate warnings
 
-Open **NVDA menu > Tools > Remote > Options** to configure an HTTP or SOCKS
-proxy. HTTP, SOCKS4/4a, and SOCKS5/5h are supported. For WebSocket relay
+Open **NVDA menu > Tools > Remote > Options** to configure the proxy mode and,
+when using manual configuration, an HTTP or SOCKS proxy. Manual configuration
+is the default and preserves the historical behavior: if no proxy host is
+entered, the network libraries may use proxy environment variables. Automatic
+Windows proxy detection follows the current user's WinHTTP configuration,
+including PAC/WPAD scripts and destination bypass rules, without extracting or
+storing the Windows password. No proxy ignores proxy environment variables.
+HTTP, SOCKS4/4a, and SOCKS5/5h are supported. For WebSocket relay
 connections, **negotiate** uses the Windows SSPI provider and can select
 Kerberos or NTLM, while **ntlm** forces NTLM authentication. Leaving the
 proxy username empty uses the current Windows session; explicit credentials

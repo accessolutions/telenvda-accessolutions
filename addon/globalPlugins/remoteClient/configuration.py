@@ -1,5 +1,6 @@
 from io import StringIO
 import os
+import tempfile
 import time
 import configobj
 from configobj import validate
@@ -15,11 +16,9 @@ CONFIG_FILE_NAME = 'teleNVDA.ini'
 # nvda.fr and nvdaremote.com (TCP).
 DEFAULT_SERVER_HOSTS = ("nvdaremote.accessolutions.fr", "nvda.fr", "nvdaremote.com")
 
-# Number of seconds of inactivity (no real remote control action performed or
-# received) after which auto-connect on startup is automatically turned off.
-# TODO(release): this is temporarily set to 1 minute for testing purposes.
-# Restore to 30 days (60 * 60 * 24 * 30) before shipping.
-INACTIVITY_AUTO_DISABLE_SECONDS = 60
+# Default number of seconds of inactivity (no real remote control action
+# performed or received) after which auto-connect is automatically turned off.
+DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS = 60 * 60 * 24 * 30
 
 # Minimum delay, in seconds, between two writes of the activity timestamp to
 # disk. Real activity (e.g. key presses) can happen very frequently and we
@@ -49,6 +48,7 @@ configspec = StringIO("""
 	proxy_password = string(default="")
 	proxy_type = option("http", "socks4", "socks4a", "socks5", "socks5h", "negotiate", "ntlm", default="http")
 	disable_autoconnect_after_inactivity = boolean(default=True)
+	inactivity_auto_disable_seconds = integer(default=2592000)
 
 [seen_motds]
 	__many__ = string(default="")
@@ -68,6 +68,9 @@ configspec = StringIO("""
 	check_at_startup = boolean(default=True)
 	channel = option("stable", "dev", default="stable")
 
+[screenshots]
+	directory = string(default="")
+
 [ui]
 	play_sounds = boolean(default=True)
 	alert_before_slave_disconnect = boolean(default=True)
@@ -84,6 +87,15 @@ def get_config():
 		val = validate.Validator()
 		_config.validate(val, copy=True)
 	return _config
+
+def get_screenshot_directory():
+	"""Return the configured screenshot directory or the current user's temp directory."""
+	configured = get_config()['screenshots'].get('directory', '').strip()
+	if configured:
+		configured = os.path.abspath(os.path.expanduser(os.path.expandvars(configured)))
+		if os.path.isdir(configured) and os.access(configured, os.W_OK):
+			return configured
+	return tempfile.gettempdir()
 
 def get_native_remote_state():
 	"""Return whether TeleNVDA manages native NVDA Remote and its original state."""
@@ -171,17 +183,58 @@ def flush_activity():
 		return
 	get_config().write()
 
-def should_disable_autoconnect_for_inactivity():
-	"""Return whether auto-connect should now be disabled because no real
-	remote control activity has been recorded for more than
-	INACTIVITY_AUTO_DISABLE_SECONDS. A machine that has never recorded any
-	activity is not considered inactive, to avoid disabling a freshly
-	configured auto-connect before it was ever used."""
+def parse_inactivity_duration(value):
+	"""Convert a jj:hh:mm inactivity duration to seconds."""
+	parts = value.strip().split(":")
+	if len(parts) != 3 or not parts[0].isdigit() or any(
+		len(part) != 2 or not part.isdigit() for part in parts[1:]
+	):
+		raise ValueError
+	days, hours, minutes = (int(part) for part in parts)
+	if hours > 23 or minutes > 59:
+		raise ValueError
+	seconds = days * 24 * 60 * 60 + hours * 60 * 60 + minutes * 60
+	if seconds <= 0:
+		raise ValueError
+	return seconds
+
+def format_inactivity_duration(seconds):
+	"""Convert an inactivity duration in seconds to jj:hh:mm."""
+	minutes, _ = divmod(int(seconds), 60)
+	days, minutes = divmod(minutes, 24 * 60)
+	hours, minutes = divmod(minutes, 60)
+	return "{:02d}:{:02d}:{:02d}".format(days, hours, minutes)
+
+def get_inactivity_auto_disable_seconds():
+	"""Return the configured inactivity duration, falling back to the default."""
+	seconds = get_config()['controlserver'].get(
+		'inactivity_auto_disable_seconds',
+		DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS,
+	)
+	try:
+		seconds = int(seconds)
+	except (TypeError, ValueError):
+		return DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS
+	if seconds <= 0 or seconds % 60:
+		return DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS
+	return seconds
+
+def get_inactivity_timeout_remaining():
+	"""Return seconds remaining before auto-connect must be disabled, or None."""
 	conf = get_config()
 	cs = conf['controlserver']
 	if not cs['autoconnect'] or not cs['disable_autoconnect_after_inactivity']:
-		return False
+		return None
 	last_activity = conf['activity']['last_activity_timestamp']
 	if not last_activity:
-		return False
-	return (time.time() - last_activity) > INACTIVITY_AUTO_DISABLE_SECONDS
+		return None
+	return max(0.0, last_activity + get_inactivity_auto_disable_seconds() - time.time())
+
+def should_disable_autoconnect_for_inactivity():
+	"""Return whether auto-connect should now be disabled because no real
+	remote control activity has been recorded for more than
+	the configured inactivity duration. A machine that has never recorded any
+	activity is not considered inactive, to avoid disabling a freshly
+	configured auto-connect before it was ever used."""
+	remaining = get_inactivity_timeout_remaining()
+	return remaining is not None and remaining <= 0

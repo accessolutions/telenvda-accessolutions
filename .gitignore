@@ -8,6 +8,7 @@ manifest.ini
 *.py[co]
 # Keep locally built add-on archives out of the public repository.
 *.nvda-addon
+*.nvda-addon.sha256
 server.pem
 teleNVDA-server.pem
 .sconsign.dblite

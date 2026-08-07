@@ -30,19 +30,6 @@ del sys.path[-1]
 WX_VERSION = int(wx.version()[0])
 WX_CENTER = wx.Center if WX_VERSION>=4 else wx.CENTER_ON_SCREEN
 
-def _describe_inactivity_threshold():
-	"""Return a human readable description of configuration.INACTIVITY_AUTO_DISABLE_SECONDS,
-	e.g. "30 days" or, during testing, "1 minute"."""
-	seconds = configuration.INACTIVITY_AUTO_DISABLE_SECONDS
-	if seconds >= 86400 and seconds % 86400 == 0:
-		count = seconds // 86400
-		return ngettext("{count} day", "{count} days", count).format(count=count)
-	elif seconds >= 60 and seconds % 60 == 0:
-		count = seconds // 60
-		return ngettext("{count} minute", "{count} minutes", count).format(count=count)
-	else:
-		return ngettext("{count} second", "{count} seconds", seconds).format(count=seconds)
-
 class ClientPanel(wx.Panel):
 
 	def __init__(self, parent=None, id=wx.ID_ANY):
@@ -53,9 +40,6 @@ class ClientPanel(wx.Panel):
 		self.transport_choice.SetSelection(0)
 		self.transport_choice.Bind(wx.EVT_CHOICE, self.on_transport_changed)
 		sizer.Add(self.transport_choice)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
-		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
-		sizer.Add(self.ws_path)
 		# Translators: The label of an edit field in connect dialog to enter name or address of the remote computer.
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
 		self.host = wx.ComboBox(self, wx.ID_ANY)
@@ -75,6 +59,9 @@ class ClientPanel(wx.Panel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("En&cryption password (optional):")))
 		self.encryption_key = wx.TextCtrl(self, wx.ID_ANY)
 		sizer.Add(self.encryption_key)
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
+		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
+		sizer.Add(self.ws_path)
 		self.SetSizerAndFit(sizer)
 
 	def on_transport_changed(self, evt):
@@ -390,10 +377,21 @@ class OptionsDialog(SettingsPanel):
 		self.connection_type.SetSelection(0)
 		self.connection_type.Enable(False)
 		sizer.Add(self.connection_type)
-		# Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a long period without any real remote control activity. {duration} is replaced by a duration such as "30 days".
-		self.disable_autoconnect_inactivity = wx.CheckBox(self, wx.ID_ANY, label=_("Automatically disable auto-connect after {duration} without any remote control activity").format(duration=_describe_inactivity_threshold()))
+		# Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a configurable period without any real remote control activity.
+		self.disable_autoconnect_inactivity = wx.CheckBox(self, wx.ID_ANY, label=_("Automatically disable auto-connect without any remote control activity"))
+		self.disable_autoconnect_inactivity.Bind(wx.EVT_CHECKBOX, self.on_disable_autoconnect_inactivity)
 		self.disable_autoconnect_inactivity.Enable(False)
 		sizer.Add(self.disable_autoconnect_inactivity)
+		# Translators: Label for the inactivity duration field. The value uses days:hours:minutes.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Inactivity duration (days:hours:minutes):")))
+		self.inactivity_duration = wx.TextCtrl(
+			self,
+			wx.ID_ANY,
+			value=configuration.format_inactivity_duration(configuration.DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS),
+		)
+		self.inactivity_duration.SetToolTip(_("Format: days:hours:minutes. For example, 30:00:00 means 30 days and 00:00:01 means 1 minute."))
+		self.inactivity_duration.Enable(False)
+		sizer.Add(self.inactivity_duration)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
 		self.transport = wx.Choice(self, wx.ID_ANY, choices=(_("Standard (TCP)"), _("WebSocket over HTTPS")))
 		self.transport.SetSelection(0)
@@ -488,6 +486,16 @@ class OptionsDialog(SettingsPanel):
 		self.delete_fingerprints = wx.Button(self, wx.ID_ANY, label=_("Delete all trusted fingerprints"))
 		self.delete_fingerprints.Bind(wx.EVT_BUTTON, self.on_delete_fingerprints)
 		sizer.Add(self.delete_fingerprints)
+		# Translators: Label for the folder where received screenshots are saved.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Screenshot save &folder:")), 0, wx.TOP, 10)
+		screenshot_directory_sizer = wx.BoxSizer(wx.HORIZONTAL)
+		self.screenshot_directory = wx.TextCtrl(self, wx.ID_ANY)
+		screenshot_directory_sizer.Add(self.screenshot_directory, 1, wx.EXPAND)
+		# Translators: Button used to choose the folder where received screenshots are saved.
+		self.screenshot_directory_browse = wx.Button(self, wx.ID_ANY, label=_("&Browse..."))
+		self.screenshot_directory_browse.Bind(wx.EVT_BUTTON, self.on_browse_screenshot_directory)
+		screenshot_directory_sizer.Add(self.screenshot_directory_browse, 0, wx.LEFT, 5)
+		sizer.Add(screenshot_directory_sizer, 0, wx.EXPAND)
 
 	def on_autoconnect(self, evt):
 		if self.autoconnect.GetValue() and not self._autoconnect_was_enabled:
@@ -502,6 +510,7 @@ class OptionsDialog(SettingsPanel):
 		self.client_or_server.Enable(state)
 		self.connection_type.Enable(state)
 		self.disable_autoconnect_inactivity.Enable(state)
+		self.inactivity_duration.Enable(state and self.disable_autoconnect_inactivity.GetValue())
 		self.key.Enable(state)
 		self.encryption_key.Enable(state)
 		self.host.Enable(not bool(self.client_or_server.GetSelection()) and state)
@@ -519,6 +528,10 @@ class OptionsDialog(SettingsPanel):
 		self.useUPNP.Enable(bool(self.client_or_server.GetSelection()) and state)
 
 	def on_client_or_server(self, evt):
+		evt.Skip()
+		self.set_controls()
+
+	def on_disable_autoconnect_inactivity(self, evt):
 		evt.Skip()
 		self.set_controls()
 
@@ -544,6 +557,9 @@ class OptionsDialog(SettingsPanel):
 		self.autoconnect.SetValue(cs['autoconnect'])
 		self._autoconnect_was_enabled = bool(cs['autoconnect'])
 		self.disable_autoconnect_inactivity.SetValue(cs['disable_autoconnect_after_inactivity'])
+		self.inactivity_duration.SetValue(
+			configuration.format_inactivity_duration(configuration.get_inactivity_auto_disable_seconds())
+		)
 		self.client_or_server.SetSelection(int(self_hosted))
 		self.connection_type.SetSelection(connection_type)
 		self.host.SetValue(cs['host'])
@@ -569,6 +585,7 @@ class OptionsDialog(SettingsPanel):
 		self.speech_commands.SetValue(config['ui']['allow_speech_commands'])
 		self.motd_once.SetValue(config['ui']['display_motd_once'])
 		self.portcheck.SetValue(config['ui']['portcheck'])
+		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
 		NVDAConfig.conf.profiles[-1].name = None
 		self.Show()
@@ -579,6 +596,24 @@ class OptionsDialog(SettingsPanel):
 			config['trusted_certs'].clear()
 			if not configuration.readonly:
 				config.write()
+		evt.Skip()
+
+	def on_browse_screenshot_directory(self, evt):
+		current_directory = self.screenshot_directory.GetValue().strip()
+		if not os.path.isdir(current_directory):
+			current_directory = configuration.get_screenshot_directory()
+		dialog = wx.DirDialog(
+			self,
+			message=_("Choose the folder where received screenshots will be saved"),
+			defaultPath=current_directory,
+			style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST,
+		)
+		try:
+			if dialog.ShowModal() == wx.ID_OK:
+				self.screenshot_directory.SetValue(dialog.GetPath())
+				self.screenshot_directory.SetFocus()
+		finally:
+			dialog.Destroy()
 		evt.Skip()
 
 	def onPanelDeactivated(self):
@@ -593,6 +628,18 @@ class OptionsDialog(SettingsPanel):
 			# Translators: error message for invalid format on Portcheck service URL
 			gui.messageBox(_("Invalid format for portcheck service URL. You must include {port} somewhere."), _("Error"), wx.OK | wx.ICON_ERROR)
 			raise
+		inactivity_seconds = None
+		if self.disable_autoconnect_inactivity.GetValue():
+			try:
+				inactivity_seconds = configuration.parse_inactivity_duration(self.inactivity_duration.GetValue())
+			except ValueError:
+				gui.messageBox(
+					_("Invalid inactivity duration. Use the format jj:hh:mm, for example 30:00:00 or 00:00:01."),
+					_("Error"),
+					wx.OK | wx.ICON_ERROR,
+				)
+				self.inactivity_duration.SetFocus()
+				raise
 		if self.autoconnect.GetValue():
 			if not self.client_or_server.GetSelection() and (not self.host.GetValue() or not self.key.GetValue()):
 				gui.messageBox(_("Both host and key must be set."), _("Error"), wx.OK | wx.ICON_ERROR)
@@ -615,6 +662,8 @@ class OptionsDialog(SettingsPanel):
 		cs = config['controlserver']
 		cs['autoconnect'] = self.autoconnect.GetValue()
 		cs['disable_autoconnect_after_inactivity'] = self.disable_autoconnect_inactivity.GetValue()
+		if inactivity_seconds is not None:
+			cs['inactivity_auto_disable_seconds'] = inactivity_seconds
 		self_hosted = bool(self.client_or_server.GetSelection())
 		connection_type = self.connection_type.GetSelection()
 		cs['self_hosted'] = self_hosted
@@ -640,10 +689,15 @@ class OptionsDialog(SettingsPanel):
 		config['ui']['allow_speech_commands'] = self.speech_commands.GetValue()
 		config['ui']['display_motd_once'] = self.motd_once.GetValue()
 		config['ui']['portcheck'] = self.portcheck.GetValue()
+		config['screenshots']['directory'] = self.screenshot_directory.GetValue().strip()
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		config['updates']['channel'] = 'dev' if self.update_channel.GetSelection() == 1 else 'stable'
 		if not configuration.readonly:
 			config.write()
+		plugin_module = sys.modules.get(__package__)
+		plugin = getattr(plugin_module, 'client', None)
+		if plugin is not None and not getattr(plugin, '_terminated', False):
+			plugin.restart_inactivity_monitor()
 
 class CertificateUnauthorizedDialog(wx.MessageDialog):
 

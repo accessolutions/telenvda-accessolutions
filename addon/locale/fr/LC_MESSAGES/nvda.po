@@ -143,6 +143,9 @@ msgstr "Rétablir les sons et la synthèse vocale de l'ordinateur distant"
 msgid "Not connected."
 msgstr "Non connecté."
 
+msgid "No remote computer is connected."
+msgstr "Aucun PC distant n'est connecté."
+
 #. Translators: message displayed in transfer file dialog when sending a file
 msgid "Choose the file you want to send to the remote computer"
 msgstr ""
@@ -225,6 +228,9 @@ msgstr "Connecté !"
 #. Translators: Presented when connection to a remote computer was interupted.
 msgid "Connection interrupted"
 msgstr "Connexion interrompue"
+
+msgid "Connection interrupted. Control returned to local machine."
+msgstr "Connexion interrompue. Le contrôle est revenu à l'ordinateur local."
 
 #. Translators: A message to warn the user that handle keys from other applications should be on.
 msgid ""
@@ -324,6 +330,9 @@ msgstr "Contrôle de la machine distante."
 #. Translators: Presented when keyboard control is back to the controlling computer.
 msgid "Controlling local machine."
 msgstr "Contrôle de la machine locale."
+
+msgid "The remote computer is available again. Control remains local."
+msgstr "L'ordinateur distant est de nouveau disponible. Le contrôle reste local."
 
 #. Translators: gesture description for the toggle remote mute script
 msgid "Mute or unmute the speech coming from the remote computer"
@@ -543,32 +552,23 @@ msgstr "Versions stables"
 msgid "Development releases"
 msgstr "Versions de développement"
 
-#. Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a long period without any real remote control activity. {duration} is replaced by a duration such as "30 days".
-#, python-brace-format
-msgid ""
-"Automatically disable auto-connect after {duration} without any remote "
-"control activity"
-msgstr ""
-"Désactiver automatiquement la connexion automatique après {duration} sans "
-"aucune activité de contrôle à distance"
+#. Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a configurable period without any real remote control activity.
+msgid "Automatically disable auto-connect without any remote control activity"
+msgstr "Désactiver automatiquement la connexion automatique sans aucune activité de contrôle à distance"
 
-#, python-brace-format
-msgid "{count} day"
-msgid_plural "{count} days"
-msgstr[0] "{count} jour"
-msgstr[1] "{count} jours"
+#. Translators: Label for the inactivity duration field. The value uses days:hours:minutes.
+msgid "Inactivity duration (days:hours:minutes):"
+msgstr "Durée d'inactivité (jours:heures:minutes) :"
 
-#, python-brace-format
-msgid "{count} minute"
-msgid_plural "{count} minutes"
-msgstr[0] "{count} minute"
-msgstr[1] "{count} minutes"
+msgid "Format: days:hours:minutes. For example, 30:00:00 means 30 days and 00:00:01 means 1 minute."
+msgstr "Format : jours:heures:minutes. Par exemple, 30:00:00 signifie 30 jours et 00:00:01 signifie 1 minute."
 
-#, python-brace-format
-msgid "{count} second"
-msgid_plural "{count} seconds"
-msgstr[0] "{count} seconde"
-msgstr[1] "{count} secondes"
+msgid "Invalid inactivity duration. Use the format jj:hh:mm, for example 30:00:00 or 00:00:01."
+msgstr "Durée d'inactivité invalide. Utilisez le format jj:hh:mm, par exemple 30:00:00 ou 00:00:01."
+
+#. Translators: Spoken when auto-connect is automatically disabled after a long period without remote control activity.
+msgid "The auto-connect option was automatically disabled after a long period without any remote control activity."
+msgstr "La connexion automatique a été désactivée automatiquement après une longue période sans activité de contrôle à distance."
 
 #. Translators: Whether or not to use a relay server when autoconnecting
 msgid "Use Remote Control Server"
@@ -606,6 +606,17 @@ msgstr "URL du &service portcheck : "
 #. Translators: A button in add-on options dialog to delete all fingerprints of unauthorized certificates.
 msgid "Delete all trusted fingerprints"
 msgstr "Supprimer toutes les empreintes de certificat approuvées"
+
+#. Translators: Label for the folder where received screenshots are saved.
+msgid "Screenshot save &folder:"
+msgstr "Dossier d'enregistrement des &captures d'écran :"
+
+#. Translators: Button used to choose the folder where received screenshots are saved.
+msgid "&Browse..."
+msgstr "&Parcourir..."
+
+msgid "Choose the folder where received screenshots will be saved"
+msgstr "Choisissez le dossier où les captures d'écran reçues seront enregistrées"
 
 msgid ""
 "When connecting to an unauthorized server, you will again be prompted to "
