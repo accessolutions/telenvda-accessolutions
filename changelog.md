@@ -1,5 +1,5 @@
 This release brings the following changes:
-
+* Essai de push en manuel
 * Handle server connections which break when client sends ALPN information. This should restore connectivity to nvdaremote.com and similar servers.
 * Add native Windows SSPI authentication for NTLM and Kerberos/Negotiate HTTP proxy CONNECT handshakes used by WebSocket relays.
 * Check GitHub Releases for TeleNVDA updates at startup or on demand, with stable and development channels, SHA-256 verification, and confirmation before installation.
