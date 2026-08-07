@@ -43,9 +43,7 @@ jobs:
       shell: bash
       run: |
         rm -f ./*.nvda-addon
-        if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-          scons dev=1
-        elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
           version="${GITHUB_REF_NAME#v}"
           scons "version=${version}"
         else
@@ -62,7 +60,7 @@ jobs:
 
   upload_release:
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' }}
+    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-') }}
     needs: ["build"]
     steps:
     - uses: actions/checkout@v7.0.0
@@ -82,13 +80,13 @@ jobs:
     - name: Release
       uses: softprops/action-gh-release@v3.0.2
       with:
-        tag_name: ${{ github.ref == 'refs/heads/main' && format('dev-{0}', github.sha) || github.ref_name }}
+        tag_name: ${{ github.ref_name }}
         target_commitish: ${{ github.sha }}
-        name: ${{ github.ref == 'refs/heads/main' && format('TeleNVDA development {0}', github.sha) || format('TeleNVDA {0}', github.ref_name) }}
+        name: TeleNVDA ${{ github.ref_name }}
         files: |
           **/*.nvda-addon
           **/*.nvda-addon.sha256
           **/*.pot
         body_path: changelog.md
         fail_on_unmatched_files: true
-        prerelease: ${{ github.ref == 'refs/heads/main' || contains(github.ref, '-') }}
+        prerelease: false

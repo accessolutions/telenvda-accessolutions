@@ -256,7 +256,8 @@ Below is a detailed specification of each message type using JSONSchema:
     "request_screenshot": {
       "type": "object",
       "properties": {
-        "type": { "const": "request_screenshot" }
+        "type": { "const": "request_screenshot" },
+        "method": { "type": "string", "description": "Capture method: 'native' (default) or 'powershell'. Ignored by versions that only implement the native capture." }
       },
       "required": ["type"]
     },
@@ -279,7 +280,9 @@ end:
 
 - The controlling machine sends `request_screenshot`. The controlled machine
   captures its screen, scales it down to a lower (but still readable) resolution,
-  and returns it as a `screenshot` message.
+  and returns it as a `screenshot` message. The optional `method` field selects
+  the capture method; a controlled machine that does not implement the requested
+  method falls back to its native capture.
 - The controlled machine can also push its screen directly by sending a
   `screenshot` message without a preceding request.
 

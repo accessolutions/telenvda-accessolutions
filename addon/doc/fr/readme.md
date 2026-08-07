@@ -56,9 +56,8 @@ serveur WebSocket.
 
 TeleNVDA peut vérifier les Releases publiques du dépôt GitHub au démarrage de
 NVDA. Dans **Outils > TeleNVDA > Options**, activez ou désactivez cette
-vérification et choisissez le canal **Stable releases** ou **Development
-releases**. Une vérification manuelle est disponible avec **Outils > TeleNVDA
-> Check for updates**.
+vérification. Seules les versions stables sont proposées. Une vérification
+manuelle est disponible avec **Outils > TeleNVDA > Check for updates**.
 
 Une mise à jour n'est jamais installée silencieusement. TeleNVDA demande une
 confirmation, télécharge le paquet `.nvda-addon` en HTTPS, vérifie son hash
@@ -95,11 +94,34 @@ Une session où l'utilisateur contrôle un autre ordinateur peut demander une
 capture depuis le menu TeleNVDA. Deux méthodes sont disponibles :
 
 * **Request screenshot** utilise la capture native TeleNVDA ;
-* **Request screenshot (PowerShell)** conserve la méthode bêta PowerShell
-  pour les systèmes où la capture native n'est pas adaptée.
+* **Request screenshot (PowerShell)** fonctionne également lorsque l'ordinateur
+  contrôlé utilise le Remote standard de NVDA ou le TeleNVDA d'origine, qui ne
+  connaissent pas les captures d'écran.
+
+**Problème connu :** la capture compatible décrite ci-dessous ne fonctionne pas
+encore. La boîte Exécuter n'est jamais ouverte sur l'ordinateur contrôlé, donc
+aucune image ne revient. Utilisez la capture native en attendant la correction.
+
+Avec la méthode PowerShell, une capture est d'abord demandée à l'ordinateur
+contrôlé. Si rien ne répond après quelques secondes, la capture est pilotée avec
+les messages que le protocole standard implémente : le script de capture est
+placé dans le presse-papiers de l'ordinateur contrôlé, la boîte Exécuter y lance
+un PowerShell masqué qui y réécrit l'image encodée, puis la commande « pousser
+le presse-papiers » de cet ordinateur la renvoie.
+
+Cette méthode compatible a des limites connues :
+
+* une session interactive doit être ouverte sur l'ordinateur contrôlé, et la
+  capture ne fonctionne ni sur le bureau sécurisé ni sur l'écran de verrouillage ;
+* le presse-papiers de l'ordinateur contrôlé est remplacé et quelques messages y
+  sont annoncés pendant la capture ;
+* la touche NVDA de l'ordinateur contrôlé doit comporter Insertion, car sa
+  commande d'envoi du presse-papiers est déclenchée à distance ;
+* PowerShell et la boîte Exécuter ne doivent pas être bloqués par une stratégie
+  de sécurité.
 
 L'image reçue est ouverte localement dans l'application associée aux fichiers
-PNG. Le dossier d'enregistrement des captures reçues est configurable dans
+JPEG. Le dossier d'enregistrement des captures reçues est configurable dans
 les options ; le dossier temporaire de l'utilisateur est utilisé par défaut.
 Aucun helper Python séparé n'est installé ou publié.
 

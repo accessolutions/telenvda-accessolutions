@@ -66,7 +66,6 @@ configspec = StringIO("""
 
 [updates]
 	check_at_startup = boolean(default=True)
-	channel = option("stable", "dev", default="stable")
 
 [screenshots]
 	directory = string(default="")

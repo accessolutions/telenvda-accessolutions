@@ -51,7 +51,6 @@ class UpdateInfo:
 	asset_url: str
 	sha256: str
 	sha256_url: str | None
-	prerelease: bool
 	notes: str
 
 
@@ -376,9 +375,8 @@ def _find_asset(release: dict) -> tuple[dict, dict | None]:
 	return addon_asset, hash_asset
 
 
-def check_for_update(channel: str, current_version: str) -> UpdateInfo | None:
-	"""Return the newest verified release for the selected channel."""
-	channel = "dev" if str(channel).lower() in ("dev", "development") else "stable"
+def check_for_update(current_version: str) -> UpdateInfo | None:
+	"""Return the newest verified stable release."""
 	settings = proxy_utils.from_config(configuration.get_config())
 	try:
 		releases_data = _fetch_bytes(RELEASES_URL, settings)
@@ -392,7 +390,7 @@ def check_for_update(channel: str, current_version: str) -> UpdateInfo | None:
 	for release in releases:
 		if not isinstance(release, dict):
 			continue
-		if release.get("draft") or bool(release.get("prerelease")) != (channel == "dev"):
+		if release.get("draft") or release.get("prerelease"):
 			continue
 		try:
 			addon_asset, hash_asset = _find_asset(release)
@@ -425,7 +423,6 @@ def check_for_update(channel: str, current_version: str) -> UpdateInfo | None:
 				asset_url=str(addon_asset.get("browser_download_url")),
 				sha256=sha256,
 				sha256_url=hash_url,
-				prerelease=bool(release.get("prerelease")),
 				notes=str(release.get("body") or ""),
 			)
 		except UpdateError:
@@ -496,10 +493,10 @@ class UpdateManager:
 		worker.start()
 		return True
 
-	def check_async(self, channel: str, current_version: str, callback, manual: bool = False) -> bool:
+	def check_async(self, current_version: str, callback, manual: bool = False) -> bool:
 		def run(done):
 			try:
-				result = check_for_update(channel, current_version)
+				result = check_for_update(current_version)
 			except Exception as error:
 				log.debug("Update check failed", exc_info=True)
 				with self._lock:

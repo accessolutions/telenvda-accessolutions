@@ -193,6 +193,19 @@ class LocalMachine:
 			except OSError:
 				pass
 
+	def _powershell_executable(self):
+		"""Return the PowerShell command to run.
+
+		The absolute path is preferred because the PATH environment variable of the NVDA
+		process can be restricted, especially when NVDA runs as a service or on the secure
+		desktop.
+		"""
+		system_root = os.environ.get("SystemRoot", r"C:\Windows")
+		path = os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+		if os.path.isfile(path):
+			return path
+		return "powershell.exe"
+
 	def _capture_powershell_screenshot(self):
 		fd, path = tempfile.mkstemp(prefix="teleNVDA-screenshot-", suffix=SCREENSHOT_SUFFIX)
 		os.close(fd)
@@ -209,9 +222,11 @@ class LocalMachine:
 		# encoder API is deliberately avoided here because anti-virus heuristics flag it.
 		script += path.replace("'", "''") + "',[System.Drawing.Imaging.ImageFormat]::Jpeg); $g.Dispose(); $i.Dispose()"
 		try:
-			result = subprocess.run(("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script), capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
+			result = subprocess.run((self._powershell_executable(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script), capture_output=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
 			if result.returncode:
 				raise RuntimeError(result.stderr.decode(errors="replace"))
+			if not os.path.getsize(path):
+				raise RuntimeError("PowerShell produced an empty screenshot")
 			with open(path, "rb") as stream:
 				return base64.b64encode(stream.read()).decode("ascii")
 		finally:
@@ -221,20 +236,33 @@ class LocalMachine:
 				pass
 
 	def capture_screenshot(self, method="native", callback=None):
-		def capture(capturer):
+		def capture_native():
 			try:
-				data = capturer()
+				data = self._capture_native_screenshot()
 			except Exception:
 				logger.exception("Unable to capture screenshot")
 				data = None
 			if callback:
 				callback(data)
 
+		def capture_powershell():
+			try:
+				data = self._capture_powershell_screenshot()
+			except Exception:
+				logger.exception("Unable to capture screenshot with PowerShell; falling back to the native method")
+				data = None
+			if data:
+				if callback:
+					callback(data)
+				return
+			# PowerShell can be missing or blocked by a security policy on this machine.
+			wx.CallAfter(capture_native)
+
 		if method == "native":
 			# wx drawing objects must only be used from the GUI thread.
-			wx.CallAfter(capture, self._capture_native_screenshot)
+			wx.CallAfter(capture_native)
 			return
-		threading.Thread(target=capture, args=(self._capture_powershell_screenshot,), name="TeleNVDA screenshot", daemon=True).start()
+		threading.Thread(target=capture_powershell, name="TeleNVDA screenshot", daemon=True).start()
 
 	def open_received_screenshot(self, data, **kwargs):
 		try:

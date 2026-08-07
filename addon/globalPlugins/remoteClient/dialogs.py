@@ -357,15 +357,6 @@ class OptionsDialog(SettingsPanel):
 		# Translators: A checkbox in add-on options dialog to enable update checks when NVDA starts.
 		self.check_updates = wx.CheckBox(self, wx.ID_ANY, label=_("Check for TeleNVDA updates on startup"))
 		sizer.Add(self.check_updates)
-		# Translators: Select whether update checks use stable or development releases.
-		self.update_channel = wx.RadioBox(
-			self,
-			wx.ID_ANY,
-			label=_("Update channel"),
-			choices=(_("Stable releases"), _("Development releases")),
-			style=wx.RA_VERTICAL,
-		)
-		sizer.Add(self.update_channel)
 		#Translators: Whether or not to use a relay server when autoconnecting
 		self.client_or_server = wx.RadioBox(self, wx.ID_ANY, choices=(_("Use Remote Control Server"), _("Host Control Server")), style=wx.RA_VERTICAL)
 		self.client_or_server.Bind(wx.EVT_RADIOBOX, self.on_client_or_server)
@@ -562,7 +553,6 @@ class OptionsDialog(SettingsPanel):
 		config = configuration.get_config()
 		updates = config.get('updates', {})
 		self.check_updates.SetValue(updates.get('check_at_startup', True))
-		self.update_channel.SetSelection(1 if updates.get('channel', 'stable') == 'dev' else 0)
 		cs = config['controlserver']
 		self_hosted = cs['self_hosted']
 		connection_type = cs['connection_type']
@@ -708,7 +698,6 @@ class OptionsDialog(SettingsPanel):
 		config['keep_awake']['delay_seconds'] = int(self.keep_awake_delay.GetValue())
 		config['screenshots']['directory'] = self.screenshot_directory.GetValue().strip()
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
-		config['updates']['channel'] = 'dev' if self.update_channel.GetSelection() == 1 else 'stable'
 		if not configuration.readonly:
 			config.write()
 		plugin_module = sys.modules.get(__package__)

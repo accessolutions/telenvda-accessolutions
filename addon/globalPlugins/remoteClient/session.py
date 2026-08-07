@@ -1,6 +1,7 @@
 import sys
 import os
 import globalVars
+import wx
 from .transport import TransportEvents
 from . import connection_info
 import gui
@@ -11,6 +12,7 @@ import buildVersion
 from logHandler import log
 from . import configuration
 from . import nvda_patcher
+from . import compat_screenshot
 from . import RelayTransport
 from collections import defaultdict
 from . import connection_info
@@ -266,9 +268,15 @@ class SlaveSession(RemoteSession):
 
 class MasterSession(RemoteSession):
 
+	# How long a controlled computer running TeleNVDA is given to answer a PowerShell
+	# capture request before the compatible capture sequence is started instead.
+	COMPAT_SCREENSHOT_DELAY = 6.0
+
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.slaves = defaultdict(dict)
+		# Pending capture driven with the standard protocol, when any.
+		self._compat_screenshot = None
 		# True once the relay has told us who is in the channel.
 		# Until then we must not assume that no controlled computer is available.
 		self.slave_state_known = False
@@ -284,12 +292,31 @@ class MasterSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_client_joined', self.handle_client_connected)
 		self.transport.callback_manager.register_callback('msg_client_left', self.handle_client_disconnected)
 		self.transport.callback_manager.register_callback('msg_channel_joined', self.handle_channel_joined)
-		self.transport.callback_manager.register_callback('msg_set_clipboard_text', self.local_machine.set_clipboard_text)
+		self.transport.callback_manager.register_callback('msg_set_clipboard_text', self.handle_set_clipboard_text)
 		self.transport.callback_manager.register_callback('msg_file_transfer', self.local_machine.file_transfer)
 		self.transport.callback_manager.register_callback('msg_send_braille_info', self.send_braille_info)
-		self.transport.callback_manager.register_callback('msg_screenshot', self.local_machine.open_received_screenshot)
+		self.transport.callback_manager.register_callback('msg_screenshot', self.handle_screenshot)
 		self.transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.handle_connected)
 		self.transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.handle_disconnected)
+
+	def handle_set_clipboard_text(self, text=None, **kwargs):
+		"""A clipboard push may actually carry a screenshot from a standard NVDA Remote."""
+		if text and text.strip().startswith(compat_screenshot.MARKER):
+			self._cancel_compat_screenshot()
+			data = text.strip()[len(compat_screenshot.MARKER):].strip()
+			self.local_machine.open_received_screenshot(data=data)
+			return
+		self.local_machine.set_clipboard_text(text=text, **kwargs)
+
+	def handle_screenshot(self, **kwargs):
+		"""The controlled computer answered the screenshot request by itself."""
+		self._cancel_compat_screenshot()
+		self.local_machine.open_received_screenshot(**kwargs)
+
+	def _cancel_compat_screenshot(self):
+		if self._compat_screenshot is not None:
+			self._compat_screenshot.cancel()
+			self._compat_screenshot = None
 
 	def handle_play_wave(self, **kwargs):
 		"""Receive instruction to play a 'wave' from the slave machine
@@ -331,7 +358,7 @@ class MasterSession(RemoteSession):
 
 	def handle_disconnected(self):
 		# speech index approach changed in 2019.3
-		pass  # nothing to do
+		self._cancel_compat_screenshot()
 
 	def handle_channel_joined(self, channel=None, clients=None, origin=None, **kwargs):
 		if clients is None:
@@ -374,8 +401,33 @@ class MasterSession(RemoteSession):
 		self.transport.send(type="set_braille_info", name=display.name, numCells=displaySize)
 
 	def request_screenshot(self, method="native"):
-		message_type = "request_screenshot_powershell" if method == "powershell" else "request_screenshot"
-		self.transport.send(type=message_type)
+		# The capture method travels as a parameter of the standard "request_screenshot"
+		# message: a controlled machine running a standard TeleNVDA silently ignores an
+		# unknown message type, whereas it still honours this one (falling back to its
+		# own capture method when it does not know about "method").
+		self.transport.send(type="request_screenshot", method=method)
+		self._cancel_compat_screenshot()
+		if method != "powershell":
+			return
+		# A controlled computer running a standard NVDA Remote knows nothing about
+		# screenshots and drops that request: drive the capture with the messages its
+		# protocol does implement, unless it answers by itself in the meantime.
+		log.info(
+			"compat_screenshot: screenshot requested, falling back to the compatible "
+			"sequence in %s seconds if the controlled computer does not answer"
+			% self.COMPAT_SCREENSHOT_DELAY
+		)
+		self._compat_screenshot = compat_screenshot.CompatScreenshotRequest(
+			self.transport.send,
+			on_failure=self._compat_screenshot_failed,
+		)
+		self._compat_screenshot.start(delay=self.COMPAT_SCREENSHOT_DELAY)
+
+	def _compat_screenshot_failed(self):
+		self._compat_screenshot = None
+		# Translators: message spoken when the controlled computer never returned the
+		# requested screenshot.
+		wx.CallAfter(ui.message, _("No screenshot received from the remote computer"))
 
 	def braille_input(self,**kwargs):
 		self.transport.send(type="braille_input", **kwargs)

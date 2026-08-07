@@ -38,9 +38,9 @@ other secure screens**. This requires administrator privileges.
 ## Updates
 
 TeleNVDA can check the public GitHub Releases repository when NVDA starts.
-Open **NVDA menu > Tools > Remote > Options** to enable or disable this check
-and to choose **Stable releases** or **Development releases**. A manual check
-is also available through **NVDA menu > Tools > Remote > Check for updates**.
+Open **NVDA menu > Tools > Remote > Options** to enable or disable this check.
+A manual check is also available through **NVDA menu > Tools > Remote > Check
+for updates**. Only stable releases are offered.
 
 An update is never installed silently. TeleNVDA asks for confirmation, downloads
 the `.nvda-addon` package over HTTPS, verifies its published SHA-256 hash, and
@@ -130,13 +130,34 @@ The Remote menu contains two distinct commands:
 * **Remote screenshot** uses the native TeleNVDA screenshot messages. It is
   the preferred method when TeleNVDA is installed on the controlled computer.
   Default gesture: **NVDA+Control+Shift+P**.
-* **Request screenshot (PowerShell)** runs a temporary Windows PowerShell
-  capture on the controlled computer and transfers the resulting PNG through
-  the TeleNVDA session. Default gesture: **Windows+Alt+P**.
+* **Request screenshot (PowerShell)** also works when the controlled computer
+  runs a standard NVDA Remote or the original TeleNVDA, which know nothing about
+  screenshots. Default gesture: **Windows+Alt+P**.
+
+**Known issue:** the compatible capture described below does not work yet. The
+Run dialog is never opened on the controlled computer, so no image comes back.
+Use the native capture until this is fixed.
 
 Both gestures work from either end of the session. On the controlling computer
 they request a capture from the controlled computer; on the controlled computer
 they capture the local screen and push it to the controller.
+
+The PowerShell method first asks the controlled computer for a capture. When
+nothing answers after a few seconds, the controlling computer drives the capture
+with the messages the standard protocol does implement: the capture script is
+placed on the controlled computer's clipboard, the Run dialog starts a hidden
+Windows PowerShell which writes the encoded image back to that clipboard, and
+the controlled computer's own clipboard push command brings it back.
+
+This compatible workflow has known limitations:
+
+* an interactive session must be open on the controlled computer, and the
+  capture cannot run on the secure desktop or the lock screen;
+* the clipboard of the controlled computer is replaced, and a few messages are
+  announced there while the capture runs;
+* the NVDA key of the controlled computer must include insert, since its
+  clipboard push command is triggered remotely;
+* PowerShell and the Run dialog must not be blocked by a security policy.
 
 The beta workflow does not install or require the separate Python screenshot
 helper. PowerShell must be available on the controlled Windows computer.

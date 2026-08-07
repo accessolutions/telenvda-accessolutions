@@ -29,6 +29,7 @@ import ssl
 import subprocess
 import sys
 import threading
+import time
 import ui
 import uuid
 import wx
@@ -60,6 +61,10 @@ _INACTIVITY_MONITOR_IDLE_DELAY_SECONDS = 60
 _MOUSE_RESTART_BUTTONS = frozenset(("right",))
 #: How long, in seconds, those buttons must be held before NVDA is restarted.
 _MOUSE_RESTART_DELAY = 5
+#: Number of rapid right-clicks which also restart NVDA.
+_MOUSE_RESTART_CLICK_COUNT = 5
+#: Maximum interval, in seconds, between the first and last rapid right-click.
+_MOUSE_RESTART_CLICK_WINDOW = 2
 
 _SW_SHOW = 5
 _SW_RESTORE = 9
@@ -194,6 +199,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.mouse_hook = None
 		self.mouse_button_lock = threading.Lock()
 		self.mouse_buttons = set()
+		self.mouse_right_click_times = []
 		self.mouse_restart_timer = None
 		self.mouse_restart_triggered = False
 		self.sending_keys = False
@@ -203,7 +209,14 @@ class GlobalPlugin(_GlobalPlugin):
 		self.master_connection_interrupted = False
 		self.master_disconnect_requested = False
 		self.ignoreGesture = False
-		self.guestScripts = (self.script_sendKeys, self.script_ignoreNextGesture)
+		# Scripts which stay handled locally while keystrokes are sent to the
+		# controlled computer, instead of being forwarded to it.
+		self.guestScripts = (
+			self.script_sendKeys,
+			self.script_ignoreNextGesture,
+			self.script_screenshot,
+			self.script_screenshot_powershell,
+		)
 		self.is_connect_dialog_open = False
 		self._connect_dialog = None
 		self.sd_server = None
@@ -357,9 +370,7 @@ class GlobalPlugin(_GlobalPlugin):
 			return "0.0.0"
 
 	def _start_update_check(self, manual):
-		channel = configuration.get_config().get('updates', {}).get('channel', 'stable')
 		started = self.update_manager.check_async(
-			channel=channel,
 			current_version=self._current_addon_version(),
 			callback=self._on_update_check_finished,
 			manual=manual,
@@ -397,12 +408,9 @@ class GlobalPlugin(_GlobalPlugin):
 				)
 			return
 		message = _(
-			"A TeleNVDA {channel} update is available: version {version}.\n\n"
+			"A TeleNVDA update is available: version {version}.\n\n"
 			"Do you want to download and install it now?"
-		).format(
-			channel=_("development") if update.prerelease else _("stable"),
-			version=update.version,
-		)
+		).format(version=update.version)
 		if gui.messageBox(message, _("TeleNVDA update"), wx.YES | wx.NO | wx.ICON_INFORMATION) != wx.YES:
 			return
 		self.update_item.Enable(False)
@@ -569,6 +577,7 @@ class GlobalPlugin(_GlobalPlugin):
 				self.mouse_restart_timer.cancel()
 				self.mouse_restart_timer = None
 			self.mouse_buttons.clear()
+			self.mouse_right_click_times.clear()
 			self.mouse_restart_triggered = False
 		thread = self.mouse_hook_thread
 		if thread is None:
@@ -583,9 +592,25 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def mouse_hook_callback(self, button, pressed):
 		self.keep_awake.notify_local_input()
+		restart_from_clicks = False
 		with self.mouse_button_lock:
 			if pressed:
 				self.mouse_buttons.add(button)
+				if button == "right":
+					now = time.monotonic()
+					self.mouse_right_click_times = [
+						click_time
+						for click_time in self.mouse_right_click_times
+						if now - click_time <= _MOUSE_RESTART_CLICK_WINDOW
+					]
+					self.mouse_right_click_times.append(now)
+					if (
+						len(self.mouse_right_click_times) >= _MOUSE_RESTART_CLICK_COUNT
+						and not self.mouse_restart_triggered
+					):
+						self.mouse_restart_triggered = True
+						self.mouse_right_click_times.clear()
+						restart_from_clicks = True
 				if (
 					self.mouse_buttons == set(_MOUSE_RESTART_BUTTONS)
 					and self.mouse_restart_timer is None
@@ -606,6 +631,8 @@ class GlobalPlugin(_GlobalPlugin):
 				):
 					self.mouse_restart_timer.cancel()
 					self.mouse_restart_timer = None
+		if restart_from_clicks:
+			wx.CallAfter(self._restart_nvda_from_mouse)
 
 	def _check_mouse_restart(self):
 		with self.mouse_button_lock:
@@ -622,8 +649,7 @@ class GlobalPlugin(_GlobalPlugin):
 		if self._terminated:
 			return
 		log.warning(
-			"Restarting NVDA after holding the right mouse button for %d seconds"
-			% _MOUSE_RESTART_DELAY
+			"Restarting NVDA after the mouse restart gesture"
 		)
 		slave_path = os.path.join(globalVars.appDir, "nvda_slave.exe")
 		if not os.path.isfile(slave_path):
@@ -874,6 +900,7 @@ class GlobalPlugin(_GlobalPlugin):
 		On the controlled computer the local screen is captured and pushed to the controller.
 		"""
 		if self.master_session is not None and self._is_master_connected():
+			log.info("compat_screenshot: requesting a %s screenshot from the controlled computer" % method)
 			self.master_session.request_screenshot(method)
 			configuration.record_activity()
 			# Translators: message spoken when a screenshot of the remote computer has been requested
@@ -898,7 +925,7 @@ class GlobalPlugin(_GlobalPlugin):
 	@script(
 		# Translators: remote screenshot using PowerShell gesture description
 		_("Takes a screenshot of the controlled computer using the PowerShell beta method and opens it on the controlling computer"),
-		gesture="kb:windows+alt+p",
+		gesture="kb:control+windows+alt+p",
 		**speakOnDemand)
 	def script_screenshot_powershell(self, gesture):
 		self._screenshot("powershell")
@@ -1680,6 +1707,7 @@ class GlobalPlugin(_GlobalPlugin):
 	@script(
 		# Translators: gesture description for the toggle remote mute script
 		description=_("""Mute or unmute the speech coming from the remote computer"""),
+		gesture="kb:control+alt+m",
 		**speakOnDemand)
 	def script_toggle_remote_mute(self, gesture):
 		if not self.is_connected() or self.connecting or self.slave_transport: return

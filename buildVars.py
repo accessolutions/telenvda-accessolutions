@@ -4,8 +4,8 @@ from site_scons.site_tools.NVDATool.typings import AddonInfo, BrailleTables, Sym
 from site_scons.site_tools.NVDATool.utils import _
 from datetime import datetime
 
-# Use the same date-based version format for ordinary and development builds.
-# Release builds override this value from the Git tag in sconstruct.
+# Use a date-based version format for builds without an explicit release version.
+# Stable release builds override this value from the Git tag in sconstruct.
 _ADDON_VERSION = datetime.now().strftime("%Y.%m.%d.%H%M")
 
 # Add-on information variables
@@ -30,7 +30,7 @@ addon_info = AddonInfo(
 	addon_minimumNVDAVersion= "2019.3.0",
 	# Last NVDA version supported/tested (e.g. "2018.4.0", ideally more recent than minimum version)
 	addon_lastTestedNVDAVersion= "2026.1.0",
-	# Add-on update channel (default is None, denoting stable releases, and for development releases, use "dev"; do not change unless you know what you are doing)
+	# No alternate update channel: every published release is stable.
 	addon_updateChannel= None,
 	# Add-on license such as GPL 2
 	addon_license= "GPL 2",

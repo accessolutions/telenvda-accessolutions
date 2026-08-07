@@ -14,7 +14,7 @@ from typing import Final
 # Linters aren't aware about them.
 # To avoid PyRight `reportUndefinedVariable` errors about them they are imported explicitly.
 # When using other  Scons functions please add them to the line below.
-from SCons.Script import EnsurePythonVersion, Variables, BoolVariable, Environment, Copy
+from SCons.Script import EnsurePythonVersion, Variables, Environment, Copy
 
 # Imports for type hints
 from SCons.Node import FS
@@ -53,8 +53,6 @@ docsDir: Final = addonDir / "doc"
 vars = Variables()
 vars.Add("version", "The version of this build", buildVars.addon_info["addon_version"])
 vars.Add("versionNumber", "Version number of the form major.minor.patch", "0.0.0", validateVersionNumber)
-vars.Add(BoolVariable("dev", "Whether this is a daily development version", False))
-vars.Add("channel", "Update channel for this build", buildVars.addon_info["addon_updateChannel"])
 
 env = Environment(variables=vars, ENV=os.environ, tools=["gettexttool", "NVDATool"])
 env.Append(
@@ -63,18 +61,8 @@ env.Append(
 	symbolDictionaries=buildVars.symbolDictionaries,
 )
 
-if env["dev"]:
-	from datetime import datetime
-
-	versionTimestamp = datetime.now().strftime('%Y.%m.%d.%H%M')
-	version = versionTimestamp
-	env["addon_info"]["addon_version"] = version
-	env["versionNumber"] = version
-	env["channel"] = "dev"
-elif env["version"] is not None:
+if env["version"] is not None:
 	env["addon_info"]["addon_version"] = env["version"]
-if "channel" in env and env["channel"] is not None:
-	env["addon_info"]["addon_updateChannel"] = env["channel"]
 
 # This is necessary for further use in formatting file names.
 env.Append(**env["addon_info"])
