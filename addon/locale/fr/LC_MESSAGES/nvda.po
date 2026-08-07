@@ -58,14 +58,14 @@ msgstr ""
 
 #. Translators: Item in TeleNVDA submenu to disconnect from a remote computer.
 msgid "Disconnect"
-msgstr "Se &déconnecter"
+msgstr "Se déconnecter"
 
 msgid "Disconnect from another computer running NVDA Remote Access or TeleNVDA"
 msgstr "Se déconnecter d'un autre ordinateur exécutant Accès distant NVDA ou TeleNVDA"
 
 #. Translators: Menu item in TeleNVDA submenu to mute speech and sounds from the remote computer.
 msgid "Mute remote"
-msgstr "Co&uper le son distant"
+msgstr "Couper le son distant"
 
 msgid "Mute speech and sounds from the remote computer"
 msgstr "Couper les sons et la synthèse vocale de l'ordinateur distant"
