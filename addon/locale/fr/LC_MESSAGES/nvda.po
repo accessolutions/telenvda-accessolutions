@@ -570,6 +570,10 @@ msgstr "Durée d'inactivité invalide. Utilisez le format jj:hh:mm, par exemple 
 msgid "The auto-connect option was automatically disabled after a long period without any remote control activity."
 msgstr "La connexion automatique a été désactivée automatiquement après une longue période sans activité de contrôle à distance."
 
+#: addon/globalPlugins/remoteClient/__init__.py
+msgid "A previously downloaded TeleNVDA update could not be finished automatically. NVDA must be restarted to complete the installation. Restart NVDA now?"
+msgstr "Une mise à jour de TeleNVDA précédemment téléchargée n'a pas pu être terminée automatiquement. NVDA doit être redémarré pour terminer l'installation. Redémarrer NVDA maintenant ?"
+
 #. Translators: Whether or not to use a relay server when autoconnecting
 msgid "Use Remote Control Server"
 msgstr "Utiliser un serveur de contrôle distant"
@@ -815,5 +819,5 @@ msgstr "Si une session distante est active, la déconnecte ; sinon ouvre une bo�
 #. Brief changelog for this version
 #. Translators: what's new content for the add-on version to be shown in the add-on store
 #: buildVars.py
-msgid "Add WebSocket relay connections over HTTPS, including port 443, add Windows SSPI authentication for NTLM and Kerberos HTTP proxies, improve proxy compatibility, and provide two remote screenshot methods."
-msgstr "Ajouter les connexions aux relais WebSocket via HTTPS, notamment sur le port 443, l'authentification SSPI de Windows pour les proxys HTTP NTLM et Kerberos, améliorer la compatibilité avec les proxys et fournir deux méthodes de capture d'écran distante."
+msgid "Fix automatic updates that failed to complete with an \"access denied\" error, recover installations stuck pending, add WebSocket relay connections over HTTPS, including port 443, add Windows SSPI authentication for NTLM and Kerberos HTTP proxies, improve proxy compatibility, and provide two remote screenshot methods."
+msgstr "Corriger les mises à jour automatiques qui ne se terminaient pas avec une erreur « accès refusé », récupérer les installations bloquées en attente, ajouter les connexions aux relais WebSocket via HTTPS, notamment sur le port 443, l'authentification SSPI de Windows pour les proxys HTTP NTLM et Kerberos, améliorer la compatibilité avec les proxys et fournir deux méthodes de capture d'écran distante."
