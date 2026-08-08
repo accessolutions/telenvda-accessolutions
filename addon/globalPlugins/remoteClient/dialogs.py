@@ -18,6 +18,7 @@ except addonHandler.AddonError:
 		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad."
 	)
 from . import configuration
+from . import keep_awake
 from .proxy_utils import PROXY_MODES, SUPPORTED_PROXY_TYPES
 import config as NVDAConfig
 import os
@@ -39,6 +40,19 @@ def _proxy_mode_choices():
 		_("Automatic Windows proxy detection"),
 		# Translators: Proxy mode where no proxy is used at all.
 		_("No proxy"),
+	)
+
+
+def _keep_awake_max_duration_choices():
+	return (
+		# Translators: Maximum duration for which sleep prevention is active.
+		_("30 minutes"),
+		_("1 hour"),
+		_("2 hours"),
+		_("4 hours"),
+		_("8 hours"),
+		# Translators: Option to prevent the computer from going to sleep without a time limit.
+		_("Always prevent the computer from going to sleep"),
 	)
 
 
@@ -573,6 +587,11 @@ class OptionsDialog(SettingsPanel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Delay without activity before keeping the computer awake (in seconds):")))
 		self.keep_awake_delay = wx.SpinCtrl(self, wx.ID_ANY, min=5, max=3600)
 		sizer.Add(self.keep_awake_delay)
+		# Translators: Label for the maximum duration during which sleep is prevented.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Maximum duration for preventing the computer from going to sleep:")))
+		self.keep_awake_max_duration = wx.Choice(self, wx.ID_ANY, choices=_keep_awake_max_duration_choices())
+		self.keep_awake_max_duration.SetSelection(len(keep_awake.KEEP_AWAKE_MAX_DURATION_MINUTES) - 1)
+		sizer.Add(self.keep_awake_max_duration)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -593,7 +612,9 @@ class OptionsDialog(SettingsPanel):
 		sizer.Add(screenshot_directory_sizer, 0, wx.EXPAND)
 
 	def on_keep_awake(self, evt):
-		self.keep_awake_delay.Enable(bool(self.keep_awake.GetValue()))
+		enabled = bool(self.keep_awake.GetValue())
+		self.keep_awake_delay.Enable(enabled)
+		self.keep_awake_max_duration.Enable(enabled)
 		evt.Skip()
 
 	def on_autoconnect(self, evt):
@@ -686,7 +707,14 @@ class OptionsDialog(SettingsPanel):
 		self.motd_once.SetValue(config['ui']['display_motd_once'])
 		self.keep_awake.SetValue(config['keep_awake']['enabled'])
 		self.keep_awake_delay.SetValue(int(config['keep_awake']['delay_seconds']))
+		max_duration_minutes = int(config['keep_awake'].get('max_duration_minutes', 0) or 0)
+		if max_duration_minutes not in keep_awake.KEEP_AWAKE_MAX_DURATION_MINUTES:
+			max_duration_minutes = 0
+		self.keep_awake_max_duration.SetSelection(
+			keep_awake.KEEP_AWAKE_MAX_DURATION_MINUTES.index(max_duration_minutes)
+		)
 		self.keep_awake_delay.Enable(bool(config['keep_awake']['enabled']))
+		self.keep_awake_max_duration.Enable(bool(config['keep_awake']['enabled']))
 		self.portcheck.SetValue(config['ui']['portcheck'])
 		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
@@ -794,6 +822,9 @@ class OptionsDialog(SettingsPanel):
 		config['ui']['portcheck'] = self.portcheck.GetValue()
 		config['keep_awake']['enabled'] = self.keep_awake.GetValue()
 		config['keep_awake']['delay_seconds'] = int(self.keep_awake_delay.GetValue())
+		config['keep_awake']['max_duration_minutes'] = keep_awake.KEEP_AWAKE_MAX_DURATION_MINUTES[
+			self.keep_awake_max_duration.GetSelection()
+		]
 		config['screenshots']['directory'] = self.screenshot_directory.GetValue().strip()
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		if not configuration.readonly:

@@ -607,6 +607,42 @@ msgstr ""
 msgid "Show server welcome messages only once"
 msgstr "Afficher les messages de bienvenue du serveur une seule fois"
 
+#. Translators: A checkbox in add-on options dialog to prevent the computer from going to sleep when it is left unattended.
+msgid "Prevent this computer from going to sleep when it is not used"
+msgstr "Empêcher l’ordinateur de se mettre en veille lorsqu’il n’est pas utilisé"
+
+#. Translators: Label for the delay after which an F15 key press is sent to keep the computer awake.
+msgid "Delay without activity before keeping the computer awake (in seconds):"
+msgstr "Délai d’inactivité avant de maintenir l’ordinateur actif (en secondes) :"
+
+#. Translators: Label for the maximum duration during which sleep is prevented.
+msgid "Maximum duration for preventing the computer from going to sleep:"
+msgstr "Durée maximale pendant laquelle empêcher l’ordinateur de se mettre en veille :"
+
+#. Translators: Maximum duration for which sleep prevention is active.
+msgid "30 minutes"
+msgstr "30 minutes"
+
+#. Translators: Maximum duration for which sleep prevention is active.
+msgid "1 hour"
+msgstr "1 heure"
+
+#. Translators: Maximum duration for which sleep prevention is active.
+msgid "2 hours"
+msgstr "2 heures"
+
+#. Translators: Maximum duration for which sleep prevention is active.
+msgid "4 hours"
+msgstr "4 heures"
+
+#. Translators: Maximum duration for which sleep prevention is active.
+msgid "8 hours"
+msgstr "8 heures"
+
+#. Translators: Option to prevent the computer from going to sleep without a time limit.
+msgid "Always prevent the computer from going to sleep"
+msgstr "Toujours empêcher la mise en veille"
+
 #. Translators: a text field in add-on options dialog to set the portcheck service URL
 msgid "Portcheck &service URL: "
 msgstr "URL du &service portcheck : "

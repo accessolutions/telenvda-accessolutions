@@ -73,6 +73,7 @@ configspec = StringIO("""
 [keep_awake]
 	enabled = boolean(default=True)
 	delay_seconds = integer(default=60)
+	max_duration_minutes = integer(default=0)
 
 [ui]
 	play_sounds = boolean(default=True)
