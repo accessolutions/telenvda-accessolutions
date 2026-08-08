@@ -7,7 +7,7 @@ import fnmatch
 import os
 from ctypes import wintypes
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 
 _WINHTTP_ACCESS_TYPE_NO_PROXY = 1
@@ -125,19 +125,38 @@ def _is_bypassed(host, bypass_list):
 	return False
 
 
+def _to_winhttp_url(url):
+	"""Map the WebSocket schemes to HTTP ones.
+
+	WinHttpGetProxyForUrl only understands http and https; it fails with
+	ERROR_WINHTTP_UNRECOGNIZED_SCHEME for a ``wss`` URL, which would silently
+	disable proxy detection for WebSocket connections.
+	"""
+	parts = urlsplit(url)
+	scheme = parts.scheme.lower()
+	if scheme == "wss":
+		scheme = "https"
+	elif scheme == "ws":
+		scheme = "http"
+	return urlunsplit((scheme, parts.netloc, parts.path or "/", parts.query, ""))
+
+
 def _parse_proxy_endpoint(value, scheme):
 	value = value.strip()
 	if not value:
 		return None
+	is_socks = scheme.lower() == "socks"
 	parsed = urlsplit(value if "://" in value else f"//{value}")
 	try:
 		host = parsed.hostname
-		port = parsed.port or 80
+		port = parsed.port or (1080 if is_socks else 8080)
 	except ValueError:
 		return None
 	if not host:
 		return None
-	proxy_type = "socks5" if scheme.lower() == "socks" else "negotiate"
+	# A plain HTTP CONNECT tunnel is attempted first; the transport falls back to
+	# Windows integrated authentication only when the proxy answers 407.
+	proxy_type = "socks5" if is_socks else "http"
 	return DetectedProxy(host=host, port=port, type=proxy_type)
 
 
@@ -145,6 +164,8 @@ def _parse_proxy_list(proxy_text, url):
 	preferred_scheme = urlsplit(url).scheme.lower()
 	if preferred_scheme == "wss":
 		preferred_scheme = "https"
+	elif preferred_scheme == "ws":
+		preferred_scheme = "http"
 	specs = {}
 	for item in proxy_text.split(";"):
 		item = item.strip()
@@ -198,6 +219,7 @@ def detect_proxy(url):
 	api = _load_api()
 	if api is None:
 		return None
+	url = _to_winhttp_url(url)
 	winhttp, kernel32 = api
 	winhttp._kernel32 = kernel32
 	config = _CurrentUserIEProxyConfig()

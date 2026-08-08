@@ -320,8 +320,8 @@ class WebSocketTransport(TCPTransport):
 			return websocket.create_connection(
 				self._websocket_url(),
 				socket=tls_socket,
-				subprotocols=["nvdaremote/2.0"],
-				sslopt={"cert_reqs": ssl.CERT_NONE if insecure else ssl.CERT_REQUIRED},
+				subprotocols=[ws_protocol.SUBPROTOCOL],
+				sslopt=self._ssl_options(insecure),
 				timeout=self.timeout or None,
 			)
 		except Exception:
@@ -331,36 +331,57 @@ class WebSocketTransport(TCPTransport):
 				raw_socket.close()
 			raise
 
+	def _ssl_options(self, insecure):
+		"""Build the websocket-client TLS options.
+
+		``check_hostname`` must be disabled explicitly along with ``cert_reqs``,
+		otherwise the SSL context refuses the combination and the connection
+		fails before the handshake.
+		"""
+		if insecure:
+			return {"cert_reqs": ssl.CERT_NONE, "check_hostname": False}
+		return {"cert_reqs": ssl.CERT_REQUIRED}
+
+	def _open_websocket(self, proxy_settings, insecure):
+		"""Open the WebSocket through the resolved proxy, if any."""
+		if proxy_utils.uses_sspi(proxy_settings):
+			return self._create_sspi_websocket(proxy_settings, insecure=insecure)
+		kwargs = {
+			"subprotocols": [ws_protocol.SUBPROTOCOL],
+			"sslopt": self._ssl_options(insecure),
+			"timeout": self.timeout or None,
+		}
+		kwargs.update(proxy_utils.websocket_options(proxy_settings))
+		try:
+			return websocket.create_connection(self._websocket_url(), **kwargs)
+		except Exception as error:
+			if not proxy_utils.needs_windows_authentication(proxy_settings, error):
+				raise
+			log.debug("The proxy requires authentication, retrying with Windows credentials")
+			return self._create_sspi_websocket(
+				proxy_utils.with_windows_authentication(proxy_settings),
+				insecure=insecure,
+			)
+
 	def create_websocket(self):
 		self._certificate_authentication_failed = False
 		conf = configuration.get_config().get("controlserver", {})
-		proxy_settings = proxy_utils.resolve_for_url(
-			proxy_utils.from_config(conf),
-			self._websocket_url(),
+		url = self._websocket_url()
+		proxy_settings = proxy_utils.resolve_for_url(proxy_utils.from_config(conf), url)
+		log.debug(
+			"Opening %s (proxy %s)",
+			url,
+			f"{proxy_settings.type}://{proxy_settings.host}:{proxy_settings.port}" if proxy_settings.enabled else "none",
 		)
-		ssl_options = {"cert_reqs": ssl.CERT_NONE if self.insecure else ssl.CERT_REQUIRED}
-		kwargs = {
-			"subprotocols": ["nvdaremote/2.0"],
-			"sslopt": ssl_options,
-			"timeout": self.timeout or None,
-		}
-		use_sspi = proxy_utils.uses_sspi(proxy_settings)
 		try:
-			if use_sspi:
-				return self._create_sspi_websocket(proxy_settings)
-			kwargs.update(proxy_utils.websocket_options(proxy_settings))
-			return websocket.create_connection(self._websocket_url(), **kwargs)
+			return self._open_websocket(proxy_settings, self.insecure)
 		except Exception as error:
 			ssl_error = error if isinstance(error, ssl.SSLError) else error.__cause__
 			if self.insecure or not isinstance(ssl_error, ssl.SSLError):
 				raise
 			fingerprint = None
 			try:
-				if use_sspi:
-					probe = self._create_sspi_websocket(proxy_settings, insecure=True)
-				else:
-					probe_options = dict(kwargs, sslopt={"cert_reqs": ssl.CERT_NONE, "check_hostname": False})
-					probe = websocket.create_connection(self._websocket_url(), **probe_options)
+				probe = self._open_websocket(proxy_settings, True)
 				certificate_socket = getattr(probe, "sock", None)
 				if certificate_socket is not None and not isinstance(certificate_socket, ssl.SSLSocket):
 					certificate_socket = getattr(certificate_socket, "sock", None)
