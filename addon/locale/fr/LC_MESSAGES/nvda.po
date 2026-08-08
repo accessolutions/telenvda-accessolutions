@@ -201,6 +201,18 @@ msgstr "Presse-papiers envoyé"
 msgid "Unable to push clipboard"
 msgstr "Impossible d'envoyer le presse-papiers"
 
+#. Translators: message spoken when a screenshot of the remote computer has been requested
+msgid "Screenshot requested"
+msgstr "Capture d'écran demandée"
+
+#. Translators: message spoken when this computer sends a screenshot to the controlling computer
+msgid "Sending screenshot"
+msgstr "Envoi de la capture d'écran"
+
+#. Translators: message spoken when this computer has sent a screenshot to the controlling computer
+msgid "Screenshot sent"
+msgstr "Capture d'écran envoyée"
+
 #. Translators: message spoken when the Ctrl+Alt+Delete has been sent to the remote machine successfully
 msgid "Ctrl+Alt+Delete has been sent to the remote machine"
 msgstr "Ctrl+Alt+Suppr a été envoyé à l'ordinateur distant"
@@ -746,6 +758,9 @@ msgstr "Message du jour"
 
 msgid "Remote NVDA not connected."
 msgstr "NVDA distant non connecté."
+
+msgid "No screenshot received from the remote computer"
+msgstr "Aucune capture d'écran reçue de l'ordinateur distant"
 
 msgid "Invalid URL"
 msgstr "URL invalide"

@@ -265,6 +265,8 @@ class SlaveSession(RemoteSession):
 	def _send_screenshot(self, data):
 		if data:
 			self.transport.send(type="screenshot", data=data)
+			# Translators: message spoken when this computer has sent a screenshot to the controlling computer
+			wx.CallAfter(ui.message, _("Screenshot sent"))
 
 class MasterSession(RemoteSession):
 
