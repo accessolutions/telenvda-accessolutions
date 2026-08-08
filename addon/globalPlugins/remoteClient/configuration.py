@@ -41,7 +41,7 @@ configspec = StringIO("""
 	encryption_key = string(default="")
 	transport = option("tcp", "websocket", default="tcp")
 	ws_path = string(default="/")
-	proxy_mode = option("manual", "auto", "none", default="manual")
+	proxy_mode = option("manual", "auto", "none", default="auto")
 	proxy_host = string(default="")
 	proxy_port = integer(default=0)
 	proxy_username = string(default="")
@@ -82,6 +82,19 @@ configspec = StringIO("""
 	display_motd_once = boolean(default=False)
 	portcheck = string(default="https://nvda.es/portcheck.php?port={port}")
 """)
+def _migrate_proxy_mode(config):
+	"""Switch configurations left in manual mode without a proxy host to automatic detection.
+
+	Manual mode with an empty host means no proxy at all, which silently breaks WebSocket
+	connections behind a corporate proxy. Automatic Windows detection falls back to the same
+	behaviour when no proxy is configured on the system, so the migration is safe.
+	"""
+	section = config['controlserver']
+	if section.get('proxy_mode') == 'manual' and not section.get('proxy_host', '').strip():
+		section['proxy_mode'] = 'auto'
+		return True
+	return False
+
 def get_config():
 	global _config
 	if not _config:
@@ -89,6 +102,11 @@ def get_config():
 		_config = configobj.ConfigObj(infile=path, configspec=configspec, default_encoding='utf8', create_empty=not readonly)
 		val = validate.Validator()
 		_config.validate(val, copy=True)
+		if _migrate_proxy_mode(_config) and not readonly:
+			try:
+				_config.write()
+			except Exception:
+				pass
 	return _config
 
 def get_screenshot_directory():

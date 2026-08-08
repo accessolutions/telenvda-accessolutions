@@ -362,6 +362,10 @@ msgstr "WebSocket sur HTTPS"
 msgid "WebSocket &path:"
 msgstr "&Chemin WebSocket :"
 
+#. Translators: Title of the group of proxy settings in the connect dialog.
+msgid "Proxy"
+msgstr "Proxy"
+
 msgid "Proxy &mode:"
 msgstr "&Mode du proxy :"
 

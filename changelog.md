@@ -12,6 +12,7 @@ This release brings the following changes:
 * Fix the screenshot gestures, which were forwarded to the controlled computer instead of being handled locally while remote control was active.
 * Fall back to the native capture when PowerShell is unavailable or blocked on the controlled computer, and run PowerShell from its absolute path so a restricted PATH no longer prevents the capture.
 * Encode remote screenshots as JPEG instead of the raw bitmap before Base64 encoding, so that captures transfer faster.
+* Add proxy settings to the connection dialog, with a proxy mode which can be manual, automatic Windows detection or no proxy. Existing configurations left in manual mode without a proxy address are switched to automatic detection.
 
 Important: some anti-virus software may flag parts of this add-on as malicious. Specifically, `url_handler.exe`, which opens `remote://` and `tele://` links. If you don't use this feature, you can safely quarantine or delete the file. Otherwise, you must add it as an exception.
 

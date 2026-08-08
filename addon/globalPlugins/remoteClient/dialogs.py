@@ -18,7 +18,7 @@ except addonHandler.AddonError:
 		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad."
 	)
 from . import configuration
-from .proxy_utils import SUPPORTED_PROXY_TYPES
+from .proxy_utils import PROXY_MODES, SUPPORTED_PROXY_TYPES
 import config as NVDAConfig
 import os
 import sys
@@ -29,6 +29,18 @@ del sys.path[-1]
 
 WX_VERSION = int(wx.version()[0])
 WX_CENTER = wx.Center if WX_VERSION>=4 else wx.CENTER_ON_SCREEN
+
+# Labels of the proxy modes, in the same order as proxy_utils.PROXY_MODES.
+def _proxy_mode_choices():
+	return (
+		# Translators: Proxy mode where the user enters the proxy host, port and credentials manually.
+		_("Manual configuration"),
+		# Translators: Proxy mode where the proxy is read from the Windows system settings.
+		_("Automatic Windows proxy detection"),
+		# Translators: Proxy mode where no proxy is used at all.
+		_("No proxy"),
+	)
+
 
 class ClientPanel(wx.Panel):
 
@@ -62,13 +74,102 @@ class ClientPanel(wx.Panel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
 		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
 		sizer.Add(self.ws_path)
-		self.SetSizerAndFit(sizer)
+		self.main_sizer = sizer
+		self._build_proxy_controls(sizer)
+		self.SetSizer(sizer)
+		self.load_settings()
+		self.Fit()
+
+	def _build_proxy_controls(self, sizer):
+		"""Build the proxy group, only relevant for the WebSocket transport."""
+		# Translators: Title of the group of proxy settings in the connect dialog.
+		self.proxy_box = wx.StaticBoxSizer(wx.VERTICAL, self, label=_("Proxy"))
+		box = self.proxy_box.GetStaticBox()
+		self.proxy_box.Add(wx.StaticText(box, wx.ID_ANY, label=_("Proxy &mode:")))
+		self.proxy_mode = wx.Choice(box, wx.ID_ANY, choices=_proxy_mode_choices())
+		self.proxy_mode.SetSelection(PROXY_MODES.index("auto"))
+		self.proxy_mode.Bind(wx.EVT_CHOICE, self.on_proxy_mode_changed)
+		self.proxy_box.Add(self.proxy_mode)
+		self.proxy_box.Add(wx.StaticText(box, wx.ID_ANY, label=_("HTTP/SOCKS &proxy host:")))
+		self.proxy_host = wx.TextCtrl(box, wx.ID_ANY)
+		self.proxy_box.Add(self.proxy_host)
+		self.proxy_box.Add(wx.StaticText(box, wx.ID_ANY, label=_("Proxy por&t:")))
+		self.proxy_port = wx.SpinCtrl(box, wx.ID_ANY, min=0, max=65535)
+		# Translators: tooltip clarifying that this port is the intermediary proxy port, not the relay/server port above.
+		self.proxy_port.SetToolTip(_("Port of an intermediary HTTP/SOCKS proxy server, if any. Left at 0 when no proxy is used. Unrelated to the relay/server port above."))
+		self.proxy_box.Add(self.proxy_port)
+		self.proxy_box.Add(wx.StaticText(box, wx.ID_ANY, label=_("Proxy &type:")))
+		self.proxy_type = wx.Choice(box, wx.ID_ANY, choices=SUPPORTED_PROXY_TYPES)
+		self.proxy_type.SetSelection(0)
+		self.proxy_box.Add(self.proxy_type)
+		self.proxy_box.Add(wx.StaticText(box, wx.ID_ANY, label=_("Proxy &username:")))
+		self.proxy_username = wx.TextCtrl(box, wx.ID_ANY)
+		self.proxy_box.Add(self.proxy_username)
+		self.proxy_box.Add(wx.StaticText(box, wx.ID_ANY, label=_("Proxy pass&word:")))
+		self.proxy_password = wx.TextCtrl(box, wx.ID_ANY, style=wx.TE_PASSWORD)
+		self.proxy_box.Add(self.proxy_password)
+		sizer.Add(self.proxy_box)
+
+	def load_settings(self):
+		"""Preload the transport and proxy fields from the saved configuration."""
+		cs = configuration.get_config()['controlserver']
+		self.transport_choice.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
+		if self.transport_choice.GetSelection() == 1:
+			self.port.SetValue(443)
+			self.ws_path.SetValue(cs.get('ws_path', '/') or '/')
+		configured_mode = str(cs.get('proxy_mode', 'auto')).lower()
+		self.proxy_mode.SetSelection(PROXY_MODES.index(configured_mode) if configured_mode in PROXY_MODES else PROXY_MODES.index("auto"))
+		self.proxy_host.SetValue(cs.get('proxy_host', ''))
+		self.proxy_port.SetValue(int(cs.get('proxy_port', 0) or 0))
+		configured_type = str(cs.get('proxy_type', 'http')).lower()
+		self.proxy_type.SetSelection(SUPPORTED_PROXY_TYPES.index(configured_type) if configured_type in SUPPORTED_PROXY_TYPES else 0)
+		self.proxy_username.SetValue(cs.get('proxy_username', ''))
+		self.proxy_password.SetValue(cs.get('proxy_password', ''))
+		self.update_proxy_controls()
+
+	def save_proxy_settings(self):
+		"""Persist the proxy settings so that the transport layer can pick them up."""
+		config = configuration.get_config()
+		cs = config['controlserver']
+		cs['proxy_mode'] = PROXY_MODES[self.proxy_mode.GetSelection()]
+		cs['proxy_host'] = self.proxy_host.GetValue().strip()
+		cs['proxy_port'] = int(self.proxy_port.GetValue())
+		cs['proxy_type'] = self.proxy_type.GetStringSelection()
+		cs['proxy_username'] = self.proxy_username.GetValue()
+		cs['proxy_password'] = self.proxy_password.GetValue()
+		if not configuration.readonly:
+			try:
+				config.write()
+			except Exception:
+				log.exception("Unable to save the proxy settings")
+
+	def update_proxy_controls(self):
+		show_proxy = self.transport_choice.GetSelection() == 1
+		self.main_sizer.Show(self.proxy_box, show_proxy, recursive=True)
+		manual = self.proxy_mode.GetSelection() == PROXY_MODES.index("manual")
+		for control in (self.proxy_host, self.proxy_port, self.proxy_type, self.proxy_username, self.proxy_password):
+			control.Enable(manual)
+
+	def _relayout(self):
+		self.Layout()
+		self.Fit()
+		window = self.GetParent()
+		while window is not None and not isinstance(window, wx.Dialog):
+			window = window.GetParent()
+		if window is not None and window.GetSizer() is not None:
+			window.GetSizer().Fit(window)
+
+	def on_proxy_mode_changed(self, evt):
+		evt.Skip()
+		self.update_proxy_controls()
 
 	def on_transport_changed(self, evt):
 		if self.transport_choice.GetSelection() == 1 and self.port.GetValue() == socket_utils.SERVER_PORT:
 			self.port.SetValue(443)
 		elif self.transport_choice.GetSelection() == 0 and self.port.GetValue() == 443:
 			self.port.SetValue(socket_utils.SERVER_PORT)
+		self.update_proxy_controls()
+		self._relayout()
 		evt.Skip()
 
 	def get_transport_type(self):
@@ -89,6 +190,9 @@ class ClientPanel(wx.Panel):
 			self.generate_key_command()
 
 	def generate_key_command(self, insecure=False):
+		# The key is requested over the same transport as the connection itself, so the proxy
+		# settings must already be persisted for the WebSocket transport to pick them up.
+		self.save_proxy_settings()
 		address = self.get_address()
 		transport_class = transport.WebSocketRelayTransport if self.get_transport_type() == "websocket" else transport.RelayTransport
 		transport_kwargs = {"address": address, "serializer": serializer.JSONSerializer(), "insecure": insecure}
@@ -418,16 +522,8 @@ class OptionsDialog(SettingsPanel):
 		self.ws_path.Enable(False)
 		sizer.Add(self.ws_path)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Proxy &mode:")))
-		self.proxy_mode = wx.Choice(
-			self,
-			wx.ID_ANY,
-			choices=(
-				_("Manual configuration"),
-				_("Automatic Windows proxy detection"),
-				_("No proxy"),
-			),
-		)
-		self.proxy_mode.SetSelection(0)
+		self.proxy_mode = wx.Choice(self, wx.ID_ANY, choices=_proxy_mode_choices())
+		self.proxy_mode.SetSelection(PROXY_MODES.index("auto"))
 		self.proxy_mode.Enable(False)
 		self.proxy_mode.Bind(wx.EVT_CHOICE, self.on_proxy_mode_changed)
 		sizer.Add(self.proxy_mode)
@@ -519,9 +615,11 @@ class OptionsDialog(SettingsPanel):
 		self.host.Enable(not bool(self.client_or_server.GetSelection()) and state)
 		self.transport.Enable(not bool(self.client_or_server.GetSelection()) and state)
 		self.ws_path.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		proxy_state = not bool(self.client_or_server.GetSelection()) and state
+		# The proxy is used by the relay transport itself, so it stays configurable even when
+		# auto-connect is off: manual connections read the very same settings.
+		proxy_state = not bool(self.client_or_server.GetSelection())
 		self.proxy_mode.Enable(proxy_state)
-		manual_proxy = self.proxy_mode.GetSelection() == 0
+		manual_proxy = self.proxy_mode.GetSelection() == PROXY_MODES.index("manual")
 		self.proxy_host.Enable(proxy_state and manual_proxy)
 		self.proxy_port.Enable(proxy_state and manual_proxy)
 		self.proxy_type.Enable(proxy_state and manual_proxy)
@@ -567,9 +665,9 @@ class OptionsDialog(SettingsPanel):
 		self.host.SetValue(cs['host'])
 		self.transport.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
 		self.ws_path.SetValue(cs.get('ws_path', '/'))
-		proxy_modes = ("manual", "auto", "none")
-		configured_proxy_mode = cs.get('proxy_mode', 'manual')
-		self.proxy_mode.SetSelection(max(0, proxy_modes.index(configured_proxy_mode) if configured_proxy_mode in proxy_modes else 0))
+		proxy_modes = PROXY_MODES
+		configured_proxy_mode = cs.get('proxy_mode', 'auto')
+		self.proxy_mode.SetSelection(proxy_modes.index(configured_proxy_mode) if configured_proxy_mode in proxy_modes else proxy_modes.index("auto"))
 		self.port.SetValue(str(cs['port']))
 		self.useUPNP.SetValue(cs['UPNP'])
 		self.key.SetValue(cs['key'])
@@ -682,7 +780,7 @@ class OptionsDialog(SettingsPanel):
 		cs['encryption_key'] = self.encryption_key.GetValue()
 		cs['transport'] = 'websocket' if self.transport.GetSelection() == 1 else 'tcp'
 		cs['ws_path'] = self.ws_path.GetValue() or '/'
-		cs['proxy_mode'] = ("manual", "auto", "none")[self.proxy_mode.GetSelection()]
+		cs['proxy_mode'] = PROXY_MODES[self.proxy_mode.GetSelection()]
 		cs['proxy_host'] = self.proxy_host.GetValue()
 		cs['proxy_port'] = int(self.proxy_port.GetValue())
 		cs['proxy_type'] = self.proxy_type.GetStringSelection()
