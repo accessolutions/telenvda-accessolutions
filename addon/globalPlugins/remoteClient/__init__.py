@@ -26,10 +26,8 @@ import shlobj
 import speech
 import socket
 import ssl
-import subprocess
 import sys
 import threading
-import time
 import ui
 import uuid
 import wx
@@ -56,15 +54,6 @@ logger = logging.getLogger(__name__)
 
 _INACTIVITY_MONITOR_MAX_DELAY_SECONDS = 24 * 24 * 60 * 60
 _INACTIVITY_MONITOR_IDLE_DELAY_SECONDS = 60
-
-#: Mouse buttons which must be held together to restart NVDA.
-_MOUSE_RESTART_BUTTONS = frozenset(("right",))
-#: How long, in seconds, those buttons must be held before NVDA is restarted.
-_MOUSE_RESTART_DELAY = 5
-#: Number of rapid right-clicks which also restart NVDA.
-_MOUSE_RESTART_CLICK_COUNT = 5
-#: Maximum interval, in seconds, between the first and last rapid right-click.
-_MOUSE_RESTART_CLICK_WINDOW = 2
 
 _SW_SHOW = 5
 _SW_RESTORE = 9
@@ -197,11 +186,6 @@ class GlobalPlugin(_GlobalPlugin):
 		self.hook_thread = None
 		self.mouse_hook_thread = None
 		self.mouse_hook = None
-		self.mouse_button_lock = threading.Lock()
-		self.mouse_buttons = set()
-		self.mouse_right_click_times = []
-		self.mouse_restart_timer = None
-		self.mouse_restart_triggered = False
 		self.sending_keys = False
 		self.key_modifiers = set()
 		self.hostPendingModifiers = set()
@@ -572,13 +556,6 @@ class GlobalPlugin(_GlobalPlugin):
 			self.mouse_hook = None
 
 	def stop_mouse_hook(self):
-		with self.mouse_button_lock:
-			if self.mouse_restart_timer is not None:
-				self.mouse_restart_timer.cancel()
-				self.mouse_restart_timer = None
-			self.mouse_buttons.clear()
-			self.mouse_right_click_times.clear()
-			self.mouse_restart_triggered = False
 		thread = self.mouse_hook_thread
 		if thread is None:
 			return
@@ -592,76 +569,6 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def mouse_hook_callback(self, button, pressed):
 		self.keep_awake.notify_local_input()
-		restart_from_clicks = False
-		with self.mouse_button_lock:
-			if pressed:
-				self.mouse_buttons.add(button)
-				if button == "right":
-					now = time.monotonic()
-					self.mouse_right_click_times = [
-						click_time
-						for click_time in self.mouse_right_click_times
-						if now - click_time <= _MOUSE_RESTART_CLICK_WINDOW
-					]
-					self.mouse_right_click_times.append(now)
-					if (
-						len(self.mouse_right_click_times) >= _MOUSE_RESTART_CLICK_COUNT
-						and not self.mouse_restart_triggered
-					):
-						self.mouse_restart_triggered = True
-						self.mouse_right_click_times.clear()
-						restart_from_clicks = True
-				if (
-					self.mouse_buttons == set(_MOUSE_RESTART_BUTTONS)
-					and self.mouse_restart_timer is None
-					and not self.mouse_restart_triggered
-				):
-					self.mouse_restart_timer = threading.Timer(
-						_MOUSE_RESTART_DELAY, self._check_mouse_restart
-					)
-					self.mouse_restart_timer.daemon = True
-					self.mouse_restart_timer.start()
-			else:
-				self.mouse_buttons.discard(button)
-				if not self.mouse_buttons:
-					self.mouse_restart_triggered = False
-				if (
-					self.mouse_restart_timer is not None
-					and self.mouse_buttons != set(_MOUSE_RESTART_BUTTONS)
-				):
-					self.mouse_restart_timer.cancel()
-					self.mouse_restart_timer = None
-		if restart_from_clicks:
-			wx.CallAfter(self._restart_nvda_from_mouse)
-
-	def _check_mouse_restart(self):
-		with self.mouse_button_lock:
-			self.mouse_restart_timer = None
-			if (
-				self.mouse_buttons != set(_MOUSE_RESTART_BUTTONS)
-				or self.mouse_restart_triggered
-			):
-				return
-			self.mouse_restart_triggered = True
-		wx.CallAfter(self._restart_nvda_from_mouse)
-
-	def _restart_nvda_from_mouse(self):
-		if self._terminated:
-			return
-		log.warning(
-			"Restarting NVDA after the mouse restart gesture"
-		)
-		slave_path = os.path.join(globalVars.appDir, "nvda_slave.exe")
-		if not os.path.isfile(slave_path):
-			slave_path = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "NVDA", "nvda_slave.exe")
-		if not os.path.isfile(slave_path):
-			log.error("Unable to find nvda_slave.exe, falling back to core.restart()")
-			core.restart()
-			return
-		try:
-			subprocess.Popen([slave_path, "launchNVDA", "-r"], close_fds=True)
-		except Exception:
-			log.exception("Unable to launch %s" % slave_path)
 
 	def terminate(self):
 		global client
