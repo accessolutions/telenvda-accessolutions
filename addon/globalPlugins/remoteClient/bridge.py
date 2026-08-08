@@ -6,7 +6,7 @@ class BridgeTransport:
 	passing messages to both of them.
 	We exclude transport-specific messages such as client_joined."""
 
-	excluded = ("client_joined", "client_left", "channel_joined", "set_braille_info")
+	excluded = ("client_joined", "client_left", "channel_joined", "set_braille_info", "telenvda_capabilities")
 
 	def __init__(self, t1, t2):
 		self.t1 = t1

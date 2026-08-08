@@ -4,6 +4,7 @@ import wx
 from . import input
 from . import cues
 from . import configuration
+from . import file_transfer
 import api
 import nvwave
 import tones
@@ -282,6 +283,9 @@ class LocalMachine:
 	def file_transfer(self, name, content, **kwargs):
 		if globalVars.appArgs.secure:
 			return
+		# The name comes from another computer and must never be able to designate
+		# anything else than a file name in the folder chosen by the user.
+		name = file_transfer.sanitize_file_name(name)
 		fd = wx.FileDialog(
 			gui.mainFrame,
 			# Translators: message displayed in transfer file dialog when receiving a file

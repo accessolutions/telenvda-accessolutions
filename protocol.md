@@ -63,6 +63,40 @@ Messages are serialized as JSON objects with a 'type' field indicating the messa
 1. Upon connection, the client sends a `protocol_version` message.
 2. If versions are incompatible, an error is sent and the connection is closed.
 
+## Capability Negotiation
+
+The `protocol_version` message is handled by the relay and says nothing about the
+optional features implemented by the other clients. Because the relay forwards
+every message it does not understand, and because clients ignore message types
+they do not know, clients announce their own optional features with a
+`telenvda_capabilities` message.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "telenvda_capabilities": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "telenvda_capabilities" },
+        "negotiation_version": { "type": "integer", "description": "Version of the negotiation format itself." },
+        "addon": { "type": "string", "description": "Name of the add-on, e.g. 'TeleNVDA'." },
+        "addon_version": { "type": "string", "description": "Version of the add-on." },
+        "features": { "type": "array", "items": { "type": "string" }, "description": "Optional features implemented by the sender, e.g. 'chunked_file_transfer'." },
+        "max_file_size": { "type": ["integer", "null"], "description": "Largest file the sender accepts to receive, or null when only limited by the available disk space." },
+        "reply": { "type": "boolean", "description": "When true, the receiver answers with its own announcement." }
+      },
+      "required": ["type", "features"]
+    }
+  }
+}
+```
+
+The message is broadcast when a client joins a channel and every time another
+client joins, so that both ends learn about each other whatever their join
+order. A client which never answers is considered a legacy client, and every
+optional feature falls back to the behaviour understood by the original add-on.
+
 ## Message Types
 
 Below is a detailed specification of each message type using JSONSchema:
@@ -292,21 +326,98 @@ viewer.
 
 ### File Transfer
 
-Small files may use the legacy `file_transfer` message. Larger files use a
-streaming transfer made of ordered messages:
+Two formats coexist.
 
-1. `file_transfer_start` announces the file name, total size and chunk size.
-2. `file_transfer_chunk` carries one Base64-encoded chunk and its index.
-3. `file_transfer_complete` carries the total size and SHA-256 checksum.
-4. The receiver answers each stage with `file_transfer_ack`. The sender waits
-  for each acknowledgement before sending the next chunk, keeping memory use
-  bounded and providing backpressure.
+The legacy `file_transfer` message carries the whole file Base64-encoded in a
+single message. It is the only format understood by the original TeleNVDA, whose
+sender refuses files larger than 10 MB. It is used whenever the peer did not
+announce the `chunked_file_transfer` feature.
 
-An interrupted transfer is announced with `file_transfer_abort`. The receiver
-writes incoming data to a temporary file and moves it to the selected path only
-after the size and checksum have been verified. There is no fixed maximum size
-for the chunked format; the practical limits are available disk space, network
-reliability and transfer timeouts.
+When the peer announced `chunked_file_transfer`, and when exactly one other
+client is connected to the channel, a streaming transfer made of ordered
+messages is used instead:
+
+1. `file_transfer_start` announces a transfer identifier, the file name, the
+  total size and the chunk size.
+2. The receiver answers with `file_transfer_ack` for the `start` stage, with
+  `accepted` set to `true` once the user chose where the file is saved, or to
+  `false` with a `reason` when the transfer is declined.
+3. `file_transfer_chunk` carries one Base64-encoded chunk and its index.
+  Chunks are acknowledged individually with the `chunk` stage. The sender keeps
+  a small number of chunks in flight, so memory use stays bounded and a stalled
+  receiver applies backpressure to the sender.
+4. `file_transfer_complete` carries the total size and the SHA-256 checksum of
+  the whole file, and is acknowledged with the `complete` stage.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "file_transfer_start": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "file_transfer_start" },
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "size": { "type": "integer" },
+        "chunk_size": { "type": "integer" }
+      },
+      "required": ["type", "id", "name", "size"]
+    },
+    "file_transfer_chunk": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "file_transfer_chunk" },
+        "id": { "type": "string" },
+        "index": { "type": "integer" },
+        "data": { "type": "string" }
+      },
+      "required": ["type", "id", "index", "data"]
+    },
+    "file_transfer_complete": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "file_transfer_complete" },
+        "id": { "type": "string" },
+        "size": { "type": "integer" },
+        "checksum": { "type": "string", "description": "Lowercase hexadecimal SHA-256 of the whole file." }
+      },
+      "required": ["type", "id", "size", "checksum"]
+    },
+    "file_transfer_ack": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "file_transfer_ack" },
+        "id": { "type": "string" },
+        "stage": { "enum": ["start", "chunk", "complete"] },
+        "index": { "type": "integer", "description": "Index of the acknowledged chunk, for the 'chunk' stage." },
+        "accepted": { "type": "boolean", "description": "Whether the transfer is accepted, for the 'start' stage." },
+        "reason": { "type": "string" }
+      },
+      "required": ["type", "id", "stage"]
+    },
+    "file_transfer_abort": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "file_transfer_abort" },
+        "id": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["type", "id"]
+    }
+  }
+}
+```
+
+An interrupted transfer is announced with `file_transfer_abort` by either end.
+The receiver writes incoming data to a temporary file next to the destination
+and moves it to the selected path only after the size and checksum have been
+verified. There is no fixed maximum size for the chunked format; the practical
+limits are the available disk space, the limit announced by the receiver in its
+capabilities, network reliability and transfer timeouts.
+
+Transfers work in both directions: the controlling and the controlled computer
+use the same code and either of them may start a transfer.
 
 ### Braille Support
 

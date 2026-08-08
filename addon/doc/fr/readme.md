@@ -128,9 +128,30 @@ Aucun helper Python séparé n'est installé ou publié.
 ## Fonctions disponibles
 
 TeleNVDA fournit également le contrôle clavier et Braille, la parole et les
-sons distants, le presse-papiers, l'envoi de fichiers jusqu'à 10 Mo, UPnP,
+sons distants, le presse-papiers, l'envoi de fichiers, UPnP,
 les liens de session, le contrôle de Ctrl+Alt+Suppr et le fonctionnement sur
 le bureau sécurisé.
+
+## Transfert de fichiers
+
+Les deux ordinateurs se déclarent mutuellement leurs fonctions au moment de la
+connexion. Lorsque les deux extrémités utilisent une version de TeleNVDA qui
+prend en charge le nouveau système, le fichier est envoyé par blocs successifs,
+dans les deux sens : de l'ordinateur qui contrôle vers l'ordinateur contrôlé
+comme l'inverse. Une boîte de dialogue affiche alors la progression, le volume
+transféré, le débit et le temps restant estimé, et permet d'interrompre le
+transfert des deux côtés. La taille n'est plus limitée qu'à l'espace disque
+disponible et à la limite éventuellement annoncée par l'ordinateur destinataire.
+L'intégrité du fichier est vérifiée par une empreinte SHA-256 avant son
+enregistrement définitif.
+
+Lorsque l'ordinateur distant utilise le TeleNVDA d'origine ou l'accès distant
+standard de NVDA, l'ancien format est utilisé et la limite de 10 Mo s'applique
+de nouveau. Une option permet de dépasser cette limite avec ces ordinateurs :
+elle reste compatible avec eux, mais le fichier entier est chargé en mémoire des
+deux côtés et la session est bloquée pendant le transfert, elle est donc
+désactivée par défaut. Une autre option limite la taille des fichiers acceptés
+en réception.
 
 ## Sécurité
 

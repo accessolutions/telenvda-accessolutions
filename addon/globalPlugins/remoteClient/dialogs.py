@@ -592,6 +592,18 @@ class OptionsDialog(SettingsPanel):
 		self.keep_awake_max_duration = wx.Choice(self, wx.ID_ANY, choices=_keep_awake_max_duration_choices())
 		self.keep_awake_max_duration.SetSelection(len(keep_awake.KEEP_AWAKE_MAX_DURATION_MINUTES) - 1)
 		sizer.Add(self.keep_awake_max_duration)
+		# Translators: A checkbox in add-on options dialog to allow sending files larger than 10 MB to computers running the original TeleNVDA.
+		self.allow_large_legacy_transfers = wx.CheckBox(self, wx.ID_ANY, label=_("Allow files larger than 10 MB even when the other computer does not support the new transfer system"))
+		self.allow_large_legacy_transfers.Bind(wx.EVT_CHECKBOX, self.on_allow_large_legacy_transfers)
+		sizer.Add(self.allow_large_legacy_transfers)
+		# Translators: Label for the maximum size of a file sent without the new transfer system.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Maximum size of those transfers (in MB):")))
+		self.legacy_max_size = wx.SpinCtrl(self, wx.ID_ANY, min=10, max=1024)
+		sizer.Add(self.legacy_max_size)
+		# Translators: Label for the maximum size of a file accepted from the other computer, 0 meaning no limit.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Maximum size of received files, in MB (0 for no limit):")))
+		self.max_received_size = wx.SpinCtrl(self, wx.ID_ANY, min=0, max=102400)
+		sizer.Add(self.max_received_size)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -615,6 +627,10 @@ class OptionsDialog(SettingsPanel):
 		enabled = bool(self.keep_awake.GetValue())
 		self.keep_awake_delay.Enable(enabled)
 		self.keep_awake_max_duration.Enable(enabled)
+		evt.Skip()
+
+	def on_allow_large_legacy_transfers(self, evt):
+		self.legacy_max_size.Enable(bool(self.allow_large_legacy_transfers.GetValue()))
 		evt.Skip()
 
 	def on_autoconnect(self, evt):
@@ -716,6 +732,11 @@ class OptionsDialog(SettingsPanel):
 		self.keep_awake_delay.Enable(bool(config['keep_awake']['enabled']))
 		self.keep_awake_max_duration.Enable(bool(config['keep_awake']['enabled']))
 		self.portcheck.SetValue(config['ui']['portcheck'])
+		file_transfer_section = config['file_transfer']
+		self.allow_large_legacy_transfers.SetValue(file_transfer_section['allow_large_legacy_transfers'])
+		self.legacy_max_size.SetValue(int(file_transfer_section['legacy_max_size_mb']))
+		self.legacy_max_size.Enable(bool(file_transfer_section['allow_large_legacy_transfers']))
+		self.max_received_size.SetValue(int(file_transfer_section['max_received_size_mb']))
 		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
 		NVDAConfig.conf.profiles[-1].name = None
@@ -826,6 +847,9 @@ class OptionsDialog(SettingsPanel):
 			self.keep_awake_max_duration.GetSelection()
 		]
 		config['screenshots']['directory'] = self.screenshot_directory.GetValue().strip()
+		config['file_transfer']['allow_large_legacy_transfers'] = self.allow_large_legacy_transfers.GetValue()
+		config['file_transfer']['legacy_max_size_mb'] = int(self.legacy_max_size.GetValue())
+		config['file_transfer']['max_received_size_mb'] = int(self.max_received_size.GetValue())
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		if not configuration.readonly:
 			config.write()

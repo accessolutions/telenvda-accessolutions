@@ -1,4 +1,7 @@
 This release brings the following changes:
+* Add a chunked file transfer which is no longer limited to 10 MB when both computers run a version of TeleNVDA which supports it. Transfers work in both directions, report progress, transferred size, speed and estimated remaining time, can be cancelled from either end, and the received file is verified with a SHA-256 checksum before being saved.
+* Negotiate the available features when the connection is established, so that computers running the original TeleNVDA or the standard NVDA Remote automatically fall back to the legacy 10 MB transfer.
+* Add an option to send files larger than 10 MB to computers which only support the legacy transfer, and an option to limit the size of received files.
 * Handle server connections which break when client sends ALPN information. This should restore connectivity to nvdaremote.com and similar servers.
 * Add native Windows SSPI authentication for NTLM and Kerberos/Negotiate HTTP proxy CONNECT handshakes used by WebSocket relays.
 * Check GitHub Releases for TeleNVDA stable updates at startup or on demand, with SHA-256 verification and confirmation before installation.

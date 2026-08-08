@@ -70,6 +70,11 @@ configspec = StringIO("""
 [screenshots]
 	directory = string(default="")
 
+[file_transfer]
+	allow_large_legacy_transfers = boolean(default=False)
+	legacy_max_size_mb = integer(default=100)
+	max_received_size_mb = integer(default=0)
+
 [keep_awake]
 	enabled = boolean(default=True)
 	delay_seconds = integer(default=60)

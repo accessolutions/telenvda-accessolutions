@@ -31,7 +31,6 @@ import threading
 import ui
 import uuid
 import wx
-import base64
 from config import conf as nvda_conf
 from globalPluginHandler import GlobalPlugin as _GlobalPlugin
 from keyboardHandler import KeyboardInputGesture
@@ -710,8 +709,9 @@ class GlobalPlugin(_GlobalPlugin):
 
 
 	def on_send_file_item(self, evt):
+		session = self.slave_session or self.master_session
 		connector = self.slave_transport or self.master_transport
-		if not getattr(connector, 'connected', False):
+		if session is None or not getattr(connector, 'connected', False):
 			ui.message(_("Not connected."))
 			return
 		if globalVars.appArgs.secure:
@@ -721,46 +721,23 @@ class GlobalPlugin(_GlobalPlugin):
 			return
 		# Set the flag to True, indicating that the file dialog is open
 		setattr(self, 'is_send_file_dialog_open', True)
-		fd = wx.FileDialog(gui.mainFrame,
-			# Translators: message displayed in transfer file dialog when sending a file
-			message=_("Choose the file you want to send to the remote computer"),
-			# Translators: supported file types when sending or receiving files
-			wildcard=_("All files (*.*)") + "|*.*",
-			defaultDir=os.environ['userprofile'], style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_PREVIEW)
-		if fd.ShowModal() != wx.ID_OK:
+		try:
+			fd = wx.FileDialog(gui.mainFrame,
+				# Translators: message displayed in transfer file dialog when sending a file
+				message=_("Choose the file you want to send to the remote computer"),
+				# Translators: supported file types when sending or receiving files
+				wildcard=_("All files (*.*)") + "|*.*",
+				defaultDir=os.environ['userprofile'], style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_PREVIEW)
+			try:
+				if fd.ShowModal() != wx.ID_OK:
+					return
+				path = fd.GetPath()
+			finally:
+				fd.Destroy()
+		finally:
 			# Reset the flag to False after the file dialog is closed
 			setattr(self, 'is_send_file_dialog_open', False)
-			return
-		# Reset the flag to False after the file dialog is closed
-		setattr(self, 'is_send_file_dialog_open', False)
-		filename = os.path.basename(fd.GetPath())
-		try:
-			f = open(fd.GetPath(), "rb")
-			file_content = f.read()
-			f.close()
-		except:
-			logger.exception("Unable to read the specified file")
-		if len(file_content) > 10485760:
-			gui.messageBox(
-				# Translators: error message when a file is too big
-				message=_("This file is too large. Only files smaller than 10 MB are supported."),
-				# Translators: error message caption
-				caption=_("Error"),
-				style=wx.ICON_ERROR)
-			return
-		result = gui.messageBox(
-			# Translators: question before sending a file
-			message=_("The session will be blocked until the transfer is complete. Are you sure you want to continue?"),
-			# Translators: question title
-			caption=_("Warning!"),
-			style=wx.YES | wx.NO | wx.ICON_WARNING)
-		if result == wx.YES:
-			file_content = base64.b64encode(file_content)
-			connector.send(type='file_transfer', name=filename, content=file_content.decode("utf-8"))
-			configuration.record_activity()
-			cues.clipboard_pushed()
-			# Translators: message spoken when the file has been sent successfully
-			ui.message(_("File sent"))
+		session.file_transfer_manager.send_file(path)
 
 	@script(
 		# Translators: report number of connected computers gesture description

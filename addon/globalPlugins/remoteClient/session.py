@@ -13,6 +13,8 @@ from logHandler import log
 from . import configuration
 from . import nvda_patcher
 from . import compat_screenshot
+from . import capabilities
+from . import file_transfer
 from . import RelayTransport
 from collections import defaultdict
 from . import connection_info
@@ -49,6 +51,11 @@ class RemoteSession:
 		self.transport = transport
 		self.transport.callback_manager.register_callback('msg_version_mismatch', self.handle_version_mismatch)
 		self.transport.callback_manager.register_callback('msg_motd', self.handle_motd)
+		self.capabilities = capabilities.CapabilityNegotiator(transport)
+		self.file_transfer_manager = file_transfer.FileTransferManager(transport, self.capabilities)
+		# The size accepted for incoming files depends on the configuration, so it is
+		# read again every time the capabilities are announced.
+		self.capabilities.max_file_size = self.file_transfer_manager.max_receive_size
 		self.client_count = 1
 
 	def handle_version_mismatch(self, **kwargs):
