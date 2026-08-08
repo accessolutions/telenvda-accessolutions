@@ -288,7 +288,7 @@ class DirectConnectDialog(wx.Dialog):
 		self.client_or_server.Bind(wx.EVT_RADIOBOX, self.on_client_or_server)
 		self.client_or_server.SetSelection(0)
 		main_sizer.Add(self.client_or_server)
-		choices = [_("Control another machine"), _("Allow this machine to be controlled")]
+		choices = [_("Allow this machine to be controlled"), _("Control another machine")]
 		self.connection_type = wx.RadioBox(self, wx.ID_ANY, choices=choices, style=wx.RA_VERTICAL)
 		self.connection_type.SetSelection(0)
 		main_sizer.Add(self.connection_type)

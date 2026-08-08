@@ -1210,17 +1210,17 @@ class GlobalPlugin(_GlobalPlugin):
 				transport_type = dlg.panel.get_transport_type()
 				ws_path = dlg.panel.ws_path.GetValue() or "/"
 				if dlg.connection_type.GetSelection() == 0:
-					self.connect_as_master((server_addr, port), channel, encryption_key, transport_type=transport_type, ws_path=ws_path)
-				else:
 					self.connect_as_slave((server_addr, port), channel, encryption_key, transport_type=transport_type, ws_path=ws_path)
+				else:
+					self.connect_as_master((server_addr, port), channel, encryption_key, transport_type=transport_type, ws_path=ws_path)
 			else: #We want a server
 				channel = dlg.panel.key.GetValue()
 				encryption_key = dlg.panel.encryption_key.GetValue()
 				self.start_control_server(int(dlg.panel.port.GetValue()), channel, useUPNP=bool(dlg.panel.useUPNP.GetValue()))
 				if dlg.connection_type.GetSelection() == 0:
-					self.connect_as_master(('127.0.0.1', int(dlg.panel.port.GetValue())), channel, insecure=True, encryption_key=encryption_key)
-				else:
 					self.connect_as_slave(('127.0.0.1', int(dlg.panel.port.GetValue())), channel, insecure=True, encryption_key=encryption_key)
+				else:
+					self.connect_as_master(('127.0.0.1', int(dlg.panel.port.GetValue())), channel, insecure=True, encryption_key=encryption_key)
 			# Reset the flag to False when the dialog is closed
 			self.is_connect_dialog_open = False
 		gui.runScriptModalDialog(dlg, callback=handle_dlg_complete)
