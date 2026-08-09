@@ -8,11 +8,8 @@ __pycache__/
 /addon/doc/en/
 /addon/doc/*/*.html
 
-# Generated manifests and translations
-/addon/manifest.ini
-/addon/locale/*/manifest.ini
-*.mo
-/*.pot
+
+
 
 # Keep locally built add-on archives out of the public repository.
 /*.nvda-addon
