@@ -419,6 +419,197 @@ capabilities, network reliability and transfer timeouts.
 Transfers work in both directions: the controlling and the controlled computer
 use the same code and either of them may start a transfer.
 
+### Screen Sharing
+
+The controlling computer may display the screen of the controlled one over a
+peer to peer WebRTC link. The pictures never travel through the relay: it only
+carries the few messages needed to set the link up, and the two computers then
+talk to each other directly, falling back on a TURN server when the network
+leaves them no other route.
+
+This feature is optional at every level. A relay built without it, or started
+without `-screen-share`, simply forwards the messages like any other, and the
+clients then fail to establish anything. A client which does not announce
+`screen_share` in its `telenvda_capabilities` is never asked to share anything.
+
+#### Relay capabilities
+
+Unlike `telenvda_capabilities`, which clients exchange between themselves, the
+`capabilities` message is read by the relay and tells it which signalling it may
+route on behalf of that client.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "capabilities" },
+        "capabilities": {
+          "type": "array",
+          "items": { "enum": ["screen_share/1", "input_control/1"] },
+          "description": "Versioned capability strings. The relay ignores anything it does not know about."
+        }
+      },
+      "required": ["type", "capabilities"]
+    }
+  }
+}
+```
+
+#### Unicast routing
+
+Every message listed below is delivered to a single client rather than broadcast
+to the channel, which is what makes screen sharing safe on a channel holding
+several controlling computers. The sender names the recipient in `target`, and
+the relay stamps `origin` with the identifier of the sender before delivering
+the message. A client must consider `origin` authoritative and ignore any
+identifier found inside the payload, since only the relay can set it.
+
+The relay refuses to route a message when either end lacks the `screen_share/1`
+capability, when a controlling computer has not been authorized on the channel,
+or when the sender exceeds 250 signalling messages over ten seconds. Failures
+are reported to the sender with an ordinary `error` message whose `error` field
+holds `screen_share_unsupported`, `not_authorized`, `invalid_parameters`,
+`target_not_found` or `turn_unavailable`. A missing target is reported the same
+way as an unauthorized one, so that the identifiers present on a relay cannot be
+discovered by trying them.
+
+#### Encryption
+
+When the session is encrypted, these messages are not wrapped in the usual
+`encrypted` envelope, because the relay has to read `type` and `target` to
+deliver them. Instead the routing fields stay readable and everything else is
+sealed in an `enc` object holding the base64 encoded `nonce`, `data` and `tag`
+of an AES-GCM operation keyed with the session password. A message arriving
+without a readable `enc` object was not produced by a peer holding that
+password, and is dropped.
+
+#### ICE servers
+
+A client asks the relay for the servers it should use with a `turn_credentials`
+message carrying nothing else. The relay answers with the same type. TURN
+credentials are derived from a secret the clients never see and expire after
+`ttl` seconds, so they are requested again for every session.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "turn_credentials": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "turn_credentials" },
+        "ice_servers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "urls": { "type": "array", "items": { "type": "string" } },
+              "username": { "type": "string", "description": "Present on TURN entries only." },
+              "credential": { "type": "string", "description": "Present on TURN entries only." }
+            },
+            "required": ["urls"]
+          }
+        },
+        "ttl": { "type": "integer", "description": "Lifetime of the credentials, in seconds." }
+      },
+      "required": ["type"]
+    }
+  }
+}
+```
+
+#### Session setup
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "screen_share_request": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "screen_share_request" },
+        "target": { "type": "integer" },
+        "origin": { "type": "integer" },
+        "allow_input": { "type": "boolean", "description": "Whether the sender is willing to drive the mouse. The receiver still decides on its own." }
+      },
+      "required": ["type", "target"]
+    },
+    "screen_share_response": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "screen_share_response" },
+        "target": { "type": "integer" },
+        "origin": { "type": "integer" },
+        "accepted": { "type": "boolean" },
+        "allow_input": { "type": "boolean", "description": "Whether mouse control was actually granted." },
+        "reason": { "enum": ["declined", "busy", "unavailable"], "description": "Present when the request was refused." }
+      },
+      "required": ["type", "target", "accepted"]
+    },
+    "screen_share_stop": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "screen_share_stop" },
+        "target": { "type": "integer" },
+        "origin": { "type": "integer" }
+      },
+      "required": ["type", "target"]
+    },
+    "webrtc_offer": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "webrtc_offer" },
+        "target": { "type": "integer" },
+        "origin": { "type": "integer" },
+        "sdp": { "type": "string" }
+      },
+      "required": ["type", "target", "sdp"]
+    },
+    "webrtc_answer": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "webrtc_answer" },
+        "target": { "type": "integer" },
+        "origin": { "type": "integer" },
+        "sdp": { "type": "string" }
+      },
+      "required": ["type", "target", "sdp"]
+    },
+    "webrtc_candidate": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "webrtc_candidate" },
+        "target": { "type": "integer" },
+        "origin": { "type": "integer" },
+        "candidate": { "type": "string", "description": "A JSON encoded RTCIceCandidateInit, carried as a string." }
+      },
+      "required": ["type", "target", "candidate"]
+    }
+  }
+}
+```
+
+A session runs as follows. The controlling computer sends
+`screen_share_request`. The controlled one asks its user, unless that
+confirmation was turned off, and answers with `screen_share_response`. On
+acceptance the controlled computer opens the WebRTC session, so it is the one
+sending `webrtc_offer`; the controlling computer replies with `webrtc_answer`.
+Both ends send `webrtc_candidate` as routes are discovered, without waiting for
+the description exchange to complete. Either end may send `screen_share_stop`,
+and a session ends by itself when the relay connection drops.
+
+`allow_input` never grants anything on its own. The controlling computer states
+what it would like, but the controlled computer only ever grants what its own
+configuration allows, and the answer says what was really granted. Only mouse
+actions can be replayed this way: no keyboard input travels over this link.
+
+The pictures themselves are carried on a WebRTC data channel rather than a media
+track, as still frames compressed to JPEG and split into chunks. That format is
+private to the two helper programs and is not part of this protocol.
+
 ### Braille Support
 
 ```json
@@ -476,6 +667,11 @@ use the same code and either of them may start a transfer.
 - All connections are encrypted using SSL/TLS.
 - Clients can verify the server's certificate fingerprint to prevent man-in-the-middle attacks.
 - The channel key acts as a shared secret for authentication.
+- Screen sharing signalling is delivered to a single client, chosen by the relay
+  from the `target` field, and stamped with an `origin` a client cannot forge.
+  Its payload is sealed separately so that the relay routes the message without
+  reading what it carries. Sharing a screen and granting mouse control are two
+  distinct decisions, both taken on the computer being shared.
 
 ## Error Handling
 

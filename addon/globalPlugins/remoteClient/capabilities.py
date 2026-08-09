@@ -29,8 +29,30 @@ NEGOTIATION_VERSION = 1
 #: Streaming file transfer made of acknowledged chunks, without the 10 MB limit.
 FEATURE_CHUNKED_FILE_TRANSFER = "chunked_file_transfer"
 
+#: WebRTC screen sharing of the controlled computer, with optional mouse control.
+FEATURE_SCREEN_SHARE = "screen_share"
+
 #: Optional features implemented by this build.
 LOCAL_FEATURES = (FEATURE_CHUNKED_FILE_TRANSFER,)
+
+#: Capability strings understood by the relay itself, which uses them to decide
+#: whether it may route screen sharing signalling to a given client.
+RELAY_CAPABILITY_SCREEN_SHARE = "screen_share/1"
+RELAY_CAPABILITY_INPUT_CONTROL = "input_control/1"
+
+
+def available_features():
+	"""Return the optional features this installation can actually offer right now.
+
+	Screen sharing depends on a helper program which may not be shipped or may be
+	turned off in the configuration, so it is only announced when usable.
+	"""
+	features = list(LOCAL_FEATURES)
+	# Imported lazily: screen_share imports this module to read the feature names.
+	from . import screen_share
+	if screen_share.is_available():
+		features.append(FEATURE_SCREEN_SHARE)
+	return features
 
 
 def get_addon_version():
@@ -60,6 +82,7 @@ class CapabilityNegotiator:
 		callbacks.register_callback("msg_client_joined", self.handle_client_joined)
 		callbacks.register_callback("msg_client_left", self.handle_client_left)
 		callbacks.register_callback(TransportEvents.CONNECTED, self.announce)
+		callbacks.register_callback(TransportEvents.CONNECTED, self.announce_to_relay)
 		callbacks.register_callback(TransportEvents.DISCONNECTED, self.reset)
 
 	def local_capabilities(self, reply=True):
@@ -70,10 +93,28 @@ class CapabilityNegotiator:
 			"negotiation_version": NEGOTIATION_VERSION,
 			"addon": "TeleNVDA",
 			"addon_version": get_addon_version(),
-			"features": list(LOCAL_FEATURES),
+			"features": available_features(),
 			"max_file_size": max_file_size,
 			"reply": reply,
 		}
+
+	def announce_to_relay(self):
+		"""Tell the relay which capabilities it may route signalling for.
+
+		Only the relay reads this message, and only a relay built with screen sharing
+		support does anything with it. Older relays simply forward it to the other
+		clients, which ignore an unknown message type.
+		"""
+		from . import screen_share
+		if not screen_share.is_available():
+			return
+		capabilities = [RELAY_CAPABILITY_SCREEN_SHARE]
+		if screen_share.is_input_control_allowed():
+			capabilities.append(RELAY_CAPABILITY_INPUT_CONTROL)
+		try:
+			self.transport.send(type="capabilities", capabilities=capabilities)
+		except Exception:
+			logger.exception("Unable to announce capabilities to the relay")
 
 	def announce(self, reply=True):
 		"""Tell the other members of the channel what this client supports."""
@@ -141,6 +182,14 @@ class CapabilityNegotiator:
 			if feature not in capabilities["features"]:
 				return False
 		return True
+
+	def peers_supporting(self, feature):
+		"""Return the identifiers of the peers which announced the given feature."""
+		return [
+			peer_id
+			for peer_id, capabilities in self.peer_capabilities.items()
+			if feature in capabilities["features"]
+		]
 
 	def negotiated_max_file_size(self):
 		"""Return the smallest size limit announced by the peers, or None when unlimited."""

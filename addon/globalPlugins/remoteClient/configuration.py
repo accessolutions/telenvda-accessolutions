@@ -75,6 +75,13 @@ configspec = StringIO("""
 	legacy_max_size_mb = integer(default=100)
 	max_received_size_mb = integer(default=0)
 
+[screen_share]
+	enabled = boolean(default=True)
+	require_confirmation = boolean(default=True)
+	allow_remote_input = boolean(default=False)
+	max_fps = integer(default=15)
+	quality = option("low", "balanced", "high", default="balanced")
+
 [keep_awake]
 	enabled = boolean(default=True)
 	delay_seconds = integer(default=60)

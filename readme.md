@@ -24,6 +24,8 @@ version 2 or later.
 * File transfer, clipboard sharing, remote speech, braille, and secure-desktop support.
 * A connectivity test that can check a controller using TCP or WebSocket.
 * Two remote screenshot workflows described below.
+* Optional peer to peer screen sharing of the controlled computer, with mouse
+  control when its user allows it.
 
 ## Installation
 
@@ -169,6 +171,37 @@ or in the user's temporary folder when no folder is configured.
 Treat screenshots as potentially sensitive information and share them only
 with authorized people.
 
+## Screen sharing
+
+The controlling computer can display the screen of the controlled one and, when
+its user agrees, move its mouse. Press **NVDA+Control+Shift+V** to start or stop
+sharing. The gesture works from either end: the controlling computer starts the
+session, and either computer can end it.
+
+The picture travels directly between the two computers whenever the network
+allows it, so it does not go through the relay server and does not consume its
+bandwidth. When no direct route exists, a TURN server declared by the relay is
+used as a last resort. Nothing is recorded at either end.
+
+Before anything is shared, the controlled computer asks its user to agree,
+unless that confirmation was turned off in the add-on options. Mouse control is
+a separate decision, turned off by default, and taken on the computer being
+controlled: whatever the controlling computer asks for, only what the local
+options allow is granted. No keyboard input travels over this link.
+
+Screen sharing needs a helper program shipped with the add-on, a relay started
+with screen sharing enabled, and both computers running a version of TeleNVDA
+that supports it. When any of these is missing, the command reports it and
+nothing else changes.
+
+The following options are available in the add-on settings:
+
+* **Allow sharing the screen of the controlled computer**, which turns the
+  whole feature off when cleared, on this computer only.
+* **Ask before sharing this screen**, on by default.
+* **Allow the controlling computer to use the mouse of this computer**, off by
+  default.
+
 ## Controlling the remote computer
 
 Press **NVDA+Alt+Tab** (Insert+Alt+Tab with the default NVDA key) to switch
@@ -216,6 +249,15 @@ ignored by Git.
 The build copies this file into the English documentation directory and
 converts the translated Markdown files to HTML. Keep the root `readme.md` as
 the English source instead of editing generated files under `addon/doc/en/`.
+
+The screen sharing helper is a separate Go program living in `helper/`. It is
+not rebuilt by SCons, so build it once with `powershell -File helper\build.ps1`
+before packaging an add-on that should offer screen sharing. The script writes
+`addon/globalPlugins/remoteClient/helpers/telenvda_screenshare.exe`, which the
+add-on then ships. A 32-bit program is produced by default, so that a single
+build serves every supported version of NVDA and Windows. The executable is
+ignored by Git, being a build product. Without it the add-on simply never
+offers screen sharing.
 
 ## Repository
 

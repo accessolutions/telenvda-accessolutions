@@ -15,6 +15,7 @@ from . import nvda_patcher
 from . import compat_screenshot
 from . import capabilities
 from . import file_transfer
+from . import screen_share
 from . import RelayTransport
 from collections import defaultdict
 from . import connection_info
@@ -45,6 +46,10 @@ EXCLUDED_SPEECH_COMMANDS = (
 
 class RemoteSession:
 
+	#: Part this end of the link plays when a screen is shared, or None when it
+	#: takes no part in it.
+	SCREEN_SHARE_ROLE = None
+
 	def __init__(self, local_machine, transport: RelayTransport):
 		self.local_machine = local_machine
 		self.patcher = None
@@ -56,6 +61,11 @@ class RemoteSession:
 		# The size accepted for incoming files depends on the configuration, so it is
 		# read again every time the capabilities are announced.
 		self.capabilities.max_file_size = self.file_transfer_manager.max_receive_size
+		self.screen_share = None
+		if self.SCREEN_SHARE_ROLE is not None:
+			self.screen_share = screen_share.ScreenShareManager(
+				transport, self.capabilities, self.SCREEN_SHARE_ROLE
+			)
 		self.client_count = 1
 
 	def handle_version_mismatch(self, **kwargs):
@@ -86,6 +96,9 @@ Please either use a different server or upgrade your version of the addon.""")
 
 class SlaveSession(RemoteSession):
 	"""Session that runs on the slave and manages state."""
+
+	#: This end owns the screen which is shared.
+	SCREEN_SHARE_ROLE = screen_share.ROLE_PUBLISHER
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
@@ -276,6 +289,9 @@ class SlaveSession(RemoteSession):
 			wx.CallAfter(ui.message, _("Screenshot sent"))
 
 class MasterSession(RemoteSession):
+
+	#: This end displays the screen of the other computer.
+	SCREEN_SHARE_ROLE = screen_share.ROLE_VIEWER
 
 	# How long a controlled computer running TeleNVDA is given to answer a PowerShell
 	# capture request before the compatible capture sequence is started instead.

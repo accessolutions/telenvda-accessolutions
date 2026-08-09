@@ -199,6 +199,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.script_ignoreNextGesture,
 			self.script_screenshot,
 			self.script_screenshot_powershell,
+			self.script_toggle_screen_share,
 		)
 		self.is_connect_dialog_open = False
 		self._connect_dialog = None
@@ -776,6 +777,28 @@ class GlobalPlugin(_GlobalPlugin):
 			ui.message(_("Clipboard pushed"))
 		except (TypeError, OSError):
 			ui.message(_("Unable to push clipboard"))
+
+	@script(
+		# Translators: toggle screen sharing gesture description
+		_("Shows or stops showing the screen of the controlled computer"),
+		gesture="kb:control+shift+NVDA+v",
+		**speakOnDemand)
+	def script_toggle_screen_share(self, gesture):
+		"""Start or stop watching the screen of the controlled computer.
+
+		The gesture works from either end: the controlling computer starts and stops
+		the session, while the controlled one can only end a session it accepted.
+		"""
+		session = None
+		if self.master_session is not None and self._is_master_connected():
+			session = self.master_session
+		elif self.slave_session is not None and self._is_slave_connected():
+			session = self.slave_session
+		if session is None or session.screen_share is None:
+			ui.message(_("Not connected."))
+			return
+		configuration.record_activity()
+		ui.message(session.screen_share.toggle())
 
 	def _screenshot(self, method):
 		"""Get a screenshot of the controlled computer, whichever end the gesture was pressed on.
