@@ -29,6 +29,7 @@ import hmac
 import json
 import os
 import threading
+import time
 from logging import getLogger
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,7 +79,12 @@ class _Handler(BaseHTTPRequestHandler):
 		origin = self.headers.get("Origin")
 		# A page served by the bridge itself sends no Origin on same origin requests,
 		# so its absence is normal. A value that is present and wrong is not.
-		return origin is None or origin == self.server.origin
+		if origin is not None and origin != self.server.origin:
+			return False
+		# Only a request carrying the token of this session proves the page is alive,
+		# which is what tells the engine the session is still going.
+		self.server.last_contact = time.monotonic()
+		return True
 
 	def _reply(self, status, body=b"", content_type="application/json"):
 		self.send_response(status)
@@ -143,6 +149,9 @@ class _Handler(BaseHTTPRequestHandler):
 class _Server(ThreadingHTTPServer):
 	daemon_threads = True
 
+	#: Set as soon as the page asks for anything at all. Zero while it never did.
+	last_contact = 0.0
+
 	def handle_error(self, request, client_address):
 		# The browser drops its polling sockets without ceremony when the window
 		# closes. The traceback the base class would print is never interesting.
@@ -182,6 +191,19 @@ class LocalBridge:
 	@property
 	def running(self):
 		return self._server is not None
+
+	@property
+	def silence(self):
+		"""Seconds since the page last asked for anything, or None while it never did.
+
+		This, rather than the browser process, is what says whether the page is still
+		there: the command line the engine starts often hands over to another process
+		and exits at once, so a dead process proves nothing.
+		"""
+		server = self._server
+		if server is None or not server.last_contact:
+			return None
+		return time.monotonic() - server.last_contact
 
 	def start(self):
 		"""Bind, serve, and return the local origin. Raises RuntimeError when unusable."""

@@ -20,8 +20,16 @@ from . import edge, local_bridge
 
 logger = getLogger("edge_engine")
 
-#: How often the browser process is checked for having gone away on its own.
+#: How often the state of the session is checked.
 _WATCH_INTERVAL = 1.0
+
+#: Time given to the browser to open the page before the session is given up on.
+#: A first start on a brand new profile is not instant.
+_START_GRACE = 30.0
+
+#: The page polls every 150 ms, so a silence this long means it is gone: window
+#: closed, tab crashed, or browser killed. The margin covers a busy computer.
+_SILENCE_LIMIT = 5.0
 
 #: The role whose window is hidden. Kept in step with screen_share.ROLE_PUBLISHER and
 #: with the role the signalling page reads from its address.
@@ -50,7 +58,8 @@ class EdgeEngine:
 
 	@property
 	def running(self):
-		return self._window.running
+		# The bridge, not the browser process: see LocalBridge.silence.
+		return self._bridge.running
 
 	def start(self, role):
 		"""Open the browser on the signalling page. Raises RuntimeError when unusable."""
@@ -68,7 +77,12 @@ class EdgeEngine:
 		except Exception:
 			self._bridge.stop()
 			raise
-		self._watcher = threading.Thread(target=self._watch, name="screen_share_engine", daemon=True)
+		self._watcher = threading.Thread(
+			target=self._watch,
+			args=(self._bridge,),
+			name="screen_share_engine",
+			daemon=True,
+		)
 		self._watcher.start()
 
 	def send(self, **command):
@@ -104,16 +118,33 @@ class EdgeEngine:
 		except Exception:
 			logger.exception("Error while handling a screen sharing event")
 
-	def _watch(self):
-		"""Report a browser window the user closed, or which crashed."""
-		while not self._stopping:
+	def _watch(self, bridge):
+		"""Report a window the user closed, or which crashed.
+
+		The browser process cannot be used for this. The command line that is started
+		often hands the window over to another process and exits straight away, which
+		is routine when Edge is already running or when the parent process runs at a
+		different integrity level, as NVDA does. Watching it would tear the bridge
+		down while the page is still loading, and the window would then be left on a
+		connection refused error. What proves the page is alive is the page itself,
+		polling the bridge.
+		"""
+		started = time.monotonic()
+		while not self._stopping and self._bridge is bridge:
 			time.sleep(_WATCH_INTERVAL)
-			if self._stopping:
+			if self._stopping or self._bridge is not bridge:
 				return
-			if not self._window.running:
-				logger.debug("The screen sharing browser window is gone")
-				try:
-					self._on_exit()
-				except Exception:
-					logger.exception("Error while handling the end of the browser window")
-				return
+			silence = bridge.silence
+			if silence is None:
+				if time.monotonic() - started < _START_GRACE:
+					continue
+				logger.debug("The screen sharing page never opened")
+			elif silence < _SILENCE_LIMIT:
+				continue
+			else:
+				logger.debug("The screen sharing page went silent for %.1f s", silence)
+			try:
+				self._on_exit()
+			except Exception:
+				logger.exception("Error while handling the end of the browser window")
+			return
