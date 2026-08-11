@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TeleNVDA screen sharing</title>
+<style>
+	html, body { margin: 0; padding: 0; height: 100%; background: #000; color: #ddd;
+		font-family: Segoe UI, sans-serif; overflow: hidden; }
+	video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+	#message { padding: 1em; font-size: 1.1em; }
+</style>
+</head>
+<body>
+<video id="video" autoplay muted playsinline></video>
+<p id="message"></p>
+
+<script>
+"use strict";
+
+/*
+ * The whole video side of screen sharing lives in this page. NVDA never touches a
+ * pixel: it hands this page the addresses of the ICE servers and the session
+ * descriptions of the far end, and reads back what this page produces.
+ *
+ * The page is served by the add-on on 127.0.0.1, behind a token which arrives in
+ * the query string. Every request carries it. Nothing else on the computer knows
+ * it, which is what keeps another website from driving this server.
+ *
+ * The exchange with NVDA is a mailbox: commands are polled, events are posted.
+ */
+
+const params = new URLSearchParams(location.search);
+const token = params.get("token") || "";
+const role = params.get("role");
+const isPublisher = role === "publisher";
+
+const video = document.getElementById("video");
+const messageNode = document.getElementById("message");
+
+let pc = null;
+let stream = null;
+let since = 0;
+let stopped = false;
+/* Candidates that arrive before the remote description does cannot be added yet. */
+const pendingCandidates = [];
+
+function show(text) {
+	messageNode.textContent = text;
+}
+
+function post(payload) {
+	return fetch("/event?token=" + encodeURIComponent(token), {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	}).catch(() => {
+		/* NVDA closes the bridge when the session ends, and the browser window is
+		   about to be closed too. There is nothing useful to report to. */
+	});
+}
+
+function fail(reason) {
+	post({ event: "failed", reason: String(reason) });
+	show("" + reason);
+}
+
+/* ------------------------------------------------------------ session setup */
+
+function createConnection(iceServers) {
+	pc = new RTCPeerConnection({
+		iceServers: Array.isArray(iceServers) ? iceServers : [],
+		bundlePolicy: "max-bundle",
+	});
+	pc.onicecandidate = (event) => {
+		if (event.candidate) {
+			post({ event: "candidate", candidate: JSON.stringify(event.candidate.toJSON()) });
+		}
+	};
+	pc.onconnectionstatechange = () => {
+		if (stopped) { return; }
+		if (pc.connectionState === "connected") {
+			post({ event: "connected" });
+			show("");
+		} else if (pc.connectionState === "failed") {
+			fail("The connection could not be established");
+		} else if (pc.connectionState === "closed") {
+			post({ event: "closed" });
+		}
+	};
+	if (!isPublisher) {
+		pc.ontrack = (event) => {
+			video.srcObject = event.streams[0];
+		};
+	}
+}
+
+async function startPublisher(command) {
+	video.remove();
+	const constraints = {
+		video: { frameRate: Math.max(1, Math.min(30, command.max_fps || 15)) },
+		audio: false,
+	};
+	try {
+		stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+	} catch (error) {
+		/* The add-on starts Edge with the flag that suppresses the source picker, so
+		   this normally cannot happen. If a future version of the browser drops that
+		   flag, the failure has to travel back rather than leave a window waiting for
+		   a click nobody can see. */
+		fail("Screen capture was refused: " + (error && error.name ? error.name : error));
+		return;
+	}
+	/* The user can also stop the capture from the browser indicator. */
+	stream.getVideoTracks().forEach((track) => {
+		track.onended = () => { post({ event: "closed" }); };
+	});
+	applyQuality(command.quality);
+	stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+	const offer = await pc.createOffer();
+	await pc.setLocalDescription(offer);
+	post({ event: "offer", sdp: pc.localDescription.sdp });
+}
+
+function applyQuality(quality) {
+	/* Screen content is mostly still, so a low bitrate is enough and leaves the
+	   network to the speech and braille traffic, which must never be delayed. */
+	const ceilings = { low: 300000, balanced: 1200000, high: 4000000 };
+	const maxBitrate = ceilings[quality] || ceilings.balanced;
+	pc.getSenders().forEach((sender) => {
+		if (!sender.track || sender.track.kind !== "video") { return; }
+		const parameters = sender.getParameters();
+		if (!parameters.encodings || !parameters.encodings.length) {
+			parameters.encodings = [{}];
+		}
+		parameters.encodings[0].maxBitrate = maxBitrate;
+		parameters.degradationPreference = "maintain-resolution";
+		sender.setParameters(parameters).catch(() => {});
+	});
+}
+
+/* --------------------------------------------------------- commands from NVDA */
+
+async function handleCommand(command) {
+	const name = command.command;
+	if (name === "start") {
+		if (pc) { return; }
+		createConnection(command.ice_servers);
+		if (isPublisher) {
+			await startPublisher(command);
+		} else {
+			show("Waiting for the picture...");
+		}
+	} else if (name === "offer") {
+		if (!pc) { return; }
+		await pc.setRemoteDescription({ type: "offer", sdp: command.sdp });
+		await drainCandidates();
+		const answer = await pc.createAnswer();
+		await pc.setLocalDescription(answer);
+		post({ event: "answer", sdp: pc.localDescription.sdp });
+	} else if (name === "answer") {
+		if (!pc) { return; }
+		await pc.setRemoteDescription({ type: "answer", sdp: command.sdp });
+		await drainCandidates();
+	} else if (name === "candidate") {
+		let candidate;
+		try {
+			candidate = JSON.parse(command.candidate);
+		} catch (error) {
+			return;
+		}
+		if (pc && pc.remoteDescription) {
+			await pc.addIceCandidate(candidate).catch(() => {});
+		} else {
+			pendingCandidates.push(candidate);
+		}
+	} else if (name === "stop") {
+		shutdown();
+	}
+}
+
+async function drainCandidates() {
+	while (pendingCandidates.length) {
+		await pc.addIceCandidate(pendingCandidates.shift()).catch(() => {});
+	}
+}
+
+function shutdown() {
+	stopped = true;
+	if (stream) {
+		stream.getTracks().forEach((track) => track.stop());
+		stream = null;
+	}
+	if (pc) {
+		pc.close();
+		pc = null;
+	}
+	window.close();
+}
+
+async function poll() {
+	while (!stopped) {
+		try {
+			const response = await fetch("/poll?token=" + encodeURIComponent(token) + "&since=" + since);
+			const payload = await response.json();
+			since = payload.next;
+			for (const command of payload.commands) {
+				await handleCommand(command);
+			}
+		} catch (error) {
+			/* The bridge is gone, which means the session is over. */
+			shutdown();
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 150));
+	}
+}
+
+window.addEventListener("pagehide", () => {
+	if (!stopped) { post({ event: "closed" }); }
+});
+
+if (role !== "publisher" && role !== "viewer") {
+	show("Unknown role");
+} else {
+	poll();
+}
+</script>
+</body>
+</html>

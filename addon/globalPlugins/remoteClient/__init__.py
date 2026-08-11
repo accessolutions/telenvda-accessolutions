@@ -200,6 +200,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.script_screenshot,
 			self.script_screenshot_powershell,
 			self.script_toggle_screen_share,
+			self.script_toggle_remote_mouse,
 		)
 		self.is_connect_dialog_open = False
 		self._connect_dialog = None
@@ -567,8 +568,17 @@ class GlobalPlugin(_GlobalPlugin):
 			thread.join()
 		self.mouse_hook_thread = None
 
-	def mouse_hook_callback(self, button, pressed):
+	def mouse_hook_callback(self, action=None, button=None, pressed=None, delta=None, horizontal=False, **kwargs):
 		self.keep_awake.notify_local_input()
+		session = self.master_session
+		if session is not None:
+			session.mouse_sender.handle_hook_event(
+				action=action,
+				button=button,
+				pressed=pressed,
+				delta=delta,
+				horizontal=horizontal,
+			)
 
 	def terminate(self):
 		global client
@@ -799,6 +809,33 @@ class GlobalPlugin(_GlobalPlugin):
 			return
 		configuration.record_activity()
 		ui.message(session.screen_share.toggle())
+
+	@script(
+		# Translators: toggle remote mouse control gesture description
+		_("Starts or stops driving the mouse of the controlled computer"),
+		gesture="kb:control+shift+NVDA+m",
+		**speakOnDemand)
+	def script_toggle_remote_mouse(self, gesture):
+		"""Mirror the local mouse onto the controlled computer, or stop doing so.
+
+		No picture is needed: the screen reader of the controlled computer announces
+		whatever the pointer lands on, and that speech comes back over the connection
+		which is already open.
+		"""
+		if self.master_session is None or not self._is_master_connected():
+			# Translators: message spoken when remote mouse control is asked for without a connection.
+			ui.message(_("Not connected."))
+			return
+		sender = self.master_session.mouse_sender
+		configuration.record_activity()
+		if sender.enabled:
+			sender.stop()
+			# Translators: message spoken when the local mouse stops driving the controlled computer.
+			ui.message(_("Remote mouse control stopped"))
+		else:
+			sender.start()
+			# Translators: message spoken when the local mouse starts driving the controlled computer.
+			ui.message(_("Remote mouse control started"))
 
 	def _screenshot(self, method):
 		"""Get a screenshot of the controlled computer, whichever end the gesture was pressed on.

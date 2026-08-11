@@ -39,27 +39,6 @@ jobs:
     # - name: Code checks
       # run: export SKIP=no-commit-to-branch; pre-commit run --all
 
-    - name: Set up Go
-      uses: actions/setup-go@v7
-      with:
-        go-version-file: helper/go.mod
-        cache-dependency-path: helper/go.sum
-
-    # The helper is a Windows executable that is not kept under version control,
-    # so it has to be produced here or the add-on would ship without it and
-    # screen sharing would report itself as unavailable.
-    - name: building screen sharing helper
-      shell: bash
-      working-directory: helper
-      env:
-        GOOS: windows
-        GOARCH: "386"
-        CGO_ENABLED: "0"
-      run: |
-        mkdir -p ../addon/globalPlugins/remoteClient/helpers
-        go build -trimpath -ldflags '-s -w' -o ../addon/globalPlugins/remoteClient/helpers/telenvda_screenshare.exe .
-        ls -l ../addon/globalPlugins/remoteClient/helpers
-
     - name: building addon
       shell: bash
       run: |

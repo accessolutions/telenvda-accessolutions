@@ -1,25 +1,23 @@
 """Screen sharing of the controlled computer, over a peer to peer WebRTC link.
 
-The add-on itself never encodes or decodes video: it drives a helper program which
-owns the WebRTC session, captures the screen on the controlled computer and shows
-it on the controlling one. NVDA only carries the signalling messages needed to set
-that link up, through the relay both computers are already connected to.
+The add-on itself never encodes or decodes video. It opens a Microsoft Edge window
+on a page it serves on the loopback interface, and that page owns the WebRTC
+session: it captures the screen on the controlled computer and displays it on the
+controlling one. NVDA only carries the signalling needed to set that link up,
+through the relay both computers are already connected to.
 
-Two reasons make the helper mandatory rather than convenient. A WebRTC stack such
-as aiortc cannot be vendored in the add-on, because NVDA ships three different
-Python ABIs and no wheel exists for the oldest one. Video encoding in the same
-process as NVDA would also compete with speech for the interpreter lock, which is
-unacceptable for a screen reader.
+The browser was chosen over a Python stack for two reasons. A WebRTC stack such as
+aiortc cannot be vendored in the add-on, because NVDA ships three different Python
+ABIs and no wheel exists for the oldest one. Video encoding in the same process as
+NVDA would also compete with speech for the interpreter lock, which is
+unacceptable for a screen reader. Edge is already installed on every supported
+version of Windows, updates itself, and encodes in hardware.
 
-Everything here degrades gracefully. When the helper is missing, or when screen
-sharing is turned off in the configuration, :func:`is_available` returns False,
-the feature is never announced, and the add-on behaves exactly as before.
+Everything here degrades gracefully. When Edge is absent, or when screen sharing
+is turned off in the configuration, :func:`is_available` returns False, the
+feature is never announced, and the add-on behaves exactly as before.
 """
 
-import json
-import os
-import subprocess
-import threading
 from logging import getLogger
 
 import wx
@@ -28,7 +26,7 @@ import addonHandler
 import gui
 import ui
 
-from . import capabilities, configuration
+from . import capabilities, configuration, edge_engine
 from .transport import TransportEvents
 
 logger = getLogger("screen_share")
@@ -37,12 +35,6 @@ try:
 	addonHandler.initTranslation()
 except addonHandler.AddonError:
 	logger.warning("Unable to initialise translations. This may be because the addon is running from NVDA scratchpad.")
-
-#: Folder of the add-on holding the helper program.
-HELPER_SUBDIR = "helpers"
-
-#: Name of the helper program, which is shipped separately from the add-on itself.
-HELPER_EXECUTABLE = "telenvda_screenshare.exe"
 
 #: Role played by this computer during a session.
 ROLE_PUBLISHER = "publisher"  # The controlled computer, which captures its screen.
@@ -66,14 +58,8 @@ MSG_CANDIDATE = "webrtc_candidate"
 MSG_TURN_CREDENTIALS = "turn_credentials"
 
 #: Longest session description or ICE candidate accepted from a peer. A malicious
-#: or broken peer must not be able to make the helper allocate unbounded memory.
+#: or broken peer must not be able to make the engine allocate unbounded memory.
 MAX_SIGNALING_PAYLOAD = 64 * 1024
-
-
-def get_helper_path():
-	"""Return the absolute path of the helper program, or None when it is absent."""
-	path = os.path.join(os.path.abspath(os.path.dirname(__file__)), HELPER_SUBDIR, HELPER_EXECUTABLE)
-	return path if os.path.isfile(path) else None
 
 
 def is_enabled():
@@ -87,16 +73,17 @@ def is_enabled():
 
 def is_available():
 	"""Whether this installation can take part in a screen sharing session."""
-	return is_enabled() and get_helper_path() is not None
+	return is_enabled() and edge_engine.is_available()
 
 
 def is_input_control_allowed():
-	"""Whether this computer accepts to be driven with the remote mouse."""
-	try:
-		return bool(configuration.get_config()["screen_share"]["allow_remote_input"])
-	except Exception:
-		logger.debug("Unable to read the remote input configuration", exc_info=True)
-		return False
+	"""Whether this computer accepts to be driven with the remote mouse.
+
+	The setting no longer belongs to screen sharing, since the remote mouse is useful
+	on its own, so the answer comes from :mod:`mouse_control`.
+	"""
+	from . import mouse_control
+	return mouse_control.is_remote_input_allowed()
 
 
 def _requires_confirmation():
@@ -116,107 +103,6 @@ def _capture_settings():
 		return {"max_fps": 15, "quality": "balanced"}
 
 
-class ScreenShareHelper:
-	"""The helper process, driven with one JSON object per line on its standard streams.
-
-	Commands are written to its standard input, events are read from its standard
-	output. Keeping the exchange line based means the helper can be rewritten in any
-	language without touching the add-on.
-	"""
-
-	def __init__(self, on_event, on_exit):
-		self._on_event = on_event
-		self._on_exit = on_exit
-		self._process = None
-		self._reader = None
-		self._write_lock = threading.Lock()
-
-	@property
-	def running(self):
-		return self._process is not None and self._process.poll() is None
-
-	def start(self, role):
-		path = get_helper_path()
-		if path is None:
-			raise RuntimeError("The screen sharing helper is not installed")
-		if self.running:
-			return
-		# The helper is always started from its absolute path, with no shell and with
-		# arguments passed as a list, so that nothing from the environment can be
-		# substituted for it.
-		self._process = subprocess.Popen(
-			[path, "--role", role],
-			stdin=subprocess.PIPE,
-			stdout=subprocess.PIPE,
-			stderr=subprocess.DEVNULL,
-			cwd=os.path.dirname(path),
-			creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-		)
-		self._reader = threading.Thread(target=self._read_events, name="screen_share_helper", daemon=True)
-		self._reader.start()
-
-	def send(self, **command):
-		"""Send one command to the helper, ignoring a helper which already stopped."""
-		if not self.running:
-			return
-		line = json.dumps(command).encode("utf-8") + b"\n"
-		with self._write_lock:
-			try:
-				self._process.stdin.write(line)
-				self._process.stdin.flush()
-			except (OSError, ValueError):
-				logger.debug("The screen sharing helper closed its input", exc_info=True)
-
-	def stop(self):
-		process, self._process = self._process, None
-		if process is None:
-			return
-		try:
-			if process.poll() is None:
-				try:
-					process.stdin.write(b'{"command": "stop"}\n')
-					process.stdin.flush()
-				except (OSError, ValueError):
-					pass
-				try:
-					process.wait(timeout=3)
-				except subprocess.TimeoutExpired:
-					logger.warning("The screen sharing helper did not stop, killing it")
-					process.kill()
-		except Exception:
-			logger.exception("Unable to stop the screen sharing helper")
-
-	def _read_events(self):
-		process = self._process
-		if process is None:
-			return
-		try:
-			for line in process.stdout:
-				line = line.strip()
-				if not line:
-					continue
-				try:
-					event = json.loads(line.decode("utf-8"))
-				except (ValueError, UnicodeDecodeError):
-					logger.warning("Discarding an unreadable event from the screen sharing helper")
-					continue
-				if not isinstance(event, dict):
-					continue
-				try:
-					self._on_event(event)
-				except Exception:
-					logger.exception("Error while handling a screen sharing helper event")
-		except (OSError, ValueError):
-			logger.debug("The screen sharing helper closed its output", exc_info=True)
-		finally:
-			if self._process is process:
-				# The helper died on its own rather than being stopped by us.
-				try:
-					self._on_exit()
-				except Exception:
-					logger.exception("Error while handling the end of the screen sharing helper")
-
-
 class ScreenShareManager:
 	"""Drive a screen sharing session and carry its signalling over the relay."""
 
@@ -227,7 +113,7 @@ class ScreenShareManager:
 		self.state = STATE_IDLE
 		#: Identifier of the peer this session is held with.
 		self.peer_id = None
-		self.helper = ScreenShareHelper(self._handle_helper_event, self._handle_helper_exit)
+		self.helper = edge_engine.EdgeEngine(self._handle_helper_event, self._handle_helper_exit)
 		#: ICE servers given by the relay, used as a fallback when a direct link fails.
 		self.ice_servers = []
 		callbacks = transport.callback_manager
@@ -272,7 +158,7 @@ class ScreenShareManager:
 			# Translators: message spoken when screen sharing is requested from the wrong computer
 			return _("Screen sharing can only be started from the controlling computer")
 		if not is_available():
-			# Translators: message spoken when the screen sharing helper is missing
+			# Translators: message spoken when screen sharing cannot run on this computer
 			return _("Screen sharing is not available on this computer")
 		peers = self.negotiator.peers_supporting(capabilities.FEATURE_SCREEN_SHARE)
 		if not peers:
@@ -351,7 +237,7 @@ class ScreenShareManager:
 		try:
 			self.helper.start(ROLE_PUBLISHER)
 		except Exception:
-			logger.exception("Unable to start the screen sharing helper")
+			logger.exception("Unable to start the screen sharing video engine")
 			self.state = STATE_IDLE
 			self.peer_id = None
 			self._refuse(origin, "unavailable")
@@ -385,9 +271,9 @@ class ScreenShareManager:
 		try:
 			self.helper.start(ROLE_VIEWER)
 		except Exception:
-			logger.exception("Unable to start the screen sharing helper")
+			logger.exception("Unable to start the screen sharing video engine")
 			self.stop()
-			# Translators: message spoken when the screen sharing helper could not be started
+			# Translators: message spoken when the screen sharing window could not be opened
 			ui.message(_("Unable to start screen sharing"))
 			return
 		self.helper.send(
@@ -419,7 +305,7 @@ class ScreenShareManager:
 			self.ice_servers = ice_servers
 
 	def _forward_to_helper(self, origin, kind, **payload):
-		"""Hand a session description or an ICE candidate over to the helper."""
+		"""Hand a session description or an ICE candidate over to the video engine."""
 		if not self._accept_from(origin) or origin != self.peer_id:
 			return
 		if self.state not in (STATE_CONNECTING, STATE_ACTIVE):
@@ -442,7 +328,7 @@ class ScreenShareManager:
 			return False
 		return True
 
-	# Events coming from the helper.
+	# Events coming from the video engine.
 
 	def _handle_helper_event(self, event):
 		kind = event.get("event")

@@ -82,6 +82,10 @@ configspec = StringIO("""
 	max_fps = integer(default=15)
 	quality = option("low", "balanced", "high", default="balanced")
 
+[input_control]
+	allow_remote_input = boolean(default=False)
+	require_confirmation = boolean(default=True)
+
 [keep_awake]
 	enabled = boolean(default=True)
 	delay_seconds = integer(default=60)
@@ -108,6 +112,19 @@ def _migrate_proxy_mode(config):
 		return True
 	return False
 
+def _migrate_remote_input(config):
+	"""Move the remote input permission out of the screen sharing section.
+
+	Controlling the remote mouse no longer needs a picture, so the setting now lives in
+	its own section. Users who had already allowed it keep their choice.
+	"""
+	if config['input_control'].get('allow_remote_input'):
+		return False
+	if not config['screen_share'].get('allow_remote_input'):
+		return False
+	config['input_control']['allow_remote_input'] = True
+	return True
+
 def get_config():
 	global _config
 	if not _config:
@@ -115,7 +132,9 @@ def get_config():
 		_config = configobj.ConfigObj(infile=path, configspec=configspec, default_encoding='utf8', create_empty=not readonly)
 		val = validate.Validator()
 		_config.validate(val, copy=True)
-		if _migrate_proxy_mode(_config) and not readonly:
+		migrated = _migrate_proxy_mode(_config)
+		migrated = _migrate_remote_input(_config) or migrated
+		if migrated and not readonly:
 			try:
 				_config.write()
 			except Exception:

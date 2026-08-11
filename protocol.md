@@ -194,6 +194,19 @@ Below is a detailed specification of each message type using JSONSchema:
       },
       "required": ["type", "vk_code", "scan_code", "extended", "pressed"]
     },
+    "mouse": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "mouse" },
+        "t": { "enum": ["m", "md", "mu", "w"] },
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "b": { "enum": ["left", "right", "middle"] },
+        "d": { "type": "integer" },
+        "h": { "type": "boolean" }
+      },
+      "required": ["type", "t"]
+    },
     "speak": {
       "type": "object",
       "properties": {
@@ -323,6 +336,35 @@ end:
 Upon receiving a `screenshot` message, the controlling machine writes the
 decoded image to a temporary file and opens it with the system's default image
 viewer.
+
+#### Remote mouse
+
+The `mouse` message lets the controlling machine drive the pointer of the
+controlled machine. It always travels from master to slave; a slave never emits
+it. Relays forward it like any other message, so no server support is needed.
+
+The `t` field says what happened: `m` for a move, `md` and `mu` for a button
+press and release, `w` for the wheel. Buttons are named in `b`, wheel notches in
+`d` (positive scrolls away from the user) with `h` set for a horizontal wheel.
+Button and wheel events may carry a position too, so that a click lands where the
+user aimed even if the preceding move was dropped.
+
+`x` and `y` are **fractions of the virtual desktop**, between 0 and 1, never
+pixels. The two machines rarely share a resolution, a scaling factor or a monitor
+layout, so a pixel position would land somewhere else on the other side. The
+controlling machine samples its pointer about twenty times per second and skips
+movements too small to matter, rather than sending every operating system event.
+
+The controlled machine applies these events with `SendInput` only when its own
+configuration allows remote input, and after its user has agreed if confirmation
+is required. The agreement is forgotten when the connection ends, so reconnecting
+never silently reuses an old answer. Injected events are tagged so that the local
+mouse hook ignores them, which prevents a machine acting as both ends from
+echoing events back and forth.
+
+This feature is useful even without screen sharing: the screen reader of the
+controlled machine announces whatever the pointer lands on, and that speech
+returns over the connection which is already open.
 
 ### File Transfer
 

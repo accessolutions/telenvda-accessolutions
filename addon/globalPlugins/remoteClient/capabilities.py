@@ -105,12 +105,16 @@ class CapabilityNegotiator:
 		support does anything with it. Older relays simply forward it to the other
 		clients, which ignore an unknown message type.
 		"""
-		from . import screen_share
-		if not screen_share.is_available():
-			return
-		capabilities = [RELAY_CAPABILITY_SCREEN_SHARE]
-		if screen_share.is_input_control_allowed():
+		from . import mouse_control, screen_share
+		capabilities = []
+		if screen_share.is_available():
+			capabilities.append(RELAY_CAPABILITY_SCREEN_SHARE)
+		# Driving the remote mouse needs no picture and no helper program, so it is
+		# announced on its own even when screen sharing is unavailable.
+		if mouse_control.is_remote_input_allowed():
 			capabilities.append(RELAY_CAPABILITY_INPUT_CONTROL)
+		if not capabilities:
+			return
 		try:
 			self.transport.send(type="capabilities", capabilities=capabilities)
 		except Exception:

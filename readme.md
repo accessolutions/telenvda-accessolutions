@@ -189,10 +189,16 @@ a separate decision, turned off by default, and taken on the computer being
 controlled: whatever the controlling computer asks for, only what the local
 options allow is granted. No keyboard input travels over this link.
 
-Screen sharing needs a helper program shipped with the add-on, a relay started
-with screen sharing enabled, and both computers running a version of TeleNVDA
-that supports it. When any of these is missing, the command reports it and
-nothing else changes.
+Screen sharing needs Microsoft Edge installed on both computers, a relay
+started with screen sharing enabled, and both computers running a version of
+TeleNVDA that supports it. When any of these is missing, the command reports it
+and nothing else changes.
+
+Edge is used only as the video engine. On the computer being shared, it runs in
+a window kept off screen so that it never captures itself and never takes the
+focus away from NVDA. On the controlling computer, it shows the picture. No
+browsing profile of the user is touched: a temporary one is created for the
+session and removed afterwards.
 
 The following options are available in the add-on settings:
 
@@ -250,14 +256,11 @@ The build copies this file into the English documentation directory and
 converts the translated Markdown files to HTML. Keep the root `readme.md` as
 the English source instead of editing generated files under `addon/doc/en/`.
 
-The screen sharing helper is a separate Go program living in `helper/`. It is
-not rebuilt by SCons, so build it once with `powershell -File helper\build.ps1`
-before packaging an add-on that should offer screen sharing. The script writes
-`addon/globalPlugins/remoteClient/helpers/telenvda_screenshare.exe`, which the
-add-on then ships. A 32-bit program is produced by default, so that a single
-build serves every supported version of NVDA and Windows. The executable is
-ignored by Git, being a build product. Without it the add-on simply never
-offers screen sharing.
+Screen sharing needs no build step of its own. The video engine is Microsoft
+Edge, which is expected to be already installed on the machine, and the page it
+loads lives in `addon/globalPlugins/remoteClient/web/` and is packaged like any
+other add-on file. When Edge cannot be found, the add-on simply never offers
+screen sharing.
 
 ## Repository
 

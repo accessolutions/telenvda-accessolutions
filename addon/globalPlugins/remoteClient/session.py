@@ -16,6 +16,7 @@ from . import compat_screenshot
 from . import capabilities
 from . import file_transfer
 from . import screen_share
+from . import mouse_control
 from . import RelayTransport
 from collections import defaultdict
 from . import connection_info
@@ -125,6 +126,13 @@ class SlaveSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_send_SAS', self.handle_send_SAS)
 		self.transport.callback_manager.register_callback('msg_request_screenshot', self.handle_screenshot_request)
 		self.transport.callback_manager.register_callback('msg_request_screenshot_powershell', self.handle_powershell_screenshot_request)
+		self.mouse_receiver = mouse_control.MouseReceiver(self.local_machine)
+		self.transport.callback_manager.register_callback('msg_' + mouse_control.MESSAGE_TYPE, self.handle_mouse)
+
+	def handle_mouse(self, **kwargs):
+		"""A master is driving the mouse of this slave: record it as remote control activity."""
+		configuration.record_activity()
+		self.mouse_receiver.handle_message(**kwargs)
 
 	def handle_key(self, **kwargs):
 		"""A master performed a key action on this slave: record it as remote control activity."""
@@ -179,6 +187,9 @@ class SlaveSession(RemoteSession):
 		if self.patch_callbacks_added:
 			self.remove_patch_callbacks()
 			self.patch_callbacks_added = False
+		# The permission given for the mouse must not outlive the connection which asked
+		# for it, otherwise the next master would inherit it without ever being seen.
+		self.mouse_receiver.reset()
 
 	def handle_transport_disconnected(self):
 		cues.client_connected()
@@ -190,6 +201,7 @@ class SlaveSession(RemoteSession):
 			del self.masters[client['id']]
 		if not self.masters:
 			self.patcher.unpatch()
+			self.mouse_receiver.reset()
 		self.client_count -= 1
 
 	def set_display_size(self, sizes=None, **kwargs):
@@ -323,6 +335,11 @@ class MasterSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_screenshot', self.handle_screenshot)
 		self.transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.handle_connected)
 		self.transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.handle_disconnected)
+		self.mouse_sender = mouse_control.MouseSender(self.transport)
+		self.transport.callback_manager.register_callback(TransportEvents.CLOSING, self.handle_transport_closing)
+
+	def handle_transport_closing(self):
+		self.mouse_sender.stop()
 
 	def handle_set_clipboard_text(self, text=None, **kwargs):
 		"""A clipboard push may actually carry a screenshot from a standard NVDA Remote."""

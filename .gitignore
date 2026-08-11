@@ -20,6 +20,3 @@ __pycache__/
 /teleNVDA-server.pem
 .sconsign.dblite
 /[0-9]*.[0-9]*.[0-9]*.json
-
-# Screen sharing helper built from the helper folder
-/addon/globalPlugins/remoteClient/helpers/*.exe

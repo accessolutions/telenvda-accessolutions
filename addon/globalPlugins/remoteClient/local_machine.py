@@ -5,6 +5,7 @@ from . import input
 from . import cues
 from . import configuration
 from . import file_transfer
+from . import mouse_control
 import api
 import nvwave
 import tones
@@ -155,6 +156,47 @@ class LocalMachine:
 
 	def send_key(self, vk_code=None, extended=None, pressed=None, **kwargs):
 		wx.CallAfter(input.send_key, vk_code, None, extended, pressed)
+
+	def send_mouse(self, t=None, x=None, y=None, b=None, d=None, h=False, **kwargs):
+		"""Apply one mouse event sent by the controlling computer.
+
+		Coordinates are fractions of the virtual desktop rather than pixels, because the
+		two computers rarely share a resolution or a monitor layout. Anything malformed
+		is dropped rather than guessed: this comes from the network.
+		"""
+		position = None
+		if x is not None and y is not None:
+			try:
+				position = (float(x), float(y))
+			except (TypeError, ValueError):
+				return
+		if t == mouse_control.ACTION_MOVE:
+			if position is None:
+				return
+			wx.CallAfter(input.move_mouse, position[0], position[1])
+		elif t in (mouse_control.ACTION_BUTTON_DOWN, mouse_control.ACTION_BUTTON_UP):
+			if b not in mouse_control.BUTTONS:
+				return
+			pressed = t == mouse_control.ACTION_BUTTON_DOWN
+			if position is None:
+				wx.CallAfter(input.click_mouse, b, pressed)
+			else:
+				wx.CallAfter(input.click_mouse, b, pressed, position[0], position[1])
+		elif t == mouse_control.ACTION_WHEEL:
+			try:
+				delta = int(d)
+			except (TypeError, ValueError):
+				return
+			# Clamp instead of trusting the peer, so that a single message cannot scroll
+			# a document from end to end.
+			limit = mouse_control.MAX_WHEEL_NOTCHES
+			delta = min(max(delta, -limit), limit)
+			if not delta:
+				return
+			if position is None:
+				wx.CallAfter(input.scroll_mouse, delta, bool(h))
+			else:
+				wx.CallAfter(input.scroll_mouse, delta, bool(h), position[0], position[1])
 
 	def set_clipboard_text(self, text, **kwargs):
 		cues.clipboard_received()
