@@ -24,9 +24,10 @@ be tidier, but this needs no extra dependency and no handshake, and the volume i
 a handful of small JSON objects per session.
 """
 
+import base64
+import hmac
 import json
 import os
-import secrets
 import threading
 from logging import getLogger
 
@@ -45,6 +46,17 @@ MAX_PENDING = 500
 PAGE_SUBDIR = "web"
 PAGE_NAME = "screen_share.html"
 
+#: Bytes drawn from the system generator for the session token. The standard
+#: secrets module is not part of the library NVDA ships, so the token is built
+#: here from os.urandom, which is the same source secrets itself draws from.
+TOKEN_BYTES = 32
+
+
+def _make_token():
+	"""Return an unguessable URL safe token for one session."""
+	raw = base64.urlsafe_b64encode(os.urandom(TOKEN_BYTES))
+	return raw.decode("ascii").rstrip("=")
+
 
 def get_page_path():
 	"""Return the absolute path of the signalling page, or None when it is missing."""
@@ -61,7 +73,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 	def _authorised(self, query):
 		token = (query.get("token") or [""])[0]
-		if not secrets.compare_digest(str(token), self.server.token):
+		if not hmac.compare_digest(str(token), self.server.token):
 			return False
 		origin = self.headers.get("Origin")
 		# A page served by the bridge itself sends no Origin on same origin requests,
@@ -178,7 +190,7 @@ class LocalBridge:
 		page_path = get_page_path()
 		if page_path is None:
 			raise RuntimeError("The screen sharing page is missing from the add-on")
-		self.token = secrets.token_urlsafe(32)
+		self.token = _make_token()
 		server = _Server(("127.0.0.1", 0), _Handler)
 		server.token = self.token
 		server.page_path = page_path
