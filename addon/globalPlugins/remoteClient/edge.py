@@ -1,10 +1,14 @@
-"""Finding Microsoft Edge and running it as the video engine of a sharing session.
+"""Finding a Chromium browser and running it as the video engine of a sharing session.
 
-Edge is the only browser supported. It ships with Windows, updates itself through
-Windows Update, and provides everything the add-on would otherwise have to build
-and maintain: screen capture, hardware accelerated VP8 and VP9 encoding, the
-WebRTC transport, and the picture on the controlling side. NVDA keeps only the
+Microsoft Edge is preferred: it ships with Windows, updates itself through Windows
+Update, and provides everything the add-on would otherwise have to build and
+maintain: screen capture, hardware accelerated VP8 and VP9 encoding, the WebRTC
+transport, and the picture on the controlling side. NVDA keeps only the
 signalling, which is a few kilobytes per session.
+
+Edge is missing from a few hardened or customised Windows installations, so Google
+Chrome and Brave are accepted as fallbacks. They are the same engine and take the
+very same command line, so nothing else in the add-on has to know which one ran.
 
 The window is always started on a throwaway profile. That matters for more than
 tidiness: the page is granted every media permission without being asked, which
@@ -43,13 +47,26 @@ try:
 except ImportError:  # Not Windows, which the rest of the add-on already assumes.
 	winreg = None
 
-#: Authoritative location of the browser under Windows.
-_APP_PATHS_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"
+#: Authoritative location of an installed browser under Windows.
+_APP_PATHS_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\%s"
 
-#: Consulted only when the registry entry is missing or points nowhere.
-_KNOWN_PATHS = (
-	r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
-	r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+#: Browsers this engine can drive, in order of preference. Each entry gives the
+#: name of its executable, used both for the registry lookup and for the fixed
+#: locations consulted when the registry says nothing, and the folder it installs
+#: itself into under Program Files. All of them are Chromium, so they understand
+#: the very same command line.
+_BROWSERS = (
+	("msedge.exe", r"Microsoft\Edge\Application"),
+	("chrome.exe", r"Google\Chrome\Application"),
+	("brave.exe", r"BraveSoftware\Brave-Browser\Application"),
+)
+
+#: Consulted only when the registry entry is missing or points nowhere. The user
+#: local one covers the per user installations Chrome and Brave default to.
+_KNOWN_ROOTS = (
+	"%ProgramFiles(x86)%",
+	"%ProgramFiles%",
+	"%LocalAppData%",
 )
 
 #: Far enough outside any plausible desktop that the window cannot be seen, while
@@ -64,38 +81,47 @@ _CLEANUP_ATTEMPTS = 10
 _CLEANUP_DELAY = 1.0
 
 
-def find_edge():
-	"""Return the absolute path of msedge.exe, or None when Edge is not installed.
-
-	The PATH is deliberately never consulted. Any folder the user can write to could
-	hold an msedge.exe, and it would then be started with the flags below, which
-	grant media permissions without asking.
-	"""
+def _find_one(executable, program_files_subdir):
+	"""Return the absolute path of the given browser, or None when it is not installed."""
 	if winreg is not None:
 		for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
 			try:
-				with winreg.OpenKey(hive, _APP_PATHS_KEY) as key:
+				with winreg.OpenKey(hive, _APP_PATHS_KEY % executable) as key:
 					value, _type = winreg.QueryValueEx(key, "")
 			except OSError:
 				continue
 			path = os.path.expandvars(str(value).strip().strip('"'))
 			if os.path.isfile(path):
 				return path
-	for candidate in _KNOWN_PATHS:
-		path = os.path.expandvars(candidate)
+	for root in _KNOWN_ROOTS:
+		path = os.path.expandvars(os.path.join(root, program_files_subdir, executable))
 		if os.path.isfile(path):
+			return path
+	return None
+
+
+def find_browser():
+	"""Return the absolute path of the browser to use, or None when none is installed.
+
+	The PATH is deliberately never consulted. Any folder the user can write to could
+	hold a chrome.exe, and it would then be started with the flags below, which grant
+	media permissions without asking.
+	"""
+	for executable, program_files_subdir in _BROWSERS:
+		path = _find_one(executable, program_files_subdir)
+		if path is not None:
 			return path
 	return None
 
 
 def is_available():
 	"""Whether this computer can take part in a session as far as the browser goes."""
-	return find_edge() is not None
+	return find_browser() is not None
 
 
-def _build_arguments(edge, url, profile, off_screen):
+def _build_arguments(browser, url, profile, off_screen):
 	arguments = [
-		edge,
+		browser,
 		# One window, no address bar, no tabs, nothing the user could navigate with.
 		"--app=" + url,
 		"--user-data-dir=" + profile,
@@ -135,14 +161,14 @@ class EdgeWindow:
 		return self._process is not None and self._process.poll() is None
 
 	def start(self, url, off_screen):
-		"""Open the given local page. Raises RuntimeError when Edge is missing."""
-		edge = find_edge()
-		if edge is None:
-			raise RuntimeError("Microsoft Edge is not installed")
+		"""Open the given local page. Raises RuntimeError when no browser is installed."""
+		browser = find_browser()
+		if browser is None:
+			raise RuntimeError("No supported browser is installed")
 		if self.running:
 			return
 		self._profile = tempfile.mkdtemp(prefix="telenvda-screenshare-")
-		arguments = _build_arguments(edge, url, self._profile, off_screen)
+		arguments = _build_arguments(browser, url, self._profile, off_screen)
 		self._process = subprocess.Popen(
 			arguments,
 			stdin=subprocess.DEVNULL,
@@ -150,7 +176,7 @@ class EdgeWindow:
 			stderr=subprocess.DEVNULL,
 			creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
 		)
-		logger.debug("Edge started, off screen: %s", off_screen)
+		logger.debug("%s started, off screen: %s", os.path.basename(browser), off_screen)
 
 	def stop(self):
 		"""Close the window and delete its profile, without blocking the caller."""
@@ -161,7 +187,7 @@ class EdgeWindow:
 				if process.poll() is None:
 					process.terminate()
 			except OSError:
-				logger.debug("Unable to terminate Edge", exc_info=True)
+				logger.debug("Unable to terminate the browser", exc_info=True)
 		if process is not None or profile is not None:
 			thread = threading.Thread(
 				target=self._reap,
@@ -177,11 +203,11 @@ class EdgeWindow:
 			try:
 				process.wait(timeout=5)
 			except subprocess.TimeoutExpired:
-				logger.warning("Edge did not close, killing it")
+				logger.warning("The browser did not close, killing it")
 				try:
 					process.kill()
 				except OSError:
-					logger.debug("Unable to kill Edge", exc_info=True)
+					logger.debug("Unable to kill the browser", exc_info=True)
 		if profile is None:
 			return
 		for _attempt in range(_CLEANUP_ATTEMPTS):

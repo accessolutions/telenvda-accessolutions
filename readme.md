@@ -188,16 +188,23 @@ Agreeing also lets the controlling computer use the mouse of this computer, and
 that single answer is forgotten when the session ends. No keyboard input travels
 over this link.
 
-Screen sharing needs Microsoft Edge installed on both computers, a relay
+Screen sharing needs a Chromium browser installed on both computers, a relay
 started with screen sharing enabled, and both computers running a version of
-TeleNVDA that supports it. When any of these is missing, the command reports it
-and nothing else changes.
+TeleNVDA that supports it. Microsoft Edge is used when present, which is the
+case on every up to date Windows; Google Chrome and Brave are used as fallbacks.
+When any of these is missing, the command reports it and nothing else changes.
 
-Edge is used only as the video engine. On the computer being shared, it runs in
-a window kept off screen so that it never captures itself and never takes the
-focus away from NVDA. On the controlling computer, it shows the picture. No
-browsing profile of the user is touched: a temporary one is created for the
-session and removed afterwards.
+The browser is used only as the video engine. On the computer being shared, it
+runs in a window kept off screen so that it never captures itself and never
+takes the focus away from NVDA. On the controlling computer, it shows the
+picture. No browsing profile of the user is touched: a temporary one is created
+for the session and removed afterwards.
+
+Three settings tune the picture in the add-on options: the maximum number of
+images per second, the maximum width the picture is scaled down to before being
+encoded, and the quality, which sets the bandwidth ceiling. Lowering the width
+is by far the most effective way to smooth out a session on a large screen or a
+slow computer.
 
 The following option is available in the add-on settings:
 
@@ -257,11 +264,12 @@ The build copies this file into the English documentation directory and
 converts the translated Markdown files to HTML. Keep the root `readme.md` as
 the English source instead of editing generated files under `addon/doc/en/`.
 
-Screen sharing needs no build step of its own. The video engine is Microsoft
-Edge, which is expected to be already installed on the machine, and the page it
-loads lives in `addon/globalPlugins/remoteClient/web/` and is packaged like any
-other add-on file. When Edge cannot be found, the add-on simply never offers
-screen sharing.
+Screen sharing needs no build step of its own. The video engine is a Chromium
+browser, Microsoft Edge, Google Chrome or Brave, which is expected to be already
+installed on the machine, and the page it loads lives in
+`addon/globalPlugins/remoteClient/web/` and is packaged like any other add-on
+file. When no such browser can be found, the add-on simply never offers screen
+sharing.
 
 ## Repository
 

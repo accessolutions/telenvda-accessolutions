@@ -31,6 +31,16 @@ del sys.path[-1]
 WX_VERSION = int(wx.version()[0])
 WX_CENTER = wx.Center if WX_VERSION>=4 else wx.CENTER_ON_SCREEN
 
+# Widths the shared picture may be reduced to before being encoded. Encoding a
+# whole 4K desktop in real time saturates most processors, and the picture is
+# displayed much smaller than that on the other side anyway.
+SCREEN_SHARE_WIDTHS = (1280, 1600, 1920, 2560, 3840)
+SCREEN_SHARE_DEFAULT_WIDTH = 1600
+
+# Quality settings, in the same order as the labels offered in the dialog.
+SCREEN_SHARE_QUALITIES = ("low", "balanced", "high")
+SCREEN_SHARE_DEFAULT_QUALITY = "balanced"
+
 # Labels of the proxy modes, in the same order as proxy_utils.PROXY_MODES.
 def _proxy_mode_choices():
 	return (
@@ -606,7 +616,27 @@ class OptionsDialog(SettingsPanel):
 		sizer.Add(self.max_received_size)
 		# Translators: A checkbox in add-on options dialog to allow sharing this screen and its mouse with the controlling computer.
 		self.screen_share_enabled = wx.CheckBox(self, wx.ID_ANY, label=_("Allow sharing the screen of this computer and the use of its mouse, after confirmation"))
+		self.screen_share_enabled.Bind(wx.EVT_CHECKBOX, self.on_screen_share_enabled)
 		sizer.Add(self.screen_share_enabled)
+		# Translators: Label for the maximum number of images per second sent while sharing the screen.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Maximum number of images per second:")))
+		self.screen_share_max_fps = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=30)
+		sizer.Add(self.screen_share_max_fps)
+		# Translators: Label for the width the shared picture is reduced to before being sent.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Reduce the shared picture to this width, in pixels:")))
+		self.screen_share_max_width = wx.Choice(self, wx.ID_ANY, choices=[str(width) for width in SCREEN_SHARE_WIDTHS])
+		sizer.Add(self.screen_share_max_width)
+		# Translators: Label for the quality of the shared picture.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Quality of the shared picture:")))
+		self.screen_share_quality = wx.Choice(self, wx.ID_ANY, choices=[
+			# Translators: A choice of screen sharing quality, using the least bandwidth.
+			_("Low, for a slow connection"),
+			# Translators: A choice of screen sharing quality, the default one.
+			_("Balanced"),
+			# Translators: A choice of screen sharing quality, using the most bandwidth.
+			_("High, for a fast connection"),
+		])
+		sizer.Add(self.screen_share_quality)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -635,6 +665,16 @@ class OptionsDialog(SettingsPanel):
 	def on_allow_large_legacy_transfers(self, evt):
 		self.legacy_max_size.Enable(bool(self.allow_large_legacy_transfers.GetValue()))
 		evt.Skip()
+
+	def on_screen_share_enabled(self, evt):
+		self._update_screen_share_controls()
+		evt.Skip()
+
+	def _update_screen_share_controls(self):
+		enabled = bool(self.screen_share_enabled.GetValue())
+		self.screen_share_max_fps.Enable(enabled)
+		self.screen_share_max_width.Enable(enabled)
+		self.screen_share_quality.Enable(enabled)
 
 	def on_autoconnect(self, evt):
 		if self.autoconnect.GetValue() and not self._autoconnect_was_enabled:
@@ -741,6 +781,16 @@ class OptionsDialog(SettingsPanel):
 		self.legacy_max_size.Enable(bool(file_transfer_section['allow_large_legacy_transfers']))
 		self.max_received_size.SetValue(int(file_transfer_section['max_received_size_mb']))
 		self.screen_share_enabled.SetValue(bool(config['screen_share']['enabled']))
+		self.screen_share_max_fps.SetValue(int(config['screen_share']['max_fps']))
+		max_width = int(config['screen_share']['max_width'])
+		if max_width not in SCREEN_SHARE_WIDTHS:
+			max_width = SCREEN_SHARE_DEFAULT_WIDTH
+		self.screen_share_max_width.SetSelection(SCREEN_SHARE_WIDTHS.index(max_width))
+		quality = str(config['screen_share']['quality'])
+		if quality not in SCREEN_SHARE_QUALITIES:
+			quality = SCREEN_SHARE_DEFAULT_QUALITY
+		self.screen_share_quality.SetSelection(SCREEN_SHARE_QUALITIES.index(quality))
+		self._update_screen_share_controls()
 		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
 		NVDAConfig.conf.profiles[-1].name = None
@@ -855,6 +905,9 @@ class OptionsDialog(SettingsPanel):
 		config['file_transfer']['legacy_max_size_mb'] = int(self.legacy_max_size.GetValue())
 		config['file_transfer']['max_received_size_mb'] = int(self.max_received_size.GetValue())
 		config['screen_share']['enabled'] = self.screen_share_enabled.GetValue()
+		config['screen_share']['max_fps'] = int(self.screen_share_max_fps.GetValue())
+		config['screen_share']['max_width'] = SCREEN_SHARE_WIDTHS[self.screen_share_max_width.GetSelection()]
+		config['screen_share']['quality'] = SCREEN_SHARE_QUALITIES[self.screen_share_quality.GetSelection()]
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		if not configuration.readonly:
 			config.write()

@@ -15,7 +15,6 @@ import ctypes
 from ctypes import (
 	wintypes,
 	Structure,
-	c_long,
 	c_int,
 )
 
@@ -58,9 +57,43 @@ class MSLLHOOKSTRUCT(Structure):
 	]
 
 
-LRESULT = c_long
+#: LRESULT, WPARAM and LPARAM are pointer sized, hence 64 bits on a 64 bits Windows.
+LRESULT = ctypes.c_ssize_t
 
-LowLevelMouseProc = ctypes.WINFUNCTYPE(LRESULT, c_int, wintypes.LPARAM, wintypes.WPARAM)
+LowLevelMouseProc = ctypes.WINFUNCTYPE(LRESULT, c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+
+def _get_user32():
+	"""Return a private user32 binding carrying the prototypes the hook needs.
+
+	Without explicit argtypes, ctypes passes every argument as a C int: the module
+	handle, the hook handle and lParam are pointers, so they overflow and the call
+	fails with "int too long to convert" on a 64 bits Windows. A dedicated WinDLL
+	instance is used so that these prototypes cannot interfere with the ones NVDA
+	sets on its own user32 binding.
+	"""
+	user32 = getattr(_get_user32, "_cached", None)
+	if user32 is not None:
+		return user32
+	user32 = ctypes.WinDLL("user32")
+	user32.SetWindowsHookExW.restype = ctypes.c_void_p
+	user32.SetWindowsHookExW.argtypes = [
+		c_int,
+		LowLevelMouseProc,
+		ctypes.c_void_p,
+		wintypes.DWORD,
+	]
+	user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+	user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
+	user32.CallNextHookEx.restype = LRESULT
+	user32.CallNextHookEx.argtypes = [
+		ctypes.c_void_p,
+		c_int,
+		wintypes.WPARAM,
+		wintypes.LPARAM,
+	]
+	_get_user32._cached = user32
+	return user32
 
 
 def _wheel_notches(mouse_data):
@@ -89,14 +122,15 @@ class MouseHook:
 	def __init__(self):
 		self.callbacks = list()
 		self.proc = LowLevelMouseProc(self.mouse_proc)
-		user32 = ctypes.windll.user32
-		user32.SetWindowsHookExW.restype = ctypes.c_void_p
-		user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
-		kernel32 = ctypes.windll.kernel32
+		user32 = _get_user32()
+		kernel32 = ctypes.WinDLL("kernel32")
 		kernel32.GetModuleHandleW.restype = ctypes.c_void_p
+		kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
 		self.handle = user32.SetWindowsHookExW(
 			WH_MOUSE_LL, self.proc, kernel32.GetModuleHandleW(None), 0
 		)
+		if not self.handle:
+			raise ctypes.WinError()
 
 	def register_callback(self, callback):
 		self.callbacks.append(callback)
@@ -115,8 +149,9 @@ class MouseHook:
 				logger.exception("Error calling callback %r" % callback)
 
 	def mouse_proc(self, code, wParam, lParam):
+		user32 = _get_user32()
 		if code < 0 or code != HC_ACTION:
-			return ctypes.windll.user32.CallNextHookEx(0, code, wParam, lParam)
+			return user32.CallNextHookEx(None, code, wParam, lParam)
 		message = int(wParam)
 		if message != WM_MOUSEMOVE:
 			data = ctypes.cast(
@@ -136,9 +171,9 @@ class MouseHook:
 							delta=notches,
 							horizontal=message == WM_MOUSEHWHEEL,
 						)
-		return ctypes.windll.user32.CallNextHookEx(0, code, wParam, lParam)
+		return user32.CallNextHookEx(None, code, wParam, lParam)
 
 	def free(self):
 		if self.handle:
-			ctypes.windll.user32.UnhookWindowsHookEx(self.handle)
+			_get_user32().UnhookWindowsHookEx(self.handle)
 			self.handle = None

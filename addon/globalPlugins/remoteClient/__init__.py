@@ -339,6 +339,35 @@ class GlobalPlugin(_GlobalPlugin):
 		except Exception:
 			log.exception("Unable to manage native NVDA Remote configuration")
 
+	def _suppress_native_remote_autoconnect(self):
+		"""Keep the Remote Access built into NVDA from connecting during this startup.
+
+		NVDA starts its own client before the add-ons are loaded, and both listen to the
+		same startup notification, the built-in one being called first. It cannot be
+		stopped while NVDA is still walking its handlers, so its automatic connection is
+		turned off just long enough for the notification to be over, and put back
+		afterwards: the client is terminated by then anyway.
+		"""
+		if globalVars.appArgs.secure:
+			return
+		try:
+			remote = nvda_conf.get('remote')
+			server = (remote.get('controlServer') or remote.get('controlserver')) if remote else None
+			if not server or not server.get('autoconnect'):
+				return
+			server['autoconnect'] = False
+		except Exception:
+			log.exception("Unable to suspend the native NVDA Remote automatic connection")
+			return
+
+		def restore():
+			try:
+				server['autoconnect'] = True
+			except Exception:
+				log.exception("Unable to restore the native NVDA Remote automatic connection")
+
+		wx.CallAfter(restore)
+
 	def _shutdown_native_remote(self):
 		"""Stop the Remote Access support built into NVDA for the current session.
 
@@ -401,8 +430,11 @@ class GlobalPlugin(_GlobalPlugin):
 	def postStartupHandler(self):
 		self._import_native_remote_settings()
 		self._manage_native_remote()
-		# The built-in client also listens to postNvdaStartup, so it is stopped once the
-		# notification is over rather than while NVDA is still walking its handlers.
+		# The built-in client also listens to postNvdaStartup, and is notified before
+		# this add-on, so its automatic connection is neutralised right away.
+		self._suppress_native_remote_autoconnect()
+		# The built-in client cannot be stopped while NVDA is still walking its
+		# handlers, so it is stopped once the notification is over.
 		wx.CallAfter(self._shutdown_native_remote)
 		cs = configuration.get_config()['controlserver']
 		if globalVars.appArgs.secure:
@@ -1240,7 +1272,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.is_connect_dialog_open = True
 		last_cons = configuration.get_config()['connections']['last_connected']
 		# Translators: Title of the connect dialog.
-		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("Connect"))
+		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("TeleNVDA - Connect"))
 		self._connect_dialog = dlg
 		host_items = list(reversed(last_cons))
 		for default_host in configuration.DEFAULT_SERVER_HOSTS:

@@ -79,6 +79,7 @@ configspec = StringIO("""
 [screen_share]
 	enabled = boolean(default=True)
 	max_fps = integer(default=15)
+	max_width = integer(default=1600)
 	quality = option("low", "balanced", "high", default="balanced")
 
 [keep_awake]

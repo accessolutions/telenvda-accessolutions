@@ -471,6 +471,36 @@ msgstr "Taille maximale des fichiers reçus, en Mo (0 pour aucune limite) :"
 msgid "Allow sharing the screen of this computer and the use of its mouse, after confirmation"
 msgstr "Autoriser le partage de l'écran de cet ordinateur et l'utilisation de sa souris, après confirmation"
 
+#. Translators: Label for the maximum number of images per second sent while sharing the screen.
+#: addon\globalPlugins\remoteClient\dialogs.py:612
+msgid "Maximum number of images per second:"
+msgstr "Nombre maximal d'images par seconde :"
+
+#. Translators: Label for the width the shared picture is reduced to before being sent.
+#: addon\globalPlugins\remoteClient\dialogs.py:616
+msgid "Reduce the shared picture to this width, in pixels:"
+msgstr "Réduire l'image partagée à cette largeur, en pixels :"
+
+#. Translators: Label for the quality of the shared picture.
+#: addon\globalPlugins\remoteClient\dialogs.py:620
+msgid "Quality of the shared picture:"
+msgstr "Qualité de l'image partagée :"
+
+#. Translators: A choice of screen sharing quality, using the least bandwidth.
+#: addon\globalPlugins\remoteClient\dialogs.py:623
+msgid "Low, for a slow connection"
+msgstr "Basse, pour une connexion lente"
+
+#. Translators: A choice of screen sharing quality, the default one.
+#: addon\globalPlugins\remoteClient\dialogs.py:625
+msgid "Balanced"
+msgstr "Équilibrée"
+
+#. Translators: A choice of screen sharing quality, using the most bandwidth.
+#: addon\globalPlugins\remoteClient\dialogs.py:627
+msgid "High, for a fast connection"
+msgstr "Élevée, pour une connexion rapide"
+
 #. Translators: a text field in add-on options dialog to set the portcheck service URL
 #: addon\globalPlugins\remoteClient\dialogs.py:618
 msgid "Portcheck &service URL: "
@@ -567,6 +597,11 @@ msgstr "Se connecter et ne plus demander pour ce serveur"
 #: addon\globalPlugins\remoteClient\__init__.py:1098
 msgid "Connect"
 msgstr "Se connecter"
+
+#. Translators: Title of the connect dialog.
+#: addon\globalPlugins\remoteClient\__init__.py:1098
+msgid "TeleNVDA - Connect"
+msgstr "TeleNVDA - Se connecter"
 
 #. Translators: Default name used when a received file has no usable name.
 #: addon\globalPlugins\remoteClient\file_transfer.py:83

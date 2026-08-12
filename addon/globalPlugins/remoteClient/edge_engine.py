@@ -6,10 +6,10 @@ does not need to know which engine is behind it: start with a role, push
 signalling commands in, receive events out, stop.
 
 Two things happen when a session starts. The bridge binds a loopback port and
-serves the signalling page behind a fresh token, and Edge is opened on that page,
-off screen on the computer being watched and visible on the one watching. From
-then on the browser owns the media and NVDA only carries session descriptions and
-ICE candidates between the page and the relay.
+serves the signalling page behind a fresh token, and the browser is opened on that
+page, off screen on the computer being watched and visible on the one watching.
+From then on the browser owns the media and NVDA only carries session descriptions
+and ICE candidates between the page and the relay.
 """
 
 import threading
@@ -123,8 +123,8 @@ class EdgeEngine:
 
 		The browser process cannot be used for this. The command line that is started
 		often hands the window over to another process and exits straight away, which
-		is routine when Edge is already running or when the parent process runs at a
-		different integrity level, as NVDA does. Watching it would tear the bridge
+		is routine when the browser is already running or when the parent process runs
+		at a different integrity level, as NVDA does. Watching it would tear the bridge
 		down while the page is still loading, and the window would then be left on a
 		connection refused error. What proves the page is alive is the page itself,
 		polling the bridge.

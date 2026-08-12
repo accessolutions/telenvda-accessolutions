@@ -1,21 +1,22 @@
 """Screen sharing of the controlled computer, over a peer to peer WebRTC link.
 
-The add-on itself never encodes or decodes video. It opens a Microsoft Edge window
-on a page it serves on the loopback interface, and that page owns the WebRTC
-session: it captures the screen on the controlled computer and displays it on the
-controlling one. NVDA only carries the signalling needed to set that link up,
-through the relay both computers are already connected to.
+The add-on itself never encodes or decodes video. It opens a Chromium browser
+window on a page it serves on the loopback interface, and that page owns the
+WebRTC session: it captures the screen on the controlled computer and displays it
+on the controlling one. NVDA only carries the signalling needed to set that link
+up, through the relay both computers are already connected to.
 
 The browser was chosen over a Python stack for two reasons. A WebRTC stack such as
 aiortc cannot be vendored in the add-on, because NVDA ships three different Python
 ABIs and no wheel exists for the oldest one. Video encoding in the same process as
 NVDA would also compete with speech for the interpreter lock, which is
-unacceptable for a screen reader. Edge is already installed on every supported
-version of Windows, updates itself, and encodes in hardware.
+unacceptable for a screen reader. Microsoft Edge is already installed on every
+supported version of Windows, updates itself, and encodes in hardware; Chrome and
+Brave are accepted in its place.
 
-Everything here degrades gracefully. When Edge is absent, or when screen sharing
-is turned off in the configuration, :func:`is_available` returns False, the
-feature is never announced, and the add-on behaves exactly as before.
+Everything here degrades gracefully. When no such browser is installed, or when
+screen sharing is turned off in the configuration, :func:`is_available` returns
+False, the feature is never announced, and the add-on behaves exactly as before.
 """
 
 from logging import getLogger
@@ -92,10 +93,14 @@ def is_input_control_allowed():
 def _capture_settings():
 	try:
 		section = configuration.get_config()["screen_share"]
-		return {"max_fps": int(section["max_fps"]), "quality": str(section["quality"])}
+		return {
+			"max_fps": int(section["max_fps"]),
+			"max_width": int(section["max_width"]),
+			"quality": str(section["quality"]),
+		}
 	except Exception:
 		logger.debug("Unable to read the capture settings", exc_info=True)
-		return {"max_fps": 15, "quality": "balanced"}
+		return {"max_fps": 15, "max_width": 1600, "quality": "balanced"}
 
 
 class ScreenShareManager:
