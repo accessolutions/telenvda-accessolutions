@@ -7,7 +7,8 @@
 <style>
 	html, body { margin: 0; padding: 0; height: 100%; background: #000; color: #ddd;
 		font-family: Segoe UI, sans-serif; overflow: hidden; }
-	video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+	video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000;
+		user-select: none; -webkit-user-drag: none; }
 	#message { padding: 1em; font-size: 1.1em; }
 </style>
 </head>
@@ -98,7 +99,12 @@ function createConnection(iceServers) {
 async function startPublisher(command) {
 	video.remove();
 	const constraints = {
-		video: { frameRate: Math.max(1, Math.min(30, command.max_fps || 15)) },
+		video: {
+			frameRate: Math.max(1, Math.min(30, command.max_fps || 15)),
+			/* Without this the picture arrives without a pointer, and the watching user
+			   has no idea where the mouse they are driving actually is. */
+			cursor: "always",
+		},
 		audio: false,
 	};
 	try {
@@ -139,6 +145,103 @@ function applyQuality(quality) {
 	});
 }
 
+/* ------------------------------------------------------------- mouse control */
+
+/* The watching user aims at the picture, not at their own desktop, so the pointer
+ * position is measured inside the displayed image and sent as a fraction of it.
+ * The two computers share neither a resolution nor a monitor layout, and the video
+ * is letterboxed by object-fit, so anything else would land somewhere else. */
+
+/* Buttons as the add-on names them, indexed by the number the browser reports. */
+const BUTTONS = { 0: "left", 1: "middle", 2: "right" };
+
+/* Pointing needs to be accurate, not smooth. This matches the interval the add-on
+ * uses when it mirrors the local pointer instead. */
+const MOVE_INTERVAL = 50;
+const MOVE_THRESHOLD = 0.0002;
+
+let inputAllowed = false;
+let lastMoveAt = 0;
+let lastMove = null;
+
+function pointOf(event) {
+	/* Where the event landed inside the picture, or null when it landed on the
+	   black bars around it. */
+	const rect = video.getBoundingClientRect();
+	const width = video.videoWidth;
+	const height = video.videoHeight;
+	if (!width || !height || !rect.width || !rect.height) { return null; }
+	const scale = Math.min(rect.width / width, rect.height / height);
+	const shown = { width: width * scale, height: height * scale };
+	const left = rect.left + (rect.width - shown.width) / 2;
+	const top = rect.top + (rect.height - shown.height) / 2;
+	const x = (event.clientX - left) / shown.width;
+	const y = (event.clientY - top) / shown.height;
+	if (x < 0 || x > 1 || y < 0 || y > 1) { return null; }
+	return { x: Math.round(x * 100000) / 100000, y: Math.round(y * 100000) / 100000 };
+}
+
+function sendInput(payload) {
+	if (!inputAllowed || stopped) { return; }
+	post(Object.assign({ event: "input" }, payload));
+}
+
+function onMove(event) {
+	const point = pointOf(event);
+	if (!point) { return; }
+	const now = Date.now();
+	if (now - lastMoveAt < MOVE_INTERVAL) { return; }
+	if (lastMove
+		&& Math.abs(point.x - lastMove.x) < MOVE_THRESHOLD
+		&& Math.abs(point.y - lastMove.y) < MOVE_THRESHOLD) { return; }
+	lastMoveAt = now;
+	lastMove = point;
+	sendInput({ t: "m", x: point.x, y: point.y });
+}
+
+function onButton(event, pressed) {
+	const button = BUTTONS[event.button];
+	if (!button) { return; }
+	const point = pointOf(event);
+	if (!point) { return; }
+	event.preventDefault();
+	/* The position travels with the button, so that a click always lands where the
+	   user aimed even when the last movement was throttled away. */
+	lastMove = point;
+	sendInput({ t: pressed ? "md" : "mu", b: button, x: point.x, y: point.y });
+}
+
+function onWheel(event) {
+	const point = pointOf(event);
+	if (!point) { return; }
+	event.preventDefault();
+	const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+	const delta = horizontal ? event.deltaX : event.deltaY;
+	if (!delta) { return; }
+	/* Browsers report pixels, lines or pages depending on the device. Only the
+	   direction and a notch count matter here, and scrolling down is negative for
+	   the mouse wheel of Windows. */
+	const notches = Math.max(1, Math.min(10, Math.round(Math.abs(delta) / (event.deltaMode ? 1 : 100)) || 1));
+	sendInput({
+		t: "w",
+		d: delta > 0 ? -notches : notches,
+		h: horizontal,
+		x: point.x,
+		y: point.y,
+	});
+}
+
+function enableInput() {
+	inputAllowed = true;
+	video.addEventListener("mousemove", onMove);
+	video.addEventListener("mousedown", (event) => onButton(event, true));
+	video.addEventListener("mouseup", (event) => onButton(event, false));
+	video.addEventListener("wheel", onWheel, { passive: false });
+	/* Otherwise a right click opens the menu of the browser instead of the menu of
+	   the computer being watched. */
+	video.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
 /* --------------------------------------------------------- commands from NVDA */
 
 async function handleCommand(command) {
@@ -149,6 +252,7 @@ async function handleCommand(command) {
 		if (isPublisher) {
 			await startPublisher(command);
 		} else {
+			if (command.allow_input) { enableInput(); }
 			show("Waiting for the picture...");
 		}
 	} else if (name === "offer") {

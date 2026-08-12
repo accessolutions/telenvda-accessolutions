@@ -62,6 +62,7 @@ MSG_TURN_CREDENTIALS = "turn_credentials"
 MAX_SIGNALING_PAYLOAD = 64 * 1024
 
 
+
 def is_enabled():
 	"""Whether the user left screen sharing turned on."""
 	try:
@@ -116,6 +117,8 @@ class ScreenShareManager:
 		self.helper = edge_engine.EdgeEngine(self._handle_helper_event, self._handle_helper_exit)
 		#: ICE servers given by the relay, used as a fallback when a direct link fails.
 		self.ice_servers = []
+		#: Whether the peer agreed, for this session, to be driven with the mouse.
+		self.input_allowed = False
 		callbacks = transport.callback_manager
 		callbacks.register_callback("msg_" + MSG_REQUEST, self.handle_request)
 		callbacks.register_callback("msg_" + MSG_RESPONSE, self.handle_response)
@@ -182,6 +185,7 @@ class ScreenShareManager:
 		self.state = STATE_IDLE
 		self.peer_id = None
 		self.ice_servers = []
+		self.input_allowed = False
 		self.helper.stop()
 
 	def terminate(self):
@@ -276,10 +280,11 @@ class ScreenShareManager:
 			# Translators: message spoken when the screen sharing window could not be opened
 			ui.message(_("Unable to start screen sharing"))
 			return
+		self.input_allowed = bool(allow_input)
 		self.helper.send(
 			command="start",
 			role=ROLE_VIEWER,
-			allow_input=bool(allow_input),
+			allow_input=self.input_allowed,
 			ice_servers=self.ice_servers,
 		)
 
@@ -338,6 +343,8 @@ class ScreenShareManager:
 			self._send(MSG_ANSWER, sdp=event.get("sdp", ""))
 		elif kind == "candidate":
 			self._send(MSG_CANDIDATE, candidate=event.get("candidate", ""))
+		elif kind == "input":
+			self._forward_input(event)
 		elif kind == "connected":
 			self.state = STATE_ACTIVE
 			# Translators: message spoken when the screen sharing picture starts flowing
@@ -347,6 +354,54 @@ class ScreenShareManager:
 			wx.CallAfter(self._report_failure)
 		elif kind == "closed":
 			wx.CallAfter(self._handle_helper_exit)
+
+	def _forward_input(self, event):
+		"""Send a mouse event aimed at the picture to the computer being watched.
+
+		The page reports positions as fractions of the picture, which are already the
+		fractions of the virtual desktop the other computer expects, so the event
+		travels as an ordinary mouse message and is applied by the very same code as
+		the remote mouse used without any picture.
+		"""
+		from . import mouse_control
+		if self.role != ROLE_VIEWER or not self.input_allowed:
+			return
+		if self.state not in (STATE_CONNECTING, STATE_ACTIVE):
+			return
+		action = event.get("t")
+		if action not in (
+			mouse_control.ACTION_MOVE,
+			mouse_control.ACTION_BUTTON_DOWN,
+			mouse_control.ACTION_BUTTON_UP,
+			mouse_control.ACTION_WHEEL,
+		):
+			return
+		payload = {"t": action}
+		for name in ("x", "y"):
+			value = event.get(name)
+			if not isinstance(value, (int, float)) or isinstance(value, bool):
+				return
+			if not 0.0 <= value <= 1.0:
+				return
+			payload[name] = round(float(value), 5)
+		if action in (mouse_control.ACTION_BUTTON_DOWN, mouse_control.ACTION_BUTTON_UP):
+			button = event.get("b")
+			if button not in mouse_control.BUTTONS:
+				return
+			payload["b"] = button
+		elif action == mouse_control.ACTION_WHEEL:
+			delta = event.get("d")
+			if not isinstance(delta, int) or isinstance(delta, bool) or not delta:
+				return
+			limit = mouse_control.MAX_WHEEL_NOTCHES
+			payload["d"] = max(-limit, min(limit, delta))
+			payload["h"] = bool(event.get("h"))
+		try:
+			self.transport.send(type=mouse_control.MESSAGE_TYPE, **payload)
+		except Exception:
+			logger.exception("Unable to send a mouse event coming from the screen sharing window")
+			return
+		configuration.record_activity()
 
 	def _handle_helper_exit(self):
 		if not self.active:
