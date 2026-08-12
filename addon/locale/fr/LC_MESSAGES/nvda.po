@@ -1499,6 +1499,46 @@ msgstr ""
 "Kerberos, améliorer la compatibilité avec les proxys et fournir deux "
 "méthodes de capture d'écran distante."
 
+#. Translators: A checkbox in add-on options dialog to ask before the controlling computer may use this mouse.
+#: addon\globalPlugins\remoteClient\dialogs.py:619
+msgid "Ask before letting the controlling computer use this mouse"
+msgstr "Demander avant de laisser l'ordinateur contrôleur utiliser cette souris"
+
+#. Translators: toggle remote mouse control gesture description
+#: addon\globalPlugins\remoteClient\__init__.py:815
+msgid "Starts or stops driving the mouse of the controlled computer"
+msgstr "Démarre ou arrête le pilotage de la souris de l'ordinateur contrôlé"
+
+#. Translators: message spoken when the local mouse starts driving the controlled computer.
+#: addon\globalPlugins\remoteClient\__init__.py:834
+msgid "Remote mouse control started"
+msgstr "Contrôle de la souris à distance démarré"
+
+#. Translators: message spoken when the local mouse stops driving the controlled computer.
+#: addon\globalPlugins\remoteClient\__init__.py:830
+msgid "Remote mouse control stopped"
+msgstr "Contrôle de la souris à distance arrêté"
+
+#. Translators: title of the dialog asking whether the remote computer may use this mouse.
+#: addon\globalPlugins\remoteClient\mouse_control.py:190
+msgid "Remote mouse control"
+msgstr "Contrôle de la souris à distance"
+
+#. Translators: question asked before the controlling computer may use this mouse.
+#: addon\globalPlugins\remoteClient\mouse_control.py:192
+msgid "The controlling computer asks to use the mouse and the keyboard of this computer. Do you accept?"
+msgstr "L'ordinateur contrôleur demande à utiliser la souris et le clavier de cet ordinateur. Acceptez-vous ?"
+
+#. Translators: reported on the controlled computer when remote mouse control starts.
+#: addon\globalPlugins\remoteClient\mouse_control.py:200
+msgid "The controlling computer is now using this mouse"
+msgstr "L'ordinateur contrôleur utilise maintenant cette souris"
+
+#. Translators: reported on the controlled computer when remote mouse control is refused.
+#: addon\globalPlugins\remoteClient\mouse_control.py:203
+msgid "Remote mouse control refused"
+msgstr "Contrôle de la souris à distance refusé"
+
 #~ msgid "This file is too large. Only files smaller than 10 MB are supported."
 #~ msgstr ""
 #~ "Ce fichier est trop grand. Seuls les fichiers inférieurs à 10 Mo sont "
