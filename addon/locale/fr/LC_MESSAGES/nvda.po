@@ -466,20 +466,10 @@ msgstr "Taille maximale de ces transferts (en Mo) :"
 msgid "Maximum size of received files, in MB (0 for no limit):"
 msgstr "Taille maximale des fichiers reçus, en Mo (0 pour aucune limite) :"
 
-#. Translators: A checkbox in add-on options dialog to allow sharing this screen with the controlling computer.
+#. Translators: A checkbox in add-on options dialog to allow sharing this screen and its mouse with the controlling computer.
 #: addon\globalPlugins\remoteClient\dialogs.py:608
-msgid "Allow sharing the screen of the controlled computer"
-msgstr "Autoriser le partage de l'écran de l'ordinateur contrôlé"
-
-#. Translators: A checkbox in add-on options dialog to ask before the screen of this computer is shared.
-#: addon\globalPlugins\remoteClient\dialogs.py:612
-msgid "Ask before sharing this screen"
-msgstr "Demander avant de partager cet écran"
-
-#. Translators: A checkbox in add-on options dialog to let the controlling computer move the mouse.
-#: addon\globalPlugins\remoteClient\dialogs.py:615
-msgid "Allow the controlling computer to use the mouse of this computer"
-msgstr "Autoriser l'ordinateur contrôleur à utiliser la souris de cet ordinateur"
+msgid "Allow sharing the screen of this computer and the use of its mouse, after confirmation"
+msgstr "Autoriser le partage de l'écran de cet ordinateur et l'utilisation de sa souris, après confirmation"
 
 #. Translators: a text field in add-on options dialog to set the portcheck service URL
 #: addon\globalPlugins\remoteClient\dialogs.py:618
@@ -832,17 +822,17 @@ msgstr "L'autre ordinateur ne prend pas en charge le partage d'écran"
 msgid "Screen sharing requested"
 msgstr "Partage d'écran demandé"
 
-#. Translators: question asked before sharing this screen, with mouse control
+#. Translators: question asked before this screen is shared, with mouse control
 #: addon\globalPlugins\remoteClient\screen_share.py:328
 msgid ""
-"The controlling computer asks to see this screen and to control the mouse. "
-"Do you accept?"
-msgstr "L'ordinateur contrôleur demande à voir cet écran et à contrôler la souris. Acceptez-vous ?"
+"Do you want to share your screen? The controlling computer will see this "
+"screen and will be able to use its mouse."
+msgstr "Souhaitez-vous partager votre écran ? L'ordinateur contrôleur verra cet écran et pourra utiliser sa souris."
 
-#. Translators: question asked before sharing this screen
+#. Translators: question asked before this screen is shared
 #: addon\globalPlugins\remoteClient\screen_share.py:331
-msgid "The controlling computer asks to see this screen. Do you accept?"
-msgstr "L'ordinateur contrôleur demande à voir cet écran. Acceptez-vous ?"
+msgid "Do you want to share your screen? The controlling computer will see this screen."
+msgstr "Souhaitez-vous partager votre écran ? L'ordinateur contrôleur verra cet écran."
 
 #. Translators: title of the screen sharing request dialog
 #: addon\globalPlugins\remoteClient\screen_share.py:335
@@ -1498,11 +1488,6 @@ msgstr ""
 "443, l'authentification SSPI de Windows pour les proxys HTTP NTLM et "
 "Kerberos, améliorer la compatibilité avec les proxys et fournir deux "
 "méthodes de capture d'écran distante."
-
-#. Translators: A checkbox in add-on options dialog to ask before the controlling computer may use this mouse.
-#: addon\globalPlugins\remoteClient\dialogs.py:619
-msgid "Ask before letting the controlling computer use this mouse"
-msgstr "Demander avant de laisser l'ordinateur contrôleur utiliser cette souris"
 
 #. Translators: toggle remote mouse control gesture description
 #: addon\globalPlugins\remoteClient\__init__.py:815

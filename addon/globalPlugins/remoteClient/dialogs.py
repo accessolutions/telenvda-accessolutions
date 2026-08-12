@@ -604,20 +604,9 @@ class OptionsDialog(SettingsPanel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Maximum size of received files, in MB (0 for no limit):")))
 		self.max_received_size = wx.SpinCtrl(self, wx.ID_ANY, min=0, max=102400)
 		sizer.Add(self.max_received_size)
-		# Translators: A checkbox in add-on options dialog to allow sharing this screen with the controlling computer.
-		self.screen_share_enabled = wx.CheckBox(self, wx.ID_ANY, label=_("Allow sharing the screen of the controlled computer"))
-		self.screen_share_enabled.Bind(wx.EVT_CHECKBOX, self.on_screen_share_enabled)
+		# Translators: A checkbox in add-on options dialog to allow sharing this screen and its mouse with the controlling computer.
+		self.screen_share_enabled = wx.CheckBox(self, wx.ID_ANY, label=_("Allow sharing the screen of this computer and the use of its mouse, after confirmation"))
 		sizer.Add(self.screen_share_enabled)
-		# Translators: A checkbox in add-on options dialog to ask before the screen of this computer is shared.
-		self.screen_share_confirmation = wx.CheckBox(self, wx.ID_ANY, label=_("Ask before sharing this screen"))
-		sizer.Add(self.screen_share_confirmation)
-		# Translators: A checkbox in add-on options dialog to let the controlling computer use the mouse and keyboard of this computer.
-		self.remote_input_enabled = wx.CheckBox(self, wx.ID_ANY, label=_("Allow the controlling computer to use the mouse of this computer"))
-		self.remote_input_enabled.Bind(wx.EVT_CHECKBOX, self.on_remote_input_enabled)
-		sizer.Add(self.remote_input_enabled)
-		# Translators: A checkbox in add-on options dialog to ask before the controlling computer uses this mouse.
-		self.remote_input_confirmation = wx.CheckBox(self, wx.ID_ANY, label=_("Ask before letting the controlling computer use this mouse"))
-		sizer.Add(self.remote_input_confirmation)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -645,16 +634,6 @@ class OptionsDialog(SettingsPanel):
 
 	def on_allow_large_legacy_transfers(self, evt):
 		self.legacy_max_size.Enable(bool(self.allow_large_legacy_transfers.GetValue()))
-		evt.Skip()
-
-	def on_screen_share_enabled(self, evt):
-		enabled = bool(self.screen_share_enabled.GetValue())
-		self.screen_share_confirmation.Enable(enabled)
-		evt.Skip()
-
-	def on_remote_input_enabled(self, evt):
-		# Driving the remote mouse needs no picture, so this no longer follows screen sharing.
-		self.remote_input_confirmation.Enable(bool(self.remote_input_enabled.GetValue()))
 		evt.Skip()
 
 	def on_autoconnect(self, evt):
@@ -761,16 +740,7 @@ class OptionsDialog(SettingsPanel):
 		self.legacy_max_size.SetValue(int(file_transfer_section['legacy_max_size_mb']))
 		self.legacy_max_size.Enable(bool(file_transfer_section['allow_large_legacy_transfers']))
 		self.max_received_size.SetValue(int(file_transfer_section['max_received_size_mb']))
-		screen_share_section = config['screen_share']
-		screen_share_enabled = bool(screen_share_section['enabled'])
-		self.screen_share_enabled.SetValue(screen_share_enabled)
-		self.screen_share_confirmation.SetValue(screen_share_section['require_confirmation'])
-		self.screen_share_confirmation.Enable(screen_share_enabled)
-		input_control_section = config['input_control']
-		remote_input_enabled = bool(input_control_section['allow_remote_input'])
-		self.remote_input_enabled.SetValue(remote_input_enabled)
-		self.remote_input_confirmation.SetValue(input_control_section['require_confirmation'])
-		self.remote_input_confirmation.Enable(remote_input_enabled)
+		self.screen_share_enabled.SetValue(bool(config['screen_share']['enabled']))
 		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
 		NVDAConfig.conf.profiles[-1].name = None
@@ -885,11 +855,6 @@ class OptionsDialog(SettingsPanel):
 		config['file_transfer']['legacy_max_size_mb'] = int(self.legacy_max_size.GetValue())
 		config['file_transfer']['max_received_size_mb'] = int(self.max_received_size.GetValue())
 		config['screen_share']['enabled'] = self.screen_share_enabled.GetValue()
-		config['screen_share']['require_confirmation'] = self.screen_share_confirmation.GetValue()
-		config['input_control']['allow_remote_input'] = self.remote_input_enabled.GetValue()
-		config['input_control']['require_confirmation'] = self.remote_input_confirmation.GetValue()
-		# Kept in step so that a configuration read by an older version stays consistent.
-		config['screen_share']['allow_remote_input'] = self.remote_input_enabled.GetValue()
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		if not configuration.readonly:
 			config.write()

@@ -63,6 +63,7 @@ configspec = StringIO("""
 	managed = boolean(default=False)
 	original_enabled = boolean(default=True)
 	restore_on_reactivation = boolean(default=False)
+	settings_imported = boolean(default=False)
 
 [updates]
 	check_at_startup = boolean(default=True)
@@ -77,14 +78,8 @@ configspec = StringIO("""
 
 [screen_share]
 	enabled = boolean(default=True)
-	require_confirmation = boolean(default=True)
-	allow_remote_input = boolean(default=False)
 	max_fps = integer(default=15)
 	quality = option("low", "balanced", "high", default="balanced")
-
-[input_control]
-	allow_remote_input = boolean(default=False)
-	require_confirmation = boolean(default=True)
 
 [keep_awake]
 	enabled = boolean(default=True)
@@ -112,19 +107,6 @@ def _migrate_proxy_mode(config):
 		return True
 	return False
 
-def _migrate_remote_input(config):
-	"""Move the remote input permission out of the screen sharing section.
-
-	Controlling the remote mouse no longer needs a picture, so the setting now lives in
-	its own section. Users who had already allowed it keep their choice.
-	"""
-	if config['input_control'].get('allow_remote_input'):
-		return False
-	if not config['screen_share'].get('allow_remote_input'):
-		return False
-	config['input_control']['allow_remote_input'] = True
-	return True
-
 def get_config():
 	global _config
 	if not _config:
@@ -133,7 +115,6 @@ def get_config():
 		val = validate.Validator()
 		_config.validate(val, copy=True)
 		migrated = _migrate_proxy_mode(_config)
-		migrated = _migrate_remote_input(_config) or migrated
 		if migrated and not readonly:
 			try:
 				_config.write()
@@ -189,6 +170,23 @@ def clear_native_remote_state():
 	state['managed'] = False
 	state['original_enabled'] = True
 	state['restore_on_reactivation'] = False
+	get_config().write()
+	return True
+
+def were_native_remote_settings_imported():
+	"""Return whether the automatic connection of native NVDA Remote was already looked at."""
+	return get_config()['native_remote'].get('settings_imported', False)
+
+def mark_native_remote_settings_imported():
+	"""Remember that the automatic connection of native NVDA Remote was looked at.
+
+	The import only ever happens once, so that a user who deliberately changes or
+	removes the TeleNVDA automatic connection afterwards does not get the settings of
+	NVDA Remote back on the next start.
+	"""
+	if readonly:
+		return False
+	get_config()['native_remote']['settings_imported'] = True
 	get_config().write()
 	return True
 

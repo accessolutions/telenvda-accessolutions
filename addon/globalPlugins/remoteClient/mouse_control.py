@@ -59,20 +59,18 @@ MAX_WHEEL_NOTCHES = 10
 
 
 def is_remote_input_allowed():
-	"""Whether this computer lets the controlling one use its mouse."""
+	"""Whether this computer lets the controlling one use its mouse.
+
+	There is a single permission for the whole "let the other computer see and drive
+	this screen" feature: allowing the screen to be shared also allows its mouse to be
+	used. Nothing happens without the user answering the question asked when the
+	controlling computer actually asks for it.
+	"""
 	try:
-		return bool(configuration.get_config()["input_control"]["allow_remote_input"])
+		return bool(configuration.get_config()["screen_share"]["enabled"])
 	except Exception:
-		logger.debug("Unable to read the remote input configuration", exc_info=True)
+		logger.debug("Unable to read the screen sharing configuration", exc_info=True)
 		return False
-
-
-def requires_confirmation():
-	try:
-		return bool(configuration.get_config()["input_control"]["require_confirmation"])
-	except Exception:
-		# Asking is the safe default: never hand the mouse over silently.
-		return True
 
 
 class MouseSender:
@@ -186,13 +184,11 @@ class MouseReceiver:
 		if self.granted is False:
 			return
 		if self.granted is None:
-			if not requires_confirmation():
-				self.granted = True
-			else:
-				if not self._asking:
-					self._asking = True
-					wx.CallAfter(self._ask_permission)
-				return
+			# The question is never skipped: the mouse is never handed over silently.
+			if not self._asking:
+				self._asking = True
+				wx.CallAfter(self._ask_permission)
+			return
 		self.local_machine.send_mouse(**payload)
 
 	def _ask_permission(self):

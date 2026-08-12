@@ -236,6 +236,85 @@ class GlobalPlugin(_GlobalPlugin):
 			inputCore.decide_handleRawKey.register(self.handleRawKeys)
 		client = self
 
+	@staticmethod
+	def _read_native_remote_autoconnect():
+		"""Return the automatic connection configured in NVDA's own Remote Access.
+
+		:return: a dictionary describing the connection, or ``None`` when NVDA has no
+			built-in Remote Access, when its automatic connection is turned off or when
+			it is incomplete.
+		"""
+		remote = nvda_conf.get('remote')
+		if not remote:
+			return None
+		# NVDA 2026.1 renamed this section and some of its keys. Both spellings are
+		# accepted so that the settings of earlier versions are still recognised.
+		server = remote.get('controlServer') or remote.get('controlserver')
+		if not server:
+			return None
+		if not server.get('autoconnect'):
+			return None
+		key = str(server.get('key') or '')
+		if not key:
+			return None
+		self_hosted = bool(server.get('selfHosted', server.get('self_hosted', False)))
+		host = str(server.get('host') or '')
+		if not self_hosted and not host:
+			return None
+		try:
+			port = int(server.get('port', SERVER_PORT))
+		except (TypeError, ValueError):
+			port = SERVER_PORT
+		try:
+			mode = int(server.get('connectionMode', server.get('connection_type', 0)))
+		except (TypeError, ValueError):
+			mode = 0
+		return {
+			'key': key,
+			'self_hosted': self_hosted,
+			'host': host,
+			'port': port,
+			# 0 means being controlled, 1 means controlling, in both add-ons.
+			'connection_type': 1 if mode else 0,
+		}
+
+	def _import_native_remote_settings(self):
+		"""Copy the automatic connection of NVDA's own Remote Access into TeleNVDA.
+
+		TeleNVDA turns the Remote Access built into NVDA off, because two remote control
+		features fighting over the same keyboard and the same relay make little sense.
+		A user who had set up its automatic connection would otherwise silently lose it,
+		so those settings are copied over once, and the connection then happens through
+		TeleNVDA with the very same server, port and key.
+		"""
+		if configuration.readonly or globalVars.appArgs.secure:
+			return
+		try:
+			if configuration.were_native_remote_settings_imported():
+				return
+			native = self._read_native_remote_autoconnect()
+			config = configuration.get_config()
+			cs = config['controlserver']
+			if native is not None and not cs['autoconnect']:
+				cs['autoconnect'] = True
+				cs['self_hosted'] = native['self_hosted']
+				cs['connection_type'] = native['connection_type']
+				cs['key'] = native['key']
+				if native['self_hosted']:
+					cs['port'] = native['port']
+				else:
+					cs['host'] = native['host']
+					# The Remote Access built into NVDA only speaks the plain TCP protocol.
+					cs['transport'] = 'tcp'
+				config.write()
+				log.info(
+					"TeleNVDA: the automatic connection of the Remote Access built into "
+					"NVDA has been copied to TeleNVDA."
+				)
+			configuration.mark_native_remote_settings_imported()
+		except Exception:
+			log.exception("Unable to import the native NVDA Remote automatic connection")
+
 	def _manage_native_remote(self):
 		if configuration.readonly:
 			return
@@ -259,6 +338,31 @@ class GlobalPlugin(_GlobalPlugin):
 				nvda_conf.save()
 		except Exception:
 			log.exception("Unable to manage native NVDA Remote configuration")
+
+	def _shutdown_native_remote(self):
+		"""Stop the Remote Access support built into NVDA for the current session.
+
+		Turning the NVDA option off only takes effect on the next start, because NVDA
+		creates its Remote Access menu before the add-ons are loaded. Whenever that
+		option was still on when NVDA started, its menu therefore sits next to the
+		TeleNVDA one until the user restarts. Terminating the built-in client removes
+		the duplicate menu straight away.
+		"""
+		if self._terminated or globalVars.appArgs.secure:
+			return
+		try:
+			import _remoteClient
+		except ImportError:
+			# Versions of NVDA older than 2025.1 have no built-in Remote Access.
+			return
+		try:
+			if not _remoteClient.remoteRunning():
+				return
+			_remoteClient.terminate()
+		except Exception:
+			log.exception("Unable to stop the native NVDA Remote Access client")
+		else:
+			log.info("TeleNVDA: the Remote Access support built into NVDA was stopped for this session.")
 
 	def _schedule_inactivity_monitor(self):
 		if self._terminated:
@@ -295,7 +399,11 @@ class GlobalPlugin(_GlobalPlugin):
 		return True
 
 	def postStartupHandler(self):
+		self._import_native_remote_settings()
 		self._manage_native_remote()
+		# The built-in client also listens to postNvdaStartup, so it is stopped once the
+		# notification is over rather than while NVDA is still walking its handlers.
+		wx.CallAfter(self._shutdown_native_remote)
 		cs = configuration.get_config()['controlserver']
 		if globalVars.appArgs.secure:
 			self.handle_secure_desktop()

@@ -127,6 +127,10 @@ class SlaveSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_request_screenshot', self.handle_screenshot_request)
 		self.transport.callback_manager.register_callback('msg_request_screenshot_powershell', self.handle_powershell_screenshot_request)
 		self.mouse_receiver = mouse_control.MouseReceiver(self.local_machine)
+		if self.screen_share is not None:
+			# Accepting to share this screen also hands the mouse over, so the screen
+			# sharing answer stands for the mouse one too.
+			self.screen_share.input_receiver = self.mouse_receiver
 		self.transport.callback_manager.register_callback('msg_' + mouse_control.MESSAGE_TYPE, self.handle_mouse)
 
 	def handle_mouse(self, **kwargs):

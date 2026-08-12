@@ -183,11 +183,10 @@ allows it, so it does not go through the relay server and does not consume its
 bandwidth. When no direct route exists, a TURN server declared by the relay is
 used as a last resort. Nothing is recorded at either end.
 
-Before anything is shared, the controlled computer asks its user to agree,
-unless that confirmation was turned off in the add-on options. Mouse control is
-a separate decision, turned off by default, and taken on the computer being
-controlled: whatever the controlling computer asks for, only what the local
-options allow is granted. No keyboard input travels over this link.
+Before anything is shared, the controlled computer asks its user to agree.
+Agreeing also lets the controlling computer use the mouse of this computer, and
+that single answer is forgotten when the session ends. No keyboard input travels
+over this link.
 
 Screen sharing needs Microsoft Edge installed on both computers, a relay
 started with screen sharing enabled, and both computers running a version of
@@ -200,13 +199,18 @@ focus away from NVDA. On the controlling computer, it shows the picture. No
 browsing profile of the user is touched: a temporary one is created for the
 session and removed afterwards.
 
-The following options are available in the add-on settings:
+The following option is available in the add-on settings:
 
-* **Allow sharing the screen of the controlled computer**, which turns the
-  whole feature off when cleared, on this computer only.
-* **Ask before sharing this screen**, on by default.
-* **Allow the controlling computer to use the mouse of this computer**, off by
-  default.
+* **Allow sharing the screen of this computer and the use of its mouse, after
+  confirmation**, which turns the whole feature off when cleared, on this
+  computer only.
+
+There is a single permission for both: when the controlling computer asks, this
+computer is asked *Do you want to share your screen? The controlling computer
+will see this screen and will be able to use its mouse.* Nothing is shared and
+no mouse event is applied before that question has been answered, and the
+answer only lasts for the session. No keyboard input ever travels over this
+link.
 
 ## Controlling the remote computer
 
@@ -217,9 +221,6 @@ gesture can be changed in NVDA's Input Gestures dialog. On a controlled
 computer, the same gesture requests that the controller return control to the
 local machine. For best results, use matching keyboard layouts on both
 computers.
-
-On the controlling computer, holding the right mouse button down for five
-seconds restarts NVDA without confirmation.
 
 The Remote menu also provides commands for sending Ctrl+Alt+Delete, muting
 remote speech, pushing clipboard text, and sending files. File transfers are

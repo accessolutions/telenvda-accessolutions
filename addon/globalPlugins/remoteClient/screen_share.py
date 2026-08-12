@@ -80,19 +80,13 @@ def is_available():
 def is_input_control_allowed():
 	"""Whether this computer accepts to be driven with the remote mouse.
 
-	The setting no longer belongs to screen sharing, since the remote mouse is useful
-	on its own, so the answer comes from :mod:`mouse_control`.
+	Sharing the screen and lending the mouse are a single permission: someone watching
+	this screen almost always needs to point at something on it. The answer therefore
+	comes from the very same setting, read through :mod:`mouse_control` which also uses
+	it when no picture is shared at all.
 	"""
 	from . import mouse_control
 	return mouse_control.is_remote_input_allowed()
-
-
-def _requires_confirmation():
-	try:
-		return bool(configuration.get_config()["screen_share"]["require_confirmation"])
-	except Exception:
-		# Asking is the safe default: never share a screen silently.
-		return True
 
 
 def _capture_settings():
@@ -119,6 +113,9 @@ class ScreenShareManager:
 		self.ice_servers = []
 		#: Whether the peer agreed, for this session, to be driven with the mouse.
 		self.input_allowed = False
+		#: Set by the controlled session, so that accepting to share this screen also
+		#: hands the mouse over without asking a second question.
+		self.input_receiver = None
 		callbacks = transport.callback_manager
 		callbacks.register_callback("msg_" + MSG_REQUEST, self.handle_request)
 		callbacks.register_callback("msg_" + MSG_RESPONSE, self.handle_response)
@@ -172,7 +169,9 @@ class ScreenShareManager:
 		# The relay only hands out TURN credentials to clients which asked for them,
 		# and they expire, so they are requested for each session rather than kept.
 		self._request_turn_credentials()
-		self._send(MSG_REQUEST, allow_input=is_input_control_allowed())
+		# Seeing a screen without being able to point at it is of little use, so the mouse
+		# is always asked for. The controlled computer alone decides whether to grant it.
+		self._send(MSG_REQUEST, allow_input=True)
 		# Translators: message spoken when screen sharing has been requested
 		return _("Screen sharing requested")
 
@@ -207,18 +206,15 @@ class ScreenShareManager:
 		# Remote input is only ever granted when this computer allows it, whatever the
 		# controlling computer asked for.
 		allow_input = bool(allow_input) and is_input_control_allowed()
-		if _requires_confirmation():
-			wx.CallAfter(self._ask_permission, origin, allow_input)
-		else:
-			self._accept_request(origin, allow_input)
+		wx.CallAfter(self._ask_permission, origin, allow_input)
 
 	def _ask_permission(self, origin, allow_input):
 		if allow_input:
-			# Translators: question asked before sharing this screen, with mouse control
-			question = _("The controlling computer asks to see this screen and to control the mouse. Do you accept?")
+			# Translators: question asked before this screen is shared, with mouse control
+			question = _("Do you want to share your screen? The controlling computer will see this screen and will be able to use its mouse.")
 		else:
-			# Translators: question asked before sharing this screen
-			question = _("The controlling computer asks to see this screen. Do you accept?")
+			# Translators: question asked before this screen is shared
+			question = _("Do you want to share your screen? The controlling computer will see this screen.")
 		answer = gui.messageBox(
 			parent=gui.mainFrame,
 			# Translators: title of the screen sharing request dialog
@@ -246,6 +242,10 @@ class ScreenShareManager:
 			self.peer_id = None
 			self._refuse(origin, "unavailable")
 			return
+		if allow_input and self.input_receiver is not None:
+			# The user has just answered the only question there is, so the mouse events
+			# which follow must not open a second one.
+			self.input_receiver.granted = True
 		self._send(MSG_RESPONSE, accepted=True, allow_input=allow_input)
 		self.helper.send(
 			command="start",
