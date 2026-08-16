@@ -186,6 +186,9 @@ class GlobalPlugin(_GlobalPlugin):
 		self.mouse_hook_thread = None
 		self.mouse_hook = None
 		self.sending_keys = False
+		# Whether keyboard control was taken by starting a screen sharing session, so that
+		# ending that session gives the keyboard back rather than leaving it stranded.
+		self.screen_share_took_control = False
 		self.key_modifiers = set()
 		self.hostPendingModifiers = set()
 		self.hostPendingNonmodifier = None
@@ -938,6 +941,8 @@ class GlobalPlugin(_GlobalPlugin):
 
 		The gesture works from either end: the controlling computer starts and stops
 		the session, while the controlled one can only end a session it accepted.
+		On the controlling computer, watching a screen without being able to act on it
+		is of little use, so the keyboard follows the picture.
 		"""
 		session = None
 		if self.master_session is not None and self._is_master_connected():
@@ -948,7 +953,24 @@ class GlobalPlugin(_GlobalPlugin):
 			ui.message(_("Not connected."))
 			return
 		configuration.record_activity()
+		was_active = session.screen_share.active
 		ui.message(session.screen_share.toggle())
+		if session is not self.master_session:
+			return
+		if not was_active and session.screen_share.active:
+			self._take_control_for_screen_share(gesture)
+		elif was_active and not session.screen_share.active and self.screen_share_took_control:
+			self._switch_to_local_control()
+
+	def _take_control_for_screen_share(self, gesture):
+		"""Send the keyboard to the controlled computer now that its screen is requested."""
+		if self.sending_keys:
+			# The user already took control, so ending the session must not take it away.
+			return
+		if not self._is_master_connected() or not self._remote_slave_available():
+			return
+		self._switch_to_remote_control(gesture)
+		self.screen_share_took_control = True
 
 	@script(
 		# Translators: toggle remote mouse control gesture description
@@ -1147,6 +1169,7 @@ class GlobalPlugin(_GlobalPlugin):
 		if release_keys:
 			self._release_remote_keys()
 		self.sending_keys = False
+		self.screen_share_took_control = False
 		if self.master_session is not None:
 			self.set_receiving_braille(False)
 		if was_sending_keys:
