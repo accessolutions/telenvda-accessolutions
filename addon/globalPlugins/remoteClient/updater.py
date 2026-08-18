@@ -29,7 +29,7 @@ from . import configuration, proxy_utils, sspi_proxy
 log = logging.getLogger("TeleNVDA.updater")
 
 REPOSITORY = "accessolutions/telenvda-accessolutions"
-ADDON_NAME = "TeleNVDA"
+ADDON_NAME = "TeleNVDA Accessolutions"
 RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
 _USER_AGENT = "TeleNVDA updater"
 _NETWORK_TIMEOUT = 30
@@ -37,7 +37,7 @@ _MAX_RESPONSE_SIZE = 16 * 1024 * 1024
 _MAX_REDIRECTS = 5
 _VERSION_PATTERN = re.compile(r"^(?:\d{8}(?:\.\d+)*|\d{4}(?:\.\d+){1,5})$")
 _ASSET_VERSION_PATTERN = re.compile(
-	r"^telenvda-(?P<version>(?:\d{8}(?:\.\d+)*|\d{4}(?:\.\d+){1,5}))\.nvda-addon$",
+	r"^telenvda(?:[ -]accessolutions)?-(?P<version>(?:\d{8}(?:\.\d+)*|\d{4}(?:\.\d+){1,5}))\.nvda-addon$",
 	re.IGNORECASE,
 )
 

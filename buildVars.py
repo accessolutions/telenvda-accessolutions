@@ -11,7 +11,7 @@ _ADDON_VERSION = datetime.now().strftime("%Y.%m.%d.%H%M")
 # Add-on information variables
 addon_info = AddonInfo(
 	# add-on Name, internal for nvda
-	addon_name= "TeleNVDA",
+	addon_name= "TeleNVDA Accessolutions",
 	# Add-on summary, usually the user visible name of the addon.
 	# Translators: Summary for this add-on to be shown on installation and add-on information.
 	addon_summary= _("Tele NVDA remote assistance"),
