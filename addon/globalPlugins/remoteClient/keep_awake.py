@@ -73,10 +73,11 @@ def _speech_mode_off():
 class KeepAwake:
 	"""Injects an F15 key press when the machine has been left unattended."""
 
-	def __init__(self):
+	def __init__(self, is_active=None):
 		self._timer = None
 		self._restore_timer = None
 		self._previous_speech_mode = None
+		self._is_active = is_active or (lambda: True)
 		self._last_local_input = time.monotonic()
 		self._prevention_started = None
 		self._prevention_expired = False
@@ -104,6 +105,9 @@ class KeepAwake:
 
 	def stop(self):
 		self._cancel_timer()
+		self._reset_prevention()
+
+	def _reset_prevention(self):
 		self._prevention_started = None
 		self._prevention_expired = False
 		if self._restore_timer is not None:
@@ -121,8 +125,15 @@ class KeepAwake:
 		max_duration_minutes = int(config.get('max_duration_minutes', 0) or 0)
 		if max_duration_minutes not in KEEP_AWAKE_MAX_DURATION_MINUTES:
 			max_duration_minutes = 0
+		enabled = bool(config['enabled'])
+		if enabled:
+			try:
+				enabled = bool(self._is_active())
+			except Exception:
+				log.exception("Unable to determine whether keep awake is active")
+				enabled = False
 		return (
-			bool(config['enabled']),
+			enabled,
 			max(5, int(config['delay_seconds'])),
 			max_duration_minutes * 60,
 		)
@@ -134,8 +145,7 @@ class KeepAwake:
 			log.exception("Unable to read the keep awake configuration")
 			return
 		if not enabled:
-			self._prevention_started = None
-			self._prevention_expired = False
+			self._reset_prevention()
 			return
 		if self._prevention_expired:
 			return
@@ -159,8 +169,7 @@ class KeepAwake:
 			log.exception("Unable to read the keep awake configuration")
 			return
 		if not enabled:
-			self._prevention_started = None
-			self._prevention_expired = False
+			self._reset_prevention()
 			return
 		if self._prevention_expired:
 			return

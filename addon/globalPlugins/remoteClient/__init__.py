@@ -228,7 +228,9 @@ class GlobalPlugin(_GlobalPlugin):
 			self.postStartupHandler()
 		core.postNvdaStartup.register(self.postStartupHandler)
 		globalVars.teleNVDA = None
-		self.keep_awake = keep_awake.KeepAwake()
+		# Sleep prevention is useful only while this computer is connected as a
+		# slave. A master must remain free to enter sleep when it is unattended.
+		self.keep_awake = keep_awake.KeepAwake(is_active=self._is_slave_connected)
 		self.keep_awake.start()
 		self.start_mouse_hook()
 		if buildVersion.version_year >= 2025:
@@ -1219,6 +1221,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.slave_transport.close()
 		self.slave_transport = None
 		self.slave_session = None
+		wx.CallAfter(self.keep_awake.reload)
 
 	def on_connected_as_master_failed(self):
 		if self.master_transport.successful_connects == 0:
@@ -1430,6 +1433,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.slave_transport = transport
 		transport.callback_manager.register_callback(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.on_certificate_as_slave_failed)
 		self.slave_transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected_as_slave)
+		self.slave_transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.on_disconnected_as_slave)
 		self.slave_transport.reconnector_thread.start()
 		if not self.menu.FindItemById(self.disconnect_item.Id):
 			self.menu.Insert(0, self.disconnect_item)
@@ -1473,6 +1477,10 @@ class GlobalPlugin(_GlobalPlugin):
 		self.copy_link_remote_item.Enable(True)
 		self.copy_link_tele_item.Enable(True)
 		configuration.write_connection_to_config(self.slave_transport.address)
+		wx.CallAfter(self.keep_awake.reload)
+
+	def on_disconnected_as_slave(self):
+		wx.CallAfter(self.keep_awake.reload)
 
 	def start_control_server(self, server_port, channel, useUPNP=False):
 		self.server = server.Server(server_port, channel, UPNP=useUPNP)
