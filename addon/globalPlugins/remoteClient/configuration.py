@@ -11,10 +11,14 @@ readonly = globalVars.appArgs.secure or globalVars.appArgs.launcher
 CONFIG_FILE_NAME = 'teleNVDA.ini'
 
 # Default relay servers offered in every server list, in addition to any address
-# the user has already connected to. nvdaremote.accessolutions.fr is offered
-# first unless the user has already used another connection, followed by
-# nvda.fr and nvdaremote.com (TCP).
-DEFAULT_SERVER_HOSTS = ("nvdaremote.accessolutions.fr", "nvda.fr", "nvdaremote.com")
+# the user has already connected to. The Accessolutions relay is intentionally
+# not listed here: it remains the default host for new auto-connect settings,
+# but can still be entered manually when starting a connection.
+DEFAULT_SERVER_HOSTS = ("nvda.fr", "nvdaremote.com")
+
+# Addresses which may already exist in the connection history but should no
+# longer be suggested by the connection dialog.
+HIDDEN_SERVER_ADDRESSES = frozenset(("nvdaremote.accessolutions.fr:443",))
 
 # Default number of seconds of inactivity (no real remote control action
 # performed or received) after which auto-connect is automatically turned off.
@@ -35,7 +39,7 @@ configspec = StringIO("""
 	self_hosted = boolean(default=False)
 	UPNP = boolean(default=False)
 	connection_type = integer(default=0)
-	host = string(default="remote.nvda.es")
+	host = string(default="nvdaremote.accessolutions.fr")
 	port = integer(default=6837)
 	key = string(default="")
 	encryption_key = string(default="")
@@ -95,6 +99,11 @@ configspec = StringIO("""
 	display_motd_once = boolean(default=False)
 	portcheck = string(default="https://nvda.es/portcheck.php?port={port}")
 """)
+
+def is_hidden_server_address(address):
+	"""Return whether an address should be omitted from the connection history list."""
+	return str(address).strip().casefold() in HIDDEN_SERVER_ADDRESSES
+
 def _migrate_proxy_mode(config):
 	"""Switch configurations left in manual mode without a proxy host to automatic detection.
 

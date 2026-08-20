@@ -4,11 +4,11 @@ import ssl
 SERVER_PORT = 6837
 
 
-def address_to_hostport(addr):
-	"""Converts an address such as google.com:80 into an address adn port tuple.
-	If no port is given, use SERVER_PORT."""
+def address_to_hostport(addr, default_port=SERVER_PORT):
+	"""Convert an address such as google.com:80 into a host and port tuple.
+	If no port is given, use ``default_port``."""
 	addr = urllib.parse.urlparse("//" + addr)
-	port = addr.port or SERVER_PORT
+	port = addr.port or default_port
 	return (addr.hostname, port)
 
 

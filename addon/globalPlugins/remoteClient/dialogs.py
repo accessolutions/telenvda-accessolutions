@@ -705,7 +705,7 @@ class OptionsDialog(SettingsPanel):
 		self.proxy_type.Enable(proxy_state and manual_proxy)
 		self.proxy_username.Enable(proxy_state and manual_proxy)
 		self.proxy_password.Enable(proxy_state and manual_proxy)
-		self.port.Enable(bool(self.client_or_server.GetSelection()) and state)
+		self.port.Enable(state)
 		self.useUPNP.Enable(bool(self.client_or_server.GetSelection()) and state)
 
 	def on_client_or_server(self, evt):
@@ -742,13 +742,25 @@ class OptionsDialog(SettingsPanel):
 		)
 		self.client_or_server.SetSelection(int(self_hosted))
 		self.connection_type.SetSelection(connection_type)
-		self.host.SetValue(cs['host'])
+		default_port = socket_utils.SERVER_PORT
+		try:
+			default_port = int(cs.get('port', socket_utils.SERVER_PORT) or socket_utils.SERVER_PORT)
+		except (TypeError, ValueError):
+			pass
+		if self_hosted:
+			self.host.SetValue(cs['host'])
+		else:
+			try:
+				host, port = socket_utils.address_to_hostport(cs['host'], default_port=default_port)
+			except (TypeError, ValueError):
+				host, port = cs['host'], default_port
+			self.host.SetValue(host or cs['host'])
 		self.transport.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
 		self.ws_path.SetValue(cs.get('ws_path', '/'))
 		proxy_modes = PROXY_MODES
 		configured_proxy_mode = cs.get('proxy_mode', 'auto')
 		self.proxy_mode.SetSelection(proxy_modes.index(configured_proxy_mode) if configured_proxy_mode in proxy_modes else proxy_modes.index("auto"))
-		self.port.SetValue(str(cs['port']))
+		self.port.SetValue(str(cs['port'] if self_hosted else port))
 		self.useUPNP.SetValue(cs['UPNP'])
 		self.key.SetValue(cs['key'])
 		self.encryption_key.SetValue(cs['encryption_key'])
@@ -877,8 +889,8 @@ class OptionsDialog(SettingsPanel):
 		if not self_hosted:
 			cs['host'] = self.host.GetValue()
 		else:
-			cs['port'] = int(self.port.GetValue())
 			cs['UPNP'] = bool(self.useUPNP.GetValue())
+		cs['port'] = int(self.port.GetValue())
 		cs['key'] = self.key.GetValue()
 		cs['encryption_key'] = self.encryption_key.GetValue()
 		cs['transport'] = 'websocket' if self.transport.GetSelection() == 1 else 'tcp'

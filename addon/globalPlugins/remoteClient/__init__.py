@@ -603,7 +603,10 @@ class GlobalPlugin(_GlobalPlugin):
 			self.start_control_server(port, channel, UPNP)
 			transport_type = 'tcp'
 		else:
-			address = address_to_hostport(cs['host'])
+			address = address_to_hostport(
+				cs['host'],
+				default_port=int(cs.get('port', SERVER_PORT) or SERVER_PORT),
+			)
 			transport_type = cs.get('transport', 'tcp')
 		if cs['connection_type']==0:
 			self.connect_as_slave(address, channel, encryption_key, transport_type=transport_type, ws_path=cs.get('ws_path', '/'))
@@ -1300,7 +1303,10 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: Title of the connect dialog.
 		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("TeleNVDA - Connect"))
 		self._connect_dialog = dlg
-		host_items = list(reversed(last_cons))
+		host_items = [
+			address for address in reversed(last_cons)
+			if not configuration.is_hidden_server_address(address)
+		]
 		for default_host in configuration.DEFAULT_SERVER_HOSTS:
 			if default_host not in host_items:
 				host_items.append(default_host)
