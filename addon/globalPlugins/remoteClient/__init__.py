@@ -309,6 +309,16 @@ class GlobalPlugin(_GlobalPlugin):
 					cs['port'] = native['port']
 				else:
 					cs['host'] = native['host']
+					# NVDA Remote may store the HTTPS port explicitly in the host field.
+					# TeleNVDA imports this connection as plain TCP, for which 443 must not
+					# be kept as an explicit port: the normal TCP port is 6837.
+					try:
+						host, port = address_to_hostport(native['host'], default_port=0)
+					except (TypeError, ValueError):
+						pass
+					else:
+						if host and port == 443:
+							cs['host'] = host
 					# The Remote Access built into NVDA only speaks the plain TCP protocol.
 					cs['transport'] = 'tcp'
 				config.write()
