@@ -878,7 +878,12 @@ class OptionsDialog(SettingsPanel):
 		NVDAConfig.conf.profiles[-1].name = self.originalProfileName
 		config = configuration.get_config()
 		cs = config['controlserver']
-		cs['autoconnect'] = self.autoconnect.GetValue()
+		was_autoconnect_enabled = bool(cs['autoconnect'])
+		cs['autoconnect'] = bool(self.autoconnect.GetValue())
+		if cs['autoconnect'] and not was_autoconnect_enabled:
+			# A previous connection may have left an expired activity timestamp. Do not
+			# immediately undo an explicit reactivation of auto-connect at next startup.
+			config['activity']['last_activity_timestamp'] = 0.0
 		cs['disable_autoconnect_after_inactivity'] = self.disable_autoconnect_inactivity.GetValue()
 		if inactivity_seconds is not None:
 			cs['inactivity_auto_disable_seconds'] = inactivity_seconds

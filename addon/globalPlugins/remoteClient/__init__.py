@@ -51,7 +51,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_INACTIVITY_MONITOR_MAX_DELAY_SECONDS = 24 * 24 * 60 * 60
+# Keep the monitor's default maximum delay aligned with the 30-day inactivity timeout.
+_INACTIVITY_MONITOR_MAX_DELAY_SECONDS = 30 * 24 * 60 * 60
 _INACTIVITY_MONITOR_IDLE_DELAY_SECONDS = 60
 
 _SW_SHOW = 5
@@ -302,6 +303,9 @@ class GlobalPlugin(_GlobalPlugin):
 			cs = config['controlserver']
 			if native is not None and not cs['autoconnect']:
 				cs['autoconnect'] = True
+				# The previous TeleNVDA activity may be expired. Imported settings are
+				# an explicit activation and must not be disabled immediately at startup.
+				config['activity']['last_activity_timestamp'] = 0.0
 				cs['self_hosted'] = native['self_hosted']
 				cs['connection_type'] = native['connection_type']
 				cs['key'] = native['key']
