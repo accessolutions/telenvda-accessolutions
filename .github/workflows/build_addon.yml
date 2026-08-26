@@ -77,6 +77,17 @@ jobs:
           sha256sum "$file" > "$file.sha256"
         done
 
+    - name: Prepare stable download asset
+      shell: bash
+      run: |
+        addon="$(find . -type f -name '*.nvda-addon' -not -name '*-latest.nvda-addon' | head -n 1)"
+        if [[ -z "$addon" ]]; then
+          echo "No NVDA add-on package was found" >&2
+          exit 1
+        fi
+        cp "$addon" ./TeleNVDA.Accessolutions-latest.nvda-addon
+        sha256sum ./TeleNVDA.Accessolutions-latest.nvda-addon > ./TeleNVDA.Accessolutions-latest.nvda-addon.sha256
+
     - name: Release
       uses: softprops/action-gh-release@v3.0.2
       with:

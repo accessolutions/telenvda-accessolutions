@@ -243,14 +243,22 @@ class GlobalPlugin(_GlobalPlugin):
 		client = self
 
 	@staticmethod
-	def _read_native_remote_autoconnect():
+	def _config_bool(value):
+		if isinstance(value, str):
+			return value.strip().casefold() in ('1', 'true', 'yes', 'on')
+		return bool(value)
+
+	@staticmethod
+	def _read_native_remote_autoconnect(nvda_config=None):
 		"""Return the automatic connection configured in NVDA's own Remote Access.
 
 		:return: a dictionary describing the connection, or ``None`` when NVDA has no
 			built-in Remote Access, when its automatic connection is turned off or when
 			it is incomplete.
 		"""
-		remote = nvda_conf.get('remote')
+		if nvda_config is None:
+			nvda_config = nvda_conf
+		remote = nvda_config.get('remote')
 		if not remote:
 			return None
 		# NVDA 2026.1 renamed this section and some of its keys. Both spellings are
@@ -258,12 +266,12 @@ class GlobalPlugin(_GlobalPlugin):
 		server = remote.get('controlServer') or remote.get('controlserver')
 		if not server:
 			return None
-		if not server.get('autoconnect'):
+		if not GlobalPlugin._config_bool(server.get('autoconnect')):
 			return None
 		key = str(server.get('key') or '')
 		if not key:
 			return None
-		self_hosted = bool(server.get('selfHosted', server.get('self_hosted', False)))
+		self_hosted = GlobalPlugin._config_bool(server.get('selfHosted', server.get('self_hosted', False)))
 		host = str(server.get('host') or '')
 		if not self_hosted and not host:
 			return None
@@ -296,12 +304,31 @@ class GlobalPlugin(_GlobalPlugin):
 		if configuration.readonly or globalVars.appArgs.secure:
 			return
 		try:
-			if configuration.were_native_remote_settings_imported():
+			# A portable NVDA has its own isolated configuration directory. Import
+			# the old TeleNVDA/NVDA Remote file first, then look for native Remote
+			# settings in the installed NVDA profile when one is available.
+			configuration.migrate_external_addon_settings()
+			config = configuration.get_config()
+			if (
+				configuration.were_native_remote_settings_imported()
+				and configuration.has_explicit_remote_settings(config)
+			):
 				return
 			native = self._read_native_remote_autoconnect()
-			config = configuration.get_config()
+			if native is None:
+				for path in configuration.get_portable_native_config_paths():
+					external_config = configuration.load_external_config(path)
+					if external_config is None:
+						continue
+					native = self._read_native_remote_autoconnect(external_config)
+					if native is not None:
+						break
 			cs = config['controlserver']
-			if native is not None and not cs['autoconnect']:
+			if native is None:
+				# Do not permanently suppress a future import when this NVDA
+				# instance has no native Remote configuration yet.
+				return
+			if not cs['autoconnect']:
 				cs['autoconnect'] = True
 				# The previous TeleNVDA activity may be expired. Imported settings are
 				# an explicit activation and must not be disabled immediately at startup.
@@ -312,7 +339,7 @@ class GlobalPlugin(_GlobalPlugin):
 				if native['self_hosted']:
 					cs['port'] = native['port']
 				else:
-					cs['host'] = native['host']
+					cs['host'] = configuration.normalize_server_host(native['host'])
 					# NVDA Remote may store the HTTPS port explicitly in the host field.
 					# TeleNVDA imports this connection as plain TCP, for which 443 must not
 					# be kept as an explicit port: the normal TCP port is 6837.
@@ -321,8 +348,12 @@ class GlobalPlugin(_GlobalPlugin):
 					except (TypeError, ValueError):
 						pass
 					else:
-						if host and port == 443:
-							cs['host'] = host
+						if host:
+							cs['host'] = configuration.normalize_server_host(host)
+						if port:
+							cs['port'] = SERVER_PORT if port == 443 else port
+						else:
+							cs['port'] = native['port']
 					# The Remote Access built into NVDA only speaks the plain TCP protocol.
 					cs['transport'] = 'tcp'
 				config.write()
@@ -1369,7 +1400,10 @@ class GlobalPlugin(_GlobalPlugin):
 	def on_connected_as_master(self):
 		was_interrupted = self.master_connection_interrupted
 		self.master_connection_interrupted = False
-		configuration.write_connection_to_config(self.master_transport.address)
+		configuration.write_connection_to_config(
+			self.master_transport.address,
+			'websocket' if isinstance(self.master_transport, WebSocketRelayTransport) else 'tcp',
+		)
 		if not self.menu.FindItemById(self.disconnect_item.Id):
 			self.menu.Insert(0, self.disconnect_item)
 		if self.menu.FindItemById(self.connect_item.Id):
@@ -1496,7 +1530,10 @@ class GlobalPlugin(_GlobalPlugin):
 		self.screenshot_powershell_item.Enable(True)
 		self.copy_link_remote_item.Enable(True)
 		self.copy_link_tele_item.Enable(True)
-		configuration.write_connection_to_config(self.slave_transport.address)
+		configuration.write_connection_to_config(
+			self.slave_transport.address,
+			'websocket' if isinstance(self.slave_transport, WebSocketRelayTransport) else 'tcp',
+		)
 		wx.CallAfter(self.keep_awake.reload)
 
 	def on_disconnected_as_slave(self):

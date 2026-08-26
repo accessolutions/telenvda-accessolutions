@@ -9,6 +9,9 @@ from . import socket_utils
 readonly = globalVars.appArgs.secure or globalVars.appArgs.launcher
 
 CONFIG_FILE_NAME = 'teleNVDA.ini'
+DEFAULT_SERVER_HOST = "nvdaremote.accessolutions.fr"
+LEGACY_SERVER_HOSTS = frozenset(("remote.nvda.es",))
+LEGACY_CONFIG_FILE_NAME = 'remote.ini'
 
 # Default relay servers offered in every server list, in addition to any address
 # the user has already connected to. The Accessolutions relay is intentionally
@@ -33,7 +36,7 @@ _last_activity_write_time = 0.0
 _config = None
 configspec = StringIO("""
 [connections]
-	last_connected = list(default=list("remote.nvda.es"))
+	last_connected = list(default=list("nvdaremote.accessolutions.fr"))
 [controlserver]
 	autoconnect = boolean(default=False)
 	self_hosted = boolean(default=False)
@@ -104,6 +107,258 @@ def is_hidden_server_address(address):
 	"""Return whether an address should be omitted from the connection history list."""
 	return str(address).strip().casefold() in HIDDEN_SERVER_ADDRESSES
 
+def normalize_server_host(host):
+	"""Return the current relay hostname without an embedded port."""
+	original = str(host or '').strip()
+	if not original:
+		return original
+	try:
+		parsed_host, _ = socket_utils.address_to_hostport(original, default_port=0)
+	except (TypeError, ValueError):
+		return original
+	if not parsed_host:
+		return original
+	if parsed_host.casefold() in LEGACY_SERVER_HOSTS:
+		return DEFAULT_SERVER_HOST
+	return parsed_host
+
+def _migrate_server_configuration(config):
+	"""Migrate old relay host names and embedded TCP ports."""
+	changed = False
+	section = config['controlserver']
+	if not section.get('self_hosted', False):
+		raw_host = str(section.get('host', '') or '').strip()
+		if raw_host:
+			try:
+				host, port = socket_utils.address_to_hostport(
+					raw_host,
+					default_port=int(section.get('port', socket_utils.SERVER_PORT) or socket_utils.SERVER_PORT),
+				)
+			except (TypeError, ValueError):
+				host, port = raw_host, None
+			canonical_host = normalize_server_host(host)
+			if canonical_host != raw_host:
+				section['host'] = canonical_host
+				changed = True
+			if port is not None:
+				# Old native/TeleNVDA TCP settings could contain :443 in the
+				# host. The native Remote protocol uses the standard TCP port;
+				# WebSocket connections must keep 443 explicitly.
+				transport = str(section.get('transport', 'tcp')).lower()
+				is_known_relay = canonical_host.casefold() == DEFAULT_SERVER_HOST.casefold()
+				should_use_tcp_default = (
+					port == 443
+					and transport != 'websocket'
+					and is_known_relay
+				)
+				new_port = socket_utils.SERVER_PORT if should_use_tcp_default else port
+				if section.get('port') != new_port:
+					section['port'] = new_port
+					changed = True
+
+	connections = config['connections']
+	last_connected = connections.get('last_connected', [])
+	canonical_history = []
+	for address in last_connected:
+		raw_address = str(address).strip()
+		try:
+			host, port = socket_utils.address_to_hostport(raw_address)
+		except (TypeError, ValueError):
+			canonical_history.append(address)
+			continue
+		if not host:
+			canonical_history.append(address)
+			continue
+		canonical_address = socket_utils.hostport_to_address((normalize_server_host(host), port))
+		canonical_history.append(canonical_address)
+		if canonical_address != address:
+			changed = True
+	if canonical_history != list(last_connected):
+		connections['last_connected'] = canonical_history
+		changed = True
+	return changed
+
+def _has_configured_remote_settings(config):
+	"""Return whether the active TeleNVDA profile already contains user data."""
+	if has_explicit_remote_settings(config):
+		return True
+	return list(config['connections'].get('last_connected', [])) != [DEFAULT_SERVER_HOST]
+
+def has_explicit_remote_settings(config=None):
+	if config is None:
+		config = get_config()
+	section = config['controlserver']
+	if section.get('autoconnect') or section.get('self_hosted') or section.get('key'):
+		return True
+	if section.get('UPNP') or section.get('encryption_key') or section.get('connection_type'):
+		return True
+	if normalize_server_host(section.get('host')) != DEFAULT_SERVER_HOST:
+		return True
+	try:
+		if int(section.get('port', socket_utils.SERVER_PORT)) != socket_utils.SERVER_PORT:
+			return True
+	except (TypeError, ValueError):
+		return True
+	if (
+		section.get('transport', 'tcp') != 'tcp'
+		or section.get('ws_path', '/') != '/'
+		or section.get('proxy_mode', 'auto') != 'auto'
+		or section.get('proxy_host')
+		or section.get('proxy_port')
+		or section.get('proxy_username')
+		or section.get('proxy_password')
+	):
+		return True
+	return False
+
+def _get_control_server_section(config):
+	return (
+		config.get('controlserver')
+		or config.get('controlServer')
+		or config.get('control_server')
+	)
+
+def _coerce_config_value(value, current_value):
+	if isinstance(current_value, bool):
+		if isinstance(value, str):
+			return value.strip().casefold() in ('1', 'true', 'yes', 'on')
+		return bool(value)
+	if isinstance(current_value, int):
+		try:
+			return int(value)
+		except (TypeError, ValueError):
+			return current_value
+	return value
+
+def migrate_external_addon_settings():
+	"""Import an old TeleNVDA/NVDA Remote profile into a pristine profile.
+
+	This is intentionally limited to portable NVDA instances. A portable copy
+	must not silently replace settings which were already configured locally.
+	"""
+	if readonly or not _is_portable_copy():
+		return False
+	config = get_config()
+	if _has_configured_remote_settings(config):
+		return False
+	for path in get_legacy_addon_config_paths():
+		source = load_external_config(path)
+		if source is None:
+			continue
+		section = _get_control_server_section(source)
+		if not section:
+			continue
+		current = config['controlserver']
+		key_aliases = {
+			'autoconnect': ('autoconnect',),
+			'self_hosted': ('self_hosted', 'selfHosted'),
+			'UPNP': ('UPNP', 'upnp'),
+			'connection_type': ('connection_type', 'connectionMode'),
+			'host': ('host',),
+			'port': ('port',),
+			'key': ('key',),
+			'encryption_key': ('encryption_key', 'encryptionKey'),
+			'transport': ('transport',),
+			'ws_path': ('ws_path', 'wsPath'),
+			'proxy_mode': ('proxy_mode', 'proxyMode'),
+			'proxy_host': ('proxy_host', 'proxyHost'),
+			'proxy_port': ('proxy_port', 'proxyPort'),
+			'proxy_username': ('proxy_username', 'proxyUsername'),
+			'proxy_password': ('proxy_password', 'proxyPassword'),
+			'proxy_type': ('proxy_type', 'proxyType'),
+			'disable_autoconnect_after_inactivity': ('disable_autoconnect_after_inactivity',),
+			'inactivity_auto_disable_seconds': ('inactivity_auto_disable_seconds',),
+		}
+		for key, aliases in key_aliases.items():
+			for alias in aliases:
+				if alias in section and key in current:
+					current[key] = _coerce_config_value(section[alias], current[key])
+					break
+		connections = source.get('connections')
+		if connections and connections.get('last_connected'):
+			config['connections']['last_connected'] = list(connections['last_connected'])
+		for section_name in ('ui', 'updates', 'screenshots', 'file_transfer', 'screen_share', 'keep_awake'):
+			source_section = source.get(section_name)
+			target_section = config.get(section_name)
+			if not source_section or not target_section:
+				continue
+			for key in target_section:
+				if key in source_section:
+					target_section[key] = _coerce_config_value(source_section[key], target_section[key])
+		for section_name in ('seen_motds', 'trusted_certs'):
+			source_section = source.get(section_name)
+			if not source_section:
+				continue
+			for address, value in source_section.items():
+				try:
+					host, port = socket_utils.address_to_hostport(address)
+				except (TypeError, ValueError):
+					canonical_address = address
+				else:
+					canonical_address = socket_utils.hostport_to_address(
+						(normalize_server_host(host), port),
+					)
+				config[section_name][canonical_address] = value
+		_migrate_server_configuration(config)
+		if config['controlserver'].get('autoconnect'):
+			config['activity']['last_activity_timestamp'] = 0.0
+		config.write()
+		return True
+	return False
+
+def _is_portable_copy():
+	try:
+		import config as nvda_config
+		return not nvda_config.isInstalledCopy()
+	except (AttributeError, ImportError, OSError):
+		return True
+
+def get_portable_migration_config_dirs():
+	"""Return the installed user-config directory when NVDA is portable."""
+	if not _is_portable_copy():
+		return []
+	try:
+		import config as nvda_config
+		get_installed_path = getattr(nvda_config, 'getInstalledUserConfigPath', None)
+		if get_installed_path is not None:
+			installed_dir = get_installed_path()
+		else:
+			installed_dir = nvda_config.getUserDefaultConfigPath(useInstalledPathIfExists=True)
+	except (AttributeError, ImportError, OSError, TypeError):
+		return []
+	if not installed_dir:
+		return []
+	current_dir = os.path.abspath(globalVars.appArgs.configPath)
+	installed_dir = os.path.abspath(installed_dir)
+	if os.path.normcase(current_dir) == os.path.normcase(installed_dir):
+		return []
+	return [installed_dir] if os.path.isdir(installed_dir) else []
+
+def load_external_config(path):
+	"""Load an optional ConfigObj file used for profile migration."""
+	try:
+		if not os.path.isfile(path):
+			return None
+		return configobj.ConfigObj(infile=path, default_encoding='utf8')
+	except (OSError, configobj.ConfigObjError, UnicodeError):
+		return None
+
+def get_portable_native_config_paths():
+	return [os.path.join(directory, 'nvda.ini') for directory in get_portable_migration_config_dirs()]
+
+def get_legacy_addon_config_paths():
+	"""Return TeleNVDA and old NVDA Remote config paths to inspect."""
+	current_dir = os.path.abspath(globalVars.appArgs.configPath)
+	paths = [os.path.join(current_dir, LEGACY_CONFIG_FILE_NAME)]
+	for directory in get_portable_migration_config_dirs():
+		paths.extend(
+			(
+				os.path.join(directory, CONFIG_FILE_NAME),
+				os.path.join(directory, LEGACY_CONFIG_FILE_NAME),
+			)
+		)
+	return paths
+
 def _migrate_proxy_mode(config):
 	"""Switch configurations left in manual mode without a proxy host to automatic detection.
 
@@ -125,6 +380,7 @@ def get_config():
 		val = validate.Validator()
 		_config.validate(val, copy=True)
 		migrated = _migrate_proxy_mode(_config)
+		migrated = _migrate_server_configuration(_config) or migrated
 		if migrated and not readonly:
 			try:
 				_config.write()
@@ -188,11 +444,10 @@ def were_native_remote_settings_imported():
 	return get_config()['native_remote'].get('settings_imported', False)
 
 def mark_native_remote_settings_imported():
-	"""Remember that the automatic connection of native NVDA Remote was looked at.
+	"""Remember that a valid native NVDA Remote connection was imported or kept.
 
-	The import only ever happens once, so that a user who deliberately changes or
-	removes the TeleNVDA automatic connection afterwards does not get the settings of
-	NVDA Remote back on the next start.
+	The marker prevents a later startup from replacing a user's deliberate TeleNVDA
+	changes, while a startup without native settings deliberately leaves it unset.
 	"""
 	if readonly:
 		return False
@@ -210,12 +465,20 @@ def trust_certificate(address, fingerprint):
 		config.write()
 	return True
 
-def write_connection_to_config(address):
+def write_connection_to_config(address, transport_type='tcp'):
 	"""Writes an address to the last connected section of the config.
 	If the address is already in the config, move it to the end."""
 	conf = get_config()
 	last_cons = conf['connections']['last_connected']
-	address = socket_utils.hostport_to_address(address)
+	host, port = address
+	host = normalize_server_host(host)
+	if (
+		transport_type != 'websocket'
+		and port == 443
+		and host.casefold() == DEFAULT_SERVER_HOST.casefold()
+	):
+		port = socket_utils.SERVER_PORT
+	address = socket_utils.hostport_to_address((host, port))
 	if address in last_cons:
 		conf['connections']['last_connected'].remove(address)
 	conf['connections']['last_connected'].append(address)
