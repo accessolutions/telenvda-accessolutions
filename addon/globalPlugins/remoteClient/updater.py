@@ -6,7 +6,6 @@ import hashlib
 import hmac
 import http.client
 import json
-import logging
 import os
 import re
 import shutil
@@ -23,13 +22,16 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 
 import addonHandler
 import buildVersion
+from logHandler import log
 
 from . import configuration, proxy_utils, sspi_proxy
 
-log = logging.getLogger("TeleNVDA.updater")
-
 REPOSITORY = "accessolutions/telenvda-accessolutions"
+# Keep the Accessolutions identity as the canonical internal add-on name.
+# The historical TeleNVDA name remains accepted for the transition.
 ADDON_NAME = "TeleNVDA Accessolutions"
+_SUPPORTED_ADDON_NAMES = (ADDON_NAME, "TeleNVDA")
+_SUPPORTED_ADDON_NAMES_SET = frozenset(_SUPPORTED_ADDON_NAMES)
 RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
 _USER_AGENT = "TeleNVDA updater"
 _NETWORK_TIMEOUT = 30
@@ -37,7 +39,7 @@ _MAX_RESPONSE_SIZE = 16 * 1024 * 1024
 _MAX_REDIRECTS = 5
 _VERSION_PATTERN = re.compile(r"^(?:\d{8}(?:\.\d+)*|\d{4}(?:\.\d+){1,5})$")
 _ASSET_VERSION_PATTERN = re.compile(
-	r"^telenvda(?:[ -]accessolutions)?-(?P<version>(?:\d{8}(?:\.\d+)*|\d{4}(?:\.\d+){1,5}))\.nvda-addon$",
+	r"^telenvda(?:[ .-]accessolutions)?-(?P<version>(?:\d{8}(?:\.\d+)*|\d{4}(?:\.\d+){1,5}))\.nvda-addon$",
 	re.IGNORECASE,
 )
 
@@ -100,7 +102,15 @@ def pending_install_path() -> str | None:
 	addons_dir = _addons_dir()
 	if not addons_dir:
 		return None
-	return os.path.join(addons_dir, ADDON_NAME + ".pendingInstall")
+	paths = [os.path.join(addons_dir, name + ".pendingInstall") for name in _SUPPORTED_ADDON_NAMES]
+	return next((path for path in paths if os.path.isdir(path)), paths[0])
+
+
+def _pending_install_paths() -> list[str]:
+	addons_dir = _addons_dir()
+	if not addons_dir:
+		return []
+	return [os.path.join(addons_dir, name + ".pendingInstall") for name in _SUPPORTED_ADDON_NAMES]
 
 
 def has_pending_install() -> bool:
@@ -113,8 +123,7 @@ def has_pending_install() -> bool:
 	the updater would keep finding the same "newer" release and asking to
 	download and install it again on every startup.
 	"""
-	path = pending_install_path()
-	return bool(path) and os.path.isdir(path)
+	return any(os.path.isdir(path) for path in _pending_install_paths())
 
 
 def _installed_addon():
@@ -163,10 +172,10 @@ def _remove_stale_pending_install() -> None:
 	behind. Extracting a new bundle on top of it would merge the two file
 	sets, so remove it first to guarantee a clean install.
 	"""
-	path = pending_install_path()
-	if path and os.path.isdir(path):
-		log.debug("Removing stale pending install folder %s", path)
-		shutil.rmtree(path, ignore_errors=True)
+	for path in _pending_install_paths():
+		if os.path.isdir(path):
+			log.debug("Removing stale pending install folder %s", path)
+			shutil.rmtree(path, ignore_errors=True)
 
 
 def recover_pending_install() -> bool:
@@ -359,10 +368,30 @@ def _find_asset(release: dict) -> tuple[dict, dict | None]:
 	]
 	if not addon_assets:
 		raise UpdateError("The GitHub release has no NVDA add-on asset")
-	addon_asset = next(
-		(asset for asset in addon_assets if str(asset.get("name", "")).lower().startswith("telenvda")),
-		addon_assets[0],
-	)
+	version = _release_version(release)
+	versioned_assets = []
+	for asset in addon_assets:
+		match = _ASSET_VERSION_PATTERN.fullmatch(str(asset.get("name", "")).strip())
+		if match:
+			versioned_assets.append((asset, match.group("version")))
+	if version:
+		addon_asset = next(
+			(asset for asset, asset_version in versioned_assets if asset_version == version),
+			None,
+		)
+	else:
+		addon_asset = None
+	if addon_asset is None and versioned_assets:
+		addon_asset = versioned_assets[0][0]
+	if addon_asset is None:
+		addon_asset = next(
+			(
+				asset for asset in addon_assets
+				if str(asset.get("name", "")).lower().startswith("telenvda")
+				and not str(asset.get("name", "")).lower().endswith("-latest.nvda-addon")
+			),
+			addon_assets[0],
+		)
 	addon_name = str(addon_asset.get("name", ""))
 	hash_asset = next(
 		(
@@ -398,6 +427,12 @@ def check_for_update(current_version: str) -> UpdateInfo | None:
 			continue
 		version = _release_version(release, str(addon_asset.get("name", "")))
 		if version and is_newer_version(version, current_version):
+			log.debug(
+				"TeleNVDA updater: candidate release %s selects asset %s from %s",
+				version,
+				addon_asset.get("name"),
+				release.get("tag_name") or release.get("name"),
+			)
 			candidates.append((
 				_version_key(version),
 				release,
@@ -432,6 +467,7 @@ def check_for_update(current_version: str) -> UpdateInfo | None:
 
 def download_update(update: UpdateInfo) -> str:
 	settings = proxy_utils.from_config(configuration.get_config())
+	log.debug("TeleNVDA updater: downloading asset %s from %s", update.asset_name, update.asset_url)
 	data = _fetch_bytes(update.asset_url, settings)
 	digest = hashlib.sha256(data).hexdigest()
 	if not hmac.compare_digest(digest.lower(), update.sha256.lower()):
@@ -455,8 +491,18 @@ def install_package(path: str):
 	installer = getattr(addonHandler, "installAddonBundle", None)
 	if bundle_type is not None and installer is not None:
 		bundle = bundle_type(path)
-		if bundle.manifest.get("name") != ADDON_NAME:
-			raise UpdateError("The downloaded package is not a TeleNVDA add-on")
+		manifest_name = bundle.manifest.get("name")
+		log.debug(
+			"TeleNVDA updater: validating %s, manifest name=%r, supported names=%r, manifest=%r",
+			path,
+			manifest_name,
+			_SUPPORTED_ADDON_NAMES,
+			bundle.manifest,
+		)
+		if manifest_name not in _SUPPORTED_ADDON_NAMES_SET:
+			raise UpdateError(
+				f"The downloaded package is not a TeleNVDA add-on (manifest name: {manifest_name!r})"
+			)
 		# Mirror the add-on store: remove any leftover staging folder and
 		# mark the currently installed version for removal so NVDA can
 		# replace it with the staged update on restart instead of failing
