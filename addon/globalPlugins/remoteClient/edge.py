@@ -133,6 +133,10 @@ def _build_arguments(browser, url, profile, off_screen):
 		# See the module docstring: this is what removes the source picker, and the
 		# reason the profile above is throwaway.
 		"--use-fake-ui-for-media-stream",
+		# The picture is displayed muted, but the sound of the controlled computer has
+		# to play by itself: there is nobody to click in a window kept off screen, and
+		# the watching user may not be able to see it at all.
+		"--autoplay-policy=no-user-gesture-required",
 		# Not for the average frame rate, which holds without them, but to suppress
 		# the freezes measured on a window that is not on screen.
 		"--disable-background-timer-throttling",

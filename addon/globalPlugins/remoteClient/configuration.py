@@ -88,6 +88,8 @@ configspec = StringIO("""
 	max_fps = integer(default=15)
 	max_width = integer(default=1600)
 	quality = option("low", "balanced", "high", default="balanced")
+	share_audio = boolean(default=True)
+	mute_remote_speech_with_audio = boolean(default=True)
 
 [keep_awake]
 	enabled = boolean(default=True)

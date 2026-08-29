@@ -637,6 +637,12 @@ class OptionsDialog(SettingsPanel):
 			_("High, for a fast connection"),
 		])
 		sizer.Add(self.screen_share_quality)
+		# Translators: A checkbox in add-on options dialog to allow the controlling computer to hear this one.
+		self.screen_share_audio = wx.CheckBox(self, wx.ID_ANY, label=_("Allow sending the sound of this computer, after confirmation"))
+		sizer.Add(self.screen_share_audio)
+		# Translators: A checkbox in add-on options dialog to stop speaking what the controlled computer reports when the sound it sends already contains its own screen reader.
+		self.screen_share_mute_speech = wx.CheckBox(self, wx.ID_ANY, label=_("When the sound of the controlled computer already contains its own screen reader, do not also speak what it reports"))
+		sizer.Add(self.screen_share_mute_speech)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -675,6 +681,8 @@ class OptionsDialog(SettingsPanel):
 		self.screen_share_max_fps.Enable(enabled)
 		self.screen_share_max_width.Enable(enabled)
 		self.screen_share_quality.Enable(enabled)
+		self.screen_share_audio.Enable(enabled)
+		self.screen_share_mute_speech.Enable(enabled)
 
 	def on_autoconnect(self, evt):
 		if self.autoconnect.GetValue() and not self._autoconnect_was_enabled:
@@ -794,6 +802,8 @@ class OptionsDialog(SettingsPanel):
 		self.max_received_size.SetValue(int(file_transfer_section['max_received_size_mb']))
 		self.screen_share_enabled.SetValue(bool(config['screen_share']['enabled']))
 		self.screen_share_max_fps.SetValue(int(config['screen_share']['max_fps']))
+		self.screen_share_audio.SetValue(bool(config['screen_share']['share_audio']))
+		self.screen_share_mute_speech.SetValue(bool(config['screen_share']['mute_remote_speech_with_audio']))
 		max_width = int(config['screen_share']['max_width'])
 		if max_width not in SCREEN_SHARE_WIDTHS:
 			max_width = SCREEN_SHARE_DEFAULT_WIDTH
@@ -923,6 +933,8 @@ class OptionsDialog(SettingsPanel):
 		config['file_transfer']['max_received_size_mb'] = int(self.max_received_size.GetValue())
 		config['screen_share']['enabled'] = self.screen_share_enabled.GetValue()
 		config['screen_share']['max_fps'] = int(self.screen_share_max_fps.GetValue())
+		config['screen_share']['share_audio'] = self.screen_share_audio.GetValue()
+		config['screen_share']['mute_remote_speech_with_audio'] = self.screen_share_mute_speech.GetValue()
 		config['screen_share']['max_width'] = SCREEN_SHARE_WIDTHS[self.screen_share_max_width.GetSelection()]
 		config['screen_share']['quality'] = SCREEN_SHARE_QUALITIES[self.screen_share_quality.GetSelection()]
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()

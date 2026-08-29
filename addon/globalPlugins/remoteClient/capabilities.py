@@ -32,6 +32,13 @@ FEATURE_CHUNKED_FILE_TRANSFER = "chunked_file_transfer"
 #: WebRTC screen sharing of the controlled computer, with optional mouse control.
 FEATURE_SCREEN_SHARE = "screen_share"
 
+#: Streaming of the sound the controlled computer plays, carried as an audio track
+#: on the same WebRTC session as screen sharing. Announced separately from
+#: FEATURE_SCREEN_SHARE, because a computer willing to show its screen may still
+#: refuse to let everything it plays be heard, and the reverse is just as useful:
+#: the sound can be sent on its own, without any picture.
+FEATURE_AUDIO_SHARE = "audio_share"
+
 #: Optional features implemented by this build.
 LOCAL_FEATURES = (FEATURE_CHUNKED_FILE_TRANSFER,)
 
@@ -52,6 +59,8 @@ def available_features():
 	from . import screen_share
 	if screen_share.is_available():
 		features.append(FEATURE_SCREEN_SHARE)
+		if screen_share.is_audio_share_allowed():
+			features.append(FEATURE_AUDIO_SHARE)
 	return features
 
 
