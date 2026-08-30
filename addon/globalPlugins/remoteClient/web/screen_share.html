@@ -362,6 +362,7 @@ async function startPublisher(command) {
 	applyQuality(quality, maxFps);
 	applyAudioQuality();
 	const offer = await pc.createOffer();
+	offer.sdp = withStereoOpus(offer.sdp);
 	await pc.setLocalDescription(offer);
 	post({ event: "offer", sdp: pc.localDescription.sdp });
 }
@@ -380,6 +381,33 @@ function applyAudioQuality() {
 		parameters.encodings[0].maxBitrate = AUDIO_BITRATE;
 		sender.setParameters(parameters).catch(() => {});
 	});
+}
+
+/* Opus is negotiated in mono unless the description says otherwise, whatever the track
+   feeding it holds. "stereo=1" states that this end can decode two channels, which is
+   what makes the other end encode them, and "sprop-stereo=1" announces that this end
+   sends two. A browser adds neither on its own, so the sound captured in stereo would
+   be mixed down before it ever left. Both computers run this, so both directions carry
+   two channels; one running an older build simply announces nothing and gets the mono
+   it understands. */
+function withStereoOpus(sdp) {
+	/* The payload number Opus was given is not fixed, so it is read rather than assumed. */
+	const rtpmap = sdp.match(/^a=rtpmap:(\d+) opus\/48000\/2/mi);
+	if (!rtpmap) { return sdp; }
+	const payload = rtpmap[1];
+	const wanted = "stereo=1;sprop-stereo=1;maxaveragebitrate=" + AUDIO_BITRATE;
+	/* A carriage return ends every line here, so it must be kept out of what is matched. */
+	const fmtp = new RegExp("^a=fmtp:" + payload + " ([^\\r\\n]*)", "mi");
+	if (fmtp.test(sdp)) {
+		return sdp.replace(fmtp, (line, existing) => (
+			existing.indexOf("stereo=") !== -1
+				? line
+				: "a=fmtp:" + payload + " " + existing + ";" + wanted
+		));
+	}
+	/* Opus was offered without any parameters at all: give it a line of its own. */
+	const eol = sdp.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+	return sdp.replace(rtpmap[0], rtpmap[0] + eol + "a=fmtp:" + payload + " " + wanted);
 }
 
 function applyQuality(quality, maxFps) {
@@ -520,6 +548,7 @@ async function handleCommand(command) {
 		await pc.setRemoteDescription({ type: "offer", sdp: command.sdp });
 		await drainCandidates();
 		const answer = await pc.createAnswer();
+		answer.sdp = withStereoOpus(answer.sdp);
 		await pc.setLocalDescription(answer);
 		post({ event: "answer", sdp: pc.localDescription.sdp });
 	} else if (name === "answer") {
