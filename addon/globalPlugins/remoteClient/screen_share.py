@@ -401,6 +401,12 @@ class ScreenShareManager:
 		# Remote input is only ever granted when this computer allows it, whatever the
 		# controlling computer asked for, and there is nothing to point at without a picture.
 		allow_input = bool(allow_input) and send_video and is_input_control_allowed()
+		# The relay only hands out ICE servers to clients which asked for them, and stop()
+		# drops the ones the previous session used. Without this, every session after the
+		# first negotiates on local addresses alone, which only ever links up two computers
+		# already on the same network. The question asked below leaves ample time for the
+		# answer to come back.
+		self._request_turn_credentials()
 		wx.CallAfter(self._ask_permission, origin, allow_input, send_video, send_audio)
 
 	def _ask_permission(self, origin, allow_input, send_video, send_audio):
