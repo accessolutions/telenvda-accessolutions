@@ -41,6 +41,13 @@ const messageNode = document.getElementById("message");
 
 let pc = null;
 let stream = null;
+/* The native capture, when this computer has one. See openAudioBridge. */
+let audioBridge = null;
+/* Whether this session carries sound, and whether it carries a picture. Sound can
+   be sent on its own, in which case the same element simply plays with nothing to
+   display. */
+let receiveAudio = false;
+let receiveVideo = true;
 let since = 0;
 let stopped = false;
 /* Candidates that arrive before the remote description does cannot be added yet. */
@@ -83,6 +90,16 @@ function createConnection(iceServers) {
 		if (pc.connectionState === "connected") {
 			post({ event: "connected" });
 			show("");
+		} else if (pc.connectionState === "disconnected") {
+			/* A passing network cut. Nothing is broken yet and the browser may well
+			   recover on its own, so the session is left alone. But the media has
+			   stopped, and that has to be said: on the watching side the forwarded
+			   speech is held back while sound is arriving, so staying quiet here
+			   would leave that user with neither the sound nor the speech, and no
+			   sign that anything went wrong. It can take tens of seconds before this
+			   turns into "failed". */
+			post({ event: "interrupted" });
+			show("Connection interrupted...");
 		} else if (pc.connectionState === "failed") {
 			fail("The connection could not be established");
 		} else if (pc.connectionState === "closed") {
@@ -92,6 +109,19 @@ function createConnection(iceServers) {
 	if (!isPublisher) {
 		pc.ontrack = (event) => {
 			video.srcObject = event.streams[0];
+			/* The element is muted in the markup so that a picture always starts on its
+			   own, whatever the autoplay policy. Sound is what the user explicitly asked
+			   for, so it is unmuted here, and the browser is started with the flag that
+			   lets it play without a click nobody could give in an off screen window. */
+			video.muted = !receiveAudio;
+			const played = video.play();
+			if (played && played.catch) {
+				played.catch((error) => {
+					/* Losing the sound is worth reporting; losing the picture is not, since
+					   a muted element always plays. */
+					if (receiveAudio) { fail("The sound could not be played: " + error); }
+				});
+			}
 		};
 	}
 }
@@ -109,16 +139,145 @@ function qualityOf(name) {
 	return QUALITY[name] || QUALITY.balanced;
 }
 
+/* The native helper captures the system mix with NVDA left out, which no web API can
+ * do, and pushes 48 kHz stereo 16 bit frames over a loopback WebSocket. They are fed
+ * to an AudioWorklet whose output goes to a MediaStreamDestination, and the track that
+ * comes out is handed to the connection like any other.
+ *
+ * Timing is the whole difficulty. Frames arrive over a socket, in bursts, with no
+ * relation to the audio clock. A small buffer absorbs that: too small and every hiccup
+ * is a hole in the sound, too large and delay piles up for nothing. */
+const BRIDGE_RATE = 48000;
+const BRIDGE_CHANNELS = 2;
+const BRIDGE_TARGET_MS = 30;
+const BRIDGE_MAX_MS = 400;
+
+const BRIDGE_WORKLET = `
+class BridgeProcessor extends AudioWorkletProcessor {
+	constructor(options) {
+		super();
+		const p = options.processorOptions;
+		this.channels = p.channels;
+		this.capacity = Math.floor(p.rate * p.maxMs / 1000) * this.channels;
+		this.ring = new Float32Array(this.capacity);
+		this.read = 0;
+		this.write = 0;
+		this.filled = 0;
+		this.startAt = Math.floor(p.rate * p.targetMs / 1000) * this.channels;
+		this.started = false;
+		this.port.onmessage = (event) => { this.push(event.data); };
+	}
+	push(samples) {
+		/* Dropping the oldest rather than the newest bounds the delay when the socket
+		   runs ahead: the sound stays late by at most maxMs, never more. */
+		const room = this.capacity - this.filled;
+		if (samples.length > room) {
+			const drop = samples.length - room;
+			this.read = (this.read + drop) % this.capacity;
+			this.filled -= drop;
+		}
+		for (let i = 0; i < samples.length; i++) {
+			this.ring[this.write] = samples[i] / 32768;
+			this.write = (this.write + 1) % this.capacity;
+		}
+		this.filled += samples.length;
+	}
+	process(inputs, outputs) {
+		const out = outputs[0];
+		const frames = out[0].length;
+		if (!this.started) {
+			if (this.filled < this.startAt) { return true; }
+			this.started = true;
+		}
+		const wanted = frames * this.channels;
+		if (this.filled >= wanted) {
+			for (let f = 0; f < frames; f++) {
+				for (let c = 0; c < this.channels; c++) {
+					out[c][f] = this.ring[this.read];
+					this.read = (this.read + 1) % this.capacity;
+				}
+			}
+			this.filled -= wanted;
+		} else {
+			/* Run dry. The outputs stay at zero, silence rather than a click, and the
+			   buffer is refilled to its target before playing again. Without this the
+			   level settles just above empty, where every scheduling hiccup is heard;
+			   one short resynchronisation is far less unpleasant than a stutter. */
+			this.started = false;
+		}
+		return true;
+	}
+}
+registerProcessor("bridge", BridgeProcessor);
+`;
+
+async function openAudioBridge(url) {
+	const context = new AudioContext({ sampleRate: BRIDGE_RATE, latencyHint: "interactive" });
+	const moduleUrl = URL.createObjectURL(new Blob([BRIDGE_WORKLET], { type: "application/javascript" }));
+	try {
+		await context.audioWorklet.addModule(moduleUrl);
+	} finally {
+		URL.revokeObjectURL(moduleUrl);
+	}
+	const node = new AudioWorkletNode(context, "bridge", {
+		numberOfInputs: 0,
+		numberOfOutputs: 1,
+		outputChannelCount: [BRIDGE_CHANNELS],
+		processorOptions: {
+			rate: BRIDGE_RATE,
+			channels: BRIDGE_CHANNELS,
+			targetMs: BRIDGE_TARGET_MS,
+			maxMs: BRIDGE_MAX_MS,
+		},
+	});
+	const destination = context.createMediaStreamDestination();
+	node.connect(destination);
+
+	const socket = new WebSocket(url);
+	socket.binaryType = "arraybuffer";
+	await new Promise((resolve, reject) => {
+		socket.onopen = resolve;
+		socket.onerror = () => reject(new Error("the local audio bridge is unreachable"));
+	});
+	socket.onmessage = (event) => { node.port.postMessage(new Int16Array(event.data)); };
+
+	return {
+		track: destination.stream.getAudioTracks()[0],
+		close: () => {
+			try { socket.close(); } catch (e) { /* already gone */ }
+			try { node.disconnect(); } catch (e) { /* already gone */ }
+			try { context.close(); } catch (e) { /* already gone */ }
+		},
+	};
+}
+
 async function startPublisher(command) {
 	video.remove();
+	/* A command sent by an older add-on names neither stream, and asks for a picture. */
+	const sendVideo = command.send_video !== false;
+	const sendAudio = !!command.send_audio;
 	const quality = qualityOf(command.quality);
-	const maxFps = Math.max(1, Math.min(30, command.max_fps || 15));
+	/* When the add-on could start the native helper it hands over its address here, and
+	   the sound then comes from it rather than from the browser. That capture leaves
+	   NVDA out, which the browser cannot do, and it needs no display surface. */
+	const audioWs = command.audio_ws || null;
+	const nativeAudio = sendAudio && audioWs !== null;
+	const browserAudio = sendAudio && !nativeAudio;
+	/* getDisplayMedia has no audio only form: the sound of the computer is only ever
+	   handed over alongside a display surface. So when the sound comes from the browser
+	   and the picture was not asked for, the capture still runs and its track is simply
+	   never added, nothing being encoded or sent. With the native helper that detour
+	   disappears: an audio only session captures no screen at all. */
+	const needCapture = sendVideo || browserAudio;
+	const maxFps = sendVideo ? Math.max(1, Math.min(30, command.max_fps || 15)) : 1;
 	/* Encoding a 4K desktop in real time saturates any processor, and the picture is
 	   displayed far smaller than that on the other side anyway. Asking the capture
 	   itself for a smaller frame is what costs least: the browser scales it down
 	   before the encoder ever sees it. The ratio is preserved, only a ceiling is
 	   given. */
-	const maxWidth = Math.max(640, Math.min(3840, command.max_width || quality.width));
+	const maxWidth = sendVideo
+		? Math.max(640, Math.min(3840, command.max_width || quality.width))
+		: 640;
 	const constraints = {
 		video: {
 			frameRate: maxFps,
@@ -127,17 +286,35 @@ async function startPublisher(command) {
 			   has no idea where the mouse they are driving actually is. */
 			cursor: "always",
 		},
-		audio: false,
+		/* This is the sound the computer plays, taken from the system mix, not a
+		   microphone. The three processing steps below belong to a voice call: they
+		   would fight the echo of a video against itself, ride the volume up and down
+		   and eat anything they took for noise. Turned off, the mix arrives in stereo,
+		   as it sounds on the machine it comes from. */
+		audio: browserAudio
+			? { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
+			: false,
 	};
-	try {
-		stream = await navigator.mediaDevices.getDisplayMedia(constraints);
-	} catch (error) {
-		/* The add-on starts the browser with the flag that suppresses the source picker,
-		   so this normally cannot happen. If a future version of the browser drops that
-		   flag, the failure has to travel back rather than leave a window waiting for
-		   a click nobody can see. */
-		fail("Screen capture was refused: " + (error && error.name ? error.name : error));
-		return;
+	if (browserAudio) {
+		/* Asks for the sound of the whole computer rather than that of one tab. */
+		constraints.systemAudio = "include";
+		/* The person sitting at the controlled computer must keep hearing their own
+		   machine while it is being listened to. */
+		constraints.audio.suppressLocalAudioPlayback = false;
+	}
+	if (needCapture) {
+		try {
+			stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+		} catch (error) {
+			/* The add-on starts the browser with the flag that suppresses the source
+			   picker, so this normally cannot happen. If a future version of the browser
+			   drops that flag, the failure has to travel back rather than leave a window
+			   waiting for a click nobody can see. */
+			fail("Screen capture was refused: " + (error && error.name ? error.name : error));
+			return;
+		}
+	} else {
+		stream = new MediaStream();
 	}
 	stream.getVideoTracks().forEach((track) => {
 		/* What is being watched is text, not a film. This tells the encoder to keep the
@@ -151,13 +328,86 @@ async function startPublisher(command) {
 		/* The user can also stop the capture from the browser indicator. */
 		track.onended = () => { post({ event: "closed" }); };
 	});
-	stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+	if (browserAudio && !stream.getAudioTracks().length) {
+		/* The capture succeeded but the browser handed over no sound. Saying so is far
+		   better than a session which looks established and stays silent. */
+		fail("This computer did not allow its sound to be captured");
+		return;
+	}
+	if (nativeAudio) {
+		try {
+			audioBridge = await openAudioBridge(audioWs);
+		} catch (error) {
+			/* The helper announced itself to the add-on a moment ago, so this is not
+			   expected. Saying so beats a session which looks established and stays
+			   silent. */
+			fail("The sound of this computer could not be captured: " + error);
+			return;
+		}
+		stream.addTrack(audioBridge.track);
+	}
+	stream.getAudioTracks().forEach((track) => {
+		/* Not speech: the mix carries music, alert sounds and video as readily as a
+		   voice, and must not be narrowed to the band of a telephone call. */
+		track.contentHint = "music";
+	});
+	stream.getTracks().forEach((track) => {
+		/* The video track is kept running even when it is not wanted, because stopping
+		   it would end the capture the sound is taken from. It is simply never offered. */
+		if (track.kind === "video" && !sendVideo) { return; }
+		pc.addTrack(track, stream);
+	});
 	/* After addTrack, and not before: the senders this walks through do not exist yet
 	   while the track has not been added. */
 	applyQuality(quality, maxFps);
+	applyAudioQuality();
 	const offer = await pc.createOffer();
+	offer.sdp = withStereoOpus(offer.sdp);
 	await pc.setLocalDescription(offer);
 	post({ event: "offer", sdp: pc.localDescription.sdp });
+}
+
+/* Stereo, at a rate which carries music rather than only speech. This is a small
+ * fraction of what the picture costs, and the link already carries that. */
+const AUDIO_BITRATE = 128000;
+
+function applyAudioQuality() {
+	pc.getSenders().forEach((sender) => {
+		if (!sender.track || sender.track.kind !== "audio") { return; }
+		const parameters = sender.getParameters();
+		if (!parameters.encodings || !parameters.encodings.length) {
+			parameters.encodings = [{}];
+		}
+		parameters.encodings[0].maxBitrate = AUDIO_BITRATE;
+		sender.setParameters(parameters).catch(() => {});
+	});
+}
+
+/* Opus is negotiated in mono unless the description says otherwise, whatever the track
+   feeding it holds. "stereo=1" states that this end can decode two channels, which is
+   what makes the other end encode them, and "sprop-stereo=1" announces that this end
+   sends two. A browser adds neither on its own, so the sound captured in stereo would
+   be mixed down before it ever left. Both computers run this, so both directions carry
+   two channels; one running an older build simply announces nothing and gets the mono
+   it understands. */
+function withStereoOpus(sdp) {
+	/* The payload number Opus was given is not fixed, so it is read rather than assumed. */
+	const rtpmap = sdp.match(/^a=rtpmap:(\d+) opus\/48000\/2/mi);
+	if (!rtpmap) { return sdp; }
+	const payload = rtpmap[1];
+	const wanted = "stereo=1;sprop-stereo=1;maxaveragebitrate=" + AUDIO_BITRATE;
+	/* A carriage return ends every line here, so it must be kept out of what is matched. */
+	const fmtp = new RegExp("^a=fmtp:" + payload + " ([^\\r\\n]*)", "mi");
+	if (fmtp.test(sdp)) {
+		return sdp.replace(fmtp, (line, existing) => (
+			existing.indexOf("stereo=") !== -1
+				? line
+				: "a=fmtp:" + payload + " " + existing + ";" + wanted
+		));
+	}
+	/* Opus was offered without any parameters at all: give it a line of its own. */
+	const eol = sdp.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+	return sdp.replace(rtpmap[0], rtpmap[0] + eol + "a=fmtp:" + payload + " " + wanted);
 }
 
 function applyQuality(quality, maxFps) {
@@ -283,14 +533,22 @@ async function handleCommand(command) {
 		if (isPublisher) {
 			await startPublisher(command);
 		} else {
+			/* Set before the first track arrives: ontrack reads them. */
+			receiveAudio = !!command.receive_audio;
+			receiveVideo = command.receive_video !== false;
 			if (command.allow_input) { enableInput(); }
-			show("Waiting for the picture...");
+			if (!receiveVideo) {
+				show("Waiting for the sound...");
+			} else {
+				show("Waiting for the picture...");
+			}
 		}
 	} else if (name === "offer") {
 		if (!pc) { return; }
 		await pc.setRemoteDescription({ type: "offer", sdp: command.sdp });
 		await drainCandidates();
 		const answer = await pc.createAnswer();
+		answer.sdp = withStereoOpus(answer.sdp);
 		await pc.setLocalDescription(answer);
 		post({ event: "answer", sdp: pc.localDescription.sdp });
 	} else if (name === "answer") {
@@ -322,6 +580,10 @@ async function drainCandidates() {
 
 function shutdown() {
 	stopped = true;
+	if (audioBridge) {
+		audioBridge.close();
+		audioBridge = null;
+	}
 	if (stream) {
 		stream.getTracks().forEach((track) => track.stop());
 		stream = null;

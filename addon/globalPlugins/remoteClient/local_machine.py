@@ -59,6 +59,12 @@ def setSpeechCancelledToFalse():
 class LocalMachine:
 	def __init__(self):
 		self.is_muted = False
+		# True while the sound of the controlled computer is streamed to this one.
+		# What that computer plays already includes its own NVDA, so announcing the
+		# speech it also forwards would say everything twice, a fraction of a second
+		# apart. Braille is deliberately left alone: it is not audible, and losing it
+		# would cost a braille user their only view of the remote machine.
+		self.audio_streaming = False
 		self.receiving_braille = False
 		self._cached_sizes = None
 		if buildVersion.version_year >= 2023:
@@ -70,7 +76,7 @@ class LocalMachine:
 
 	def play_wave(self, fileName):
 		"""Instructed by remote machine to play a wave file."""
-		if self.is_muted:
+		if self.is_muted or self.audio_streaming:
 			return
 		if os.path.exists(fileName):
 			# ignore async / asynchronous from kwargs:
@@ -78,7 +84,7 @@ class LocalMachine:
 			nvwave.playWaveFile(fileName=fileName, asynchronous=True)
 
 	def beep(self, hz, length, left, right, **kwargs):
-		if self.is_muted:
+		if self.is_muted or self.audio_streaming:
 			return
 		tones.beep(hz, length, left, right)
 
@@ -98,7 +104,7 @@ class LocalMachine:
 		priority=speech.priorities.Spri.NORMAL,
 		**kwargs,
 	):
-		if self.is_muted:
+		if self.is_muted or self.audio_streaming:
 			return
 		setSpeechCancelledToFalse()
 		if not configuration.get_config()["ui"]["allow_speech_commands"]:

@@ -204,6 +204,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.script_screenshot,
 			self.script_screenshot_powershell,
 			self.script_toggle_screen_share,
+			self.script_toggle_remote_sound,
 			self.script_toggle_remote_mouse,
 		)
 		self.is_connect_dialog_open = False
@@ -1003,14 +1004,40 @@ class GlobalPlugin(_GlobalPlugin):
 			ui.message(_("Not connected."))
 			return
 		configuration.record_activity()
-		was_active = session.screen_share.active
+		# The keyboard follows the picture rather than the session: sound may well go on
+		# arriving after the screen has been dismissed, and typing blind into a machine
+		# nobody is watching is exactly what must not happen.
+		was_watching = session.screen_share.video_requested
 		ui.message(session.screen_share.toggle())
 		if session is not self.master_session:
 			return
-		if not was_active and session.screen_share.active:
+		if not was_watching and session.screen_share.video_requested:
 			self._take_control_for_screen_share(gesture)
-		elif was_active and not session.screen_share.active and self.screen_share_took_control:
+		elif was_watching and not session.screen_share.video_requested and self.screen_share_took_control:
 			self._switch_to_local_control()
+
+	@script(
+		# Translators: toggle remote sound gesture description
+		_("Plays or stops playing the sound of the controlled computer on this one"),
+		gesture="kb:control+shift+NVDA+j",
+		**speakOnDemand)
+	def script_toggle_remote_sound(self, gesture):
+		"""Start or stop hearing what the controlled computer plays.
+
+		Unlike the screen, sound is useful without anything to look at and without the
+		keyboard following it, so this neither takes control nor gives it back. It can be
+		turned on while a screen is already being watched, and the picture then stays.
+		"""
+		session = None
+		if self.master_session is not None and self._is_master_connected():
+			session = self.master_session
+		elif self.slave_session is not None and self._is_slave_connected():
+			session = self.slave_session
+		if session is None or session.screen_share is None:
+			ui.message(_("Not connected."))
+			return
+		configuration.record_activity()
+		ui.message(session.screen_share.toggle_audio())
 
 	def _take_control_for_screen_share(self, gesture):
 		"""Send the keyboard to the controlled computer now that its screen is requested."""

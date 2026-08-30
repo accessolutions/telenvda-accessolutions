@@ -1574,6 +1574,74 @@ msgstr ""
 "Kerberos, améliorer la compatibilité avec les proxys et fournir deux "
 "méthodes de capture d'écran distante."
 
+msgid "Allow sending the sound of this computer, after confirmation"
+msgstr "Autoriser l'envoi du son de cet ordinateur, après confirmation"
+
+msgid "Connection restored"
+msgstr "Connexion rétablie"
+
+msgid ""
+"Do you want to share your screen and your sound? The controlling "
+"computer will see this screen and hear everything this computer plays."
+msgstr ""
+"Voulez-vous partager votre écran et votre son ? L'ordinateur qui vous "
+"contrôle verra cet écran et entendra tout ce que cet ordinateur joue."
+
+msgid ""
+"Do you want to share your screen and your sound? The controlling "
+"computer will see this screen, hear everything this computer plays, "
+"and will be able to use its mouse."
+msgstr ""
+"Voulez-vous partager votre écran et votre son ? L'ordinateur qui vous "
+"contrôle verra cet écran, entendra tout ce que cet ordinateur joue, et "
+"pourra utiliser sa souris."
+
+msgid ""
+"Do you want to share your sound? The controlling computer will hear "
+"everything this computer plays, including calls and videos."
+msgstr ""
+"Voulez-vous partager votre son ? L'ordinateur qui vous contrôle "
+"entendra tout ce que cet ordinateur joue, y compris les appels et les "
+"vidéos."
+
+msgid ""
+"Plays or stops playing the sound of the controlled computer on this "
+"one"
+msgstr ""
+"Joue ou arrête de jouer sur cet ordinateur le son de l'ordinateur "
+"contrôlé"
+
+msgid "Remote sound requested"
+msgstr "Son distant demandé"
+
+msgid "Remote sound stopped"
+msgstr "Son distant arrêté"
+
+msgid "Screen sharing with sound requested"
+msgstr "Partage d'écran avec son demandé"
+
+msgid "Sharing this screen and this sound"
+msgstr "Partage de cet écran et de ce son en cours"
+
+msgid "Sharing this sound"
+msgstr "Partage de ce son en cours"
+
+msgid "Sound interrupted"
+msgstr "Son interrompu"
+
+msgid "Sound sharing request"
+msgstr "Demande de partage du son"
+
+msgid "The other computer does not support sending its sound"
+msgstr "L'autre ordinateur ne peut pas envoyer son son"
+
+msgid ""
+"When the sound of the controlled computer already contains its own "
+"screen reader, do not also speak what it reports"
+msgstr ""
+"Lorsque le son de l'ordinateur contrôlé contient déjà son propre "
+"lecteur d'écran, ne pas annoncer en plus ce qu'il rapporte"
+
 #~ msgid "This file is too large. Only files smaller than 10 MB are supported."
 #~ msgstr ""
 #~ "Ce fichier est trop grand. Seuls les fichiers inférieurs à 10 Mo sont "

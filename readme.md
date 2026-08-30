@@ -26,6 +26,8 @@ version 2 or later.
 * Two remote screenshot workflows described below.
 * Optional peer to peer screen sharing of the controlled computer, with mouse
   control when its user allows it.
+* Optional peer to peer sharing of the sound the controlled computer plays,
+  either alongside the picture or on its own.
 
 ## Installation
 
@@ -218,6 +220,62 @@ will see this screen and will be able to use its mouse.* Nothing is shared and
 no mouse event is applied before that question has been answered, and the
 answer only lasts for the session. No keyboard input ever travels over this
 link.
+
+## Hearing the controlled computer
+
+The controlling computer can also hear what the controlled one plays. Press
+**NVDA+Control+Shift+J** to start or stop it. What is sent is the sound of the
+whole computer, as it comes out of its speakers: music, videos, alert sounds and
+the other side of a call. Its own screen reader is left out, so what arrives is
+the sound of the machine rather than a recording of NVDA talking over it.
+
+The sound can be used on its own, without watching anything. When no picture was
+asked for, none is sent and none is encoded, so a sound only session costs a
+fraction of what a shared screen costs. It can also be turned on while a screen
+is already being watched, and the picture then continues. Because adding or
+removing the sound changes what the controlled computer is being asked for, its
+user is asked again.
+
+It travels the same way as the picture, directly between the two computers, in
+stereo, and is never recorded at either end. It needs the same Chromium browser
+and the same relay support as screen sharing, and both computers must run a
+version of TeleNVDA that supports it. A computer running an older version is
+simply never asked for its sound.
+
+Before any sound is sent, the controlled computer asks its user *Do you want to
+share your sound? The controlling computer will hear everything this computer
+plays, including calls and videos.* Nothing is sent before that question has
+been answered, and the answer only lasts for the session.
+
+Leaving the screen reader out is done by a small helper shipped with the add-on,
+which captures the mix of the whole machine minus one program. It needs Windows
+11, or Windows 10 from version 21H2, since that is when Windows gained the
+ability to exclude a program from a capture. The speech the controlled computer
+reports separately then keeps being spoken as usual, through the relay, which is
+both quicker than the sound stream and rendered with the synthesiser, voice and
+rate of whoever is listening.
+
+On an older Windows, or if the helper cannot start, the browser captures the
+whole mix as before, screen reader included. The speech that computer also
+reports is then not spoken a second time, so it is heard as it really sounds
+rather than announced twice a fraction of a second apart. Braille is unaffected
+either way and keeps working throughout.
+
+If the link drops without ending the session, the sound stops but the speech is
+handed back for as long as the interruption lasts, announced by *Sound
+interrupted* and then *Connection restored*. Neither the sound nor the speech is
+left silently missing.
+
+Two options are available in the add-on settings:
+
+* **Allow sending the sound of this computer, after confirmation**, which
+  refuses the request outright when cleared, on this computer only. Clearing it
+  does not affect screen sharing.
+* **When the sound of the controlled computer already contains its own screen
+  reader, do not also speak what it reports**, which stops that screen reader
+  from being heard twice. It only has an effect when the far end could not leave
+  its screen reader out, which is why the condition is part of the wording.
+  Clear it to hear both.
 
 ## Controlling the remote computer
 

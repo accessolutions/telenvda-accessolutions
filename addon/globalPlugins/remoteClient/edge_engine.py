@@ -61,6 +61,15 @@ class EdgeEngine:
 		# The bridge, not the browser process: see LocalBridge.silence.
 		return self._bridge.running
 
+	@property
+	def origin(self):
+		"""The local origin the page is served from, None while nothing is running.
+
+		The audio capture helper needs it: it is the only origin it will accept a
+		connection from.
+		"""
+		return self._bridge.origin
+
 	def start(self, role):
 		"""Open the browser on the signalling page. Raises RuntimeError when unusable."""
 		if self.running:

@@ -461,18 +461,27 @@ capabilities, network reliability and transfer timeouts.
 Transfers work in both directions: the controlling and the controlled computer
 use the same code and either of them may start a transfer.
 
-### Screen Sharing
+### Screen and Sound Sharing
 
-The controlling computer may display the screen of the controlled one over a
-peer to peer WebRTC link. The pictures never travel through the relay: it only
-carries the few messages needed to set the link up, and the two computers then
-talk to each other directly, falling back on a TURN server when the network
-leaves them no other route.
+The controlling computer may display the screen of the controlled one, hear the
+sound it plays, or both, over a peer to peer WebRTC link. Neither the pictures
+nor the sound travel through the relay: it only carries the few messages needed
+to set the link up, and the two computers then talk to each other directly,
+falling back on a TURN server when the network leaves them no other route.
+
+The two streams are independent. Sound may be asked for on its own, without any
+picture, and a session already showing a screen may be replaced by one which also
+carries sound. Each combination is a separate question to the user of the
+controlled computer, which is why a change of streams is a new session rather than
+a renegotiation of the one in progress.
 
 This feature is optional at every level. A relay built without it, or started
 without `-screen-share`, simply forwards the messages like any other, and the
 clients then fail to establish anything. A client which does not announce
-`screen_share` in its `telenvda_capabilities` is never asked to share anything.
+`screen_share` in its `telenvda_capabilities` is never asked to share anything,
+and one which does not announce `audio_share` is never asked for its sound. The
+two are announced separately: a computer willing to show its screen may still
+refuse to let everything it plays be heard.
 
 #### Relay capabilities
 
@@ -575,7 +584,9 @@ credentials are derived from a secret the clients never see and expire after
         "type": { "const": "screen_share_request" },
         "target": { "type": "integer" },
         "origin": { "type": "integer" },
-        "allow_input": { "type": "boolean", "description": "Whether the sender is willing to drive the mouse. The receiver still decides on its own." }
+        "allow_input": { "type": "boolean", "description": "Whether the sender is willing to drive the mouse. The receiver still decides on its own." },
+        "want_video": { "type": "boolean", "description": "Whether the picture is asked for. Absent means true, which is what a client predating sound sharing asks for." },
+        "want_audio": { "type": "boolean", "description": "Whether the sound the controlled computer plays is asked for. Absent means false." }
       },
       "required": ["type", "target"]
     },
@@ -587,6 +598,8 @@ credentials are derived from a secret the clients never see and expire after
         "origin": { "type": "integer" },
         "accepted": { "type": "boolean" },
         "allow_input": { "type": "boolean", "description": "Whether mouse control was actually granted." },
+        "video": { "type": "boolean", "description": "Whether the picture is actually being sent. Absent means true." },
+        "audio": { "type": "boolean", "description": "Whether the sound is actually being sent. Absent means false." },
         "reason": { "enum": ["declined", "busy", "unavailable"], "description": "Present when the request was refused." }
       },
       "required": ["type", "target", "accepted"]
@@ -643,14 +656,23 @@ Both ends send `webrtc_candidate` as routes are discovered, without waiting for
 the description exchange to complete. Either end may send `screen_share_stop`,
 and a session ends by itself when the relay connection drops.
 
-`allow_input` never grants anything on its own. The controlling computer states
-what it would like, but the controlled computer only ever grants what its own
-configuration allows, and the answer says what was really granted. Only mouse
-actions can be replayed this way: no keyboard input travels over this link.
+`allow_input`, `want_video` and `want_audio` never grant anything on their own.
+The controlling computer states what it would like, but the controlled computer
+only ever grants what its own configuration allows, and the answer says what was
+really granted. A request whose every stream is refused is answered as a refusal,
+with `unavailable`. Only mouse actions can be replayed this way: no keyboard input
+travels over this link.
 
-The pictures themselves are carried on a WebRTC data channel rather than a media
-track, as still frames compressed to JPEG and split into chunks. That format is
-private to the two helper programs and is not part of this protocol.
+Both streams are ordinary WebRTC media tracks, encoded and carried by the two
+helper programs. The picture is video, and the sound is a stereo audio track taken
+from the mix the controlled computer plays, not from a microphone. Which codecs
+are used, and how they are configured, is a matter between the two helpers and is
+not part of this protocol.
+
+A controlled computer cannot leave its own screen reader out of the sound it
+sends: the mix it captures is the whole of what the machine plays. A controlling
+computer which plays that sound should therefore stop announcing the speech the
+same session forwards to it, or the remote screen reader is heard twice.
 
 ### Braille Support
 

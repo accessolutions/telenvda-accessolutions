@@ -67,6 +67,9 @@ class RemoteSession:
 			self.screen_share = screen_share.ScreenShareManager(
 				transport, self.capabilities, self.SCREEN_SHARE_ROLE
 			)
+			# Sound arriving from the controlled computer already carries its NVDA, so the
+			# manager needs to reach the speech this session would otherwise also announce.
+			self.screen_share.local_machine = local_machine
 		self.client_count = 1
 
 	def handle_version_mismatch(self, **kwargs):
