@@ -138,9 +138,9 @@ class ClientPanel(wx.Panel):
 		"""Preload the transport and proxy fields from the saved configuration."""
 		cs = configuration.get_config()['controlserver']
 		self.transport_choice.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
+		self.ws_path.SetValue(cs.get('ws_path', '/') or '/')
 		if self.transport_choice.GetSelection() == 1:
 			self.port.SetValue(443)
-			self.ws_path.SetValue(cs.get('ws_path', '/') or '/')
 		configured_mode = str(cs.get('proxy_mode', 'auto')).lower()
 		self.proxy_mode.SetSelection(PROXY_MODES.index(configured_mode) if configured_mode in PROXY_MODES else PROXY_MODES.index("auto"))
 		self.proxy_host.SetValue(cs.get('proxy_host', ''))
@@ -151,10 +151,16 @@ class ClientPanel(wx.Panel):
 		self.proxy_password.SetValue(cs.get('proxy_password', ''))
 		self.update_proxy_controls()
 
-	def save_proxy_settings(self):
-		"""Persist the proxy settings so that the transport layer can pick them up."""
+	def save_settings(self):
+		"""Persist the transport and proxy settings chosen in this dialog.
+
+		The transport layer reads them back from the configuration, and the dialog preloads
+		them through load_settings(), so the user does not have to enter them again.
+		"""
 		config = configuration.get_config()
 		cs = config['controlserver']
+		cs['transport'] = self.get_transport_type()
+		cs['ws_path'] = self.ws_path.GetValue() or '/'
 		cs['proxy_mode'] = PROXY_MODES[self.proxy_mode.GetSelection()]
 		cs['proxy_host'] = self.proxy_host.GetValue().strip()
 		cs['proxy_port'] = int(self.proxy_port.GetValue())
@@ -165,7 +171,7 @@ class ClientPanel(wx.Panel):
 			try:
 				config.write()
 			except Exception:
-				log.exception("Unable to save the proxy settings")
+				log.exception("Unable to save the connection settings")
 
 	def update_proxy_controls(self):
 		show_proxy = self.transport_choice.GetSelection() == 1
@@ -216,7 +222,7 @@ class ClientPanel(wx.Panel):
 	def generate_key_command(self, insecure=False):
 		# The key is requested over the same transport as the connection itself, so the proxy
 		# settings must already be persisted for the WebSocket transport to pick them up.
-		self.save_proxy_settings()
+		self.save_settings()
 		address = self.get_address()
 		transport_class = transport.WebSocketRelayTransport if self.get_transport_type() == "websocket" else transport.RelayTransport
 		transport_kwargs = {"address": address, "serializer": serializer.JSONSerializer(), "insecure": insecure}
@@ -456,9 +462,6 @@ class DirectConnectDialog(wx.Dialog):
 				gui.messageBox(_("The key must not be sequential. Please, avoid keys such as 1234, 4321 or similar."), _("Error"), wx.OK | wx.ICON_ERROR)
 				self.panel.key.SetFocus()
 				return
-			# The proxy is read from the configuration by the transport layer, so it must be
-			# persisted here: otherwise the choice only lasts for the current connection.
-			self.panel.save_proxy_settings()
 		elif self.client_or_server.GetSelection() == 1:
 			if not self.panel.port.GetValue() or not self.panel.key.GetValue():
 				gui.messageBox(_("Both port and key must be set."), _("Error"), wx.OK | wx.ICON_ERROR)

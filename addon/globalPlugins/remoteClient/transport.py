@@ -304,6 +304,14 @@ class TCPTransport(Transport):
 			data = base64.b64encode(data).decode()
 			tag = base64.b64encode(tag).decode()
 			return self.send(type='encrypted', nonce=nonce, data=data, tag=tag)
+		self.write(obj)
+
+	def write(self, obj):
+		"""Hand a serialised message over to the wire.
+
+		Subclasses carrying the stream over something else than a raw socket only have
+		this to override, so that the encryption and signalling rules stay in one place.
+		"""
 		if self.connected:
 			self.queue.put(obj)
 
@@ -503,13 +511,7 @@ class WebSocketTransport(TCPTransport):
 		self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
 		self._disconnect()
 
-	def send(self, type, **kwargs):
-		obj = self.serializer.serialize(type=type, **kwargs)
-		if self.encryption_hash is not None and type not in EXCLUDED_FROM_ENCRYPTION:
-			cipher = AES.new(self.encryption_hash, AES.MODE_GCM)
-			nonce = base64.b64encode(cipher.nonce).decode()
-			data, tag = cipher.encrypt_and_digest(obj)
-			return self.send(type="encrypted", nonce=nonce, data=base64.b64encode(data).decode(), tag=base64.b64encode(tag).decode())
+	def write(self, obj):
 		if self.connected and self.websocket is not None:
 			self.websocket.send(obj.decode("utf-8"))
 

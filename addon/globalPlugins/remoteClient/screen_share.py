@@ -252,6 +252,7 @@ class ScreenShareManager:
 			# which follow must not open a second one.
 			self.input_receiver.granted = True
 		self._send(MSG_RESPONSE, accepted=True, allow_input=allow_input)
+		self._log_ice_servers()
 		self.helper.send(
 			command="start",
 			role=ROLE_PUBLISHER,
@@ -286,6 +287,7 @@ class ScreenShareManager:
 			ui.message(_("Unable to start screen sharing"))
 			return
 		self.input_allowed = bool(allow_input)
+		self._log_ice_servers()
 		self.helper.send(
 			command="start",
 			role=ROLE_VIEWER,
@@ -313,6 +315,17 @@ class ScreenShareManager:
 		"""The relay sent the temporary credentials of its TURN server."""
 		if isinstance(ice_servers, list):
 			self.ice_servers = ice_servers
+			logger.debug("The relay gave %d ICE server(s)", len(ice_servers))
+
+	def _log_ice_servers(self):
+		"""Warn when the link is about to be attempted without any relay of last resort.
+
+		Without a TURN server, two computers which are not on the same network can only
+		be joined when both routers happen to cooperate, so a failure here is expected
+		rather than a bug in the video engine.
+		"""
+		if not self.ice_servers:
+			logger.warning("Starting screen sharing without any ICE server: the relay did not answer the TURN credentials request")
 
 	def _forward_to_helper(self, origin, kind, **payload):
 		"""Hand a session description or an ICE candidate over to the video engine."""

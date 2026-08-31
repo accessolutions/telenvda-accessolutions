@@ -1365,9 +1365,10 @@ class GlobalPlugin(_GlobalPlugin):
 				self.is_connect_dialog_open = False
 				return
 			if dlg.client_or_server.GetSelection() == 0: #client
-				# Persist the proxy settings first: the transport layer reads them from the
-				# configuration when it opens the WebSocket connection.
-				dlg.panel.save_proxy_settings()
+				# Persist the transport and proxy settings first: the transport layer reads
+				# them from the configuration when it opens the connection, and the dialog
+				# preloads them so the user does not have to enter them again.
+				dlg.panel.save_settings()
 				server_addr, port = dlg.panel.get_address()
 				channel = dlg.panel.key.GetValue()
 				encryption_key = dlg.panel.encryption_key.GetValue()
