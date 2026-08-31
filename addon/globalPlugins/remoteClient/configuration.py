@@ -72,6 +72,9 @@ configspec = StringIO("""
 	restore_on_reactivation = boolean(default=False)
 	settings_imported = boolean(default=False)
 
+[migrations]
+	proxy_mode_reset = boolean(default=False)
+
 [updates]
 	check_at_startup = boolean(default=True)
 
@@ -365,12 +368,18 @@ def _migrate_proxy_mode(config):
 	Manual mode with an empty host means no proxy at all, which silently breaks WebSocket
 	connections behind a corporate proxy. Automatic Windows detection falls back to the same
 	behaviour when no proxy is configured on the system, so the migration is safe.
+
+	This runs only once: replaying it at every start would keep discarding a proxy mode
+	deliberately chosen by the user, which then appears not to be saved at all.
 	"""
+	migrations = config['migrations']
+	if migrations.get('proxy_mode_reset'):
+		return False
+	migrations['proxy_mode_reset'] = True
 	section = config['controlserver']
 	if section.get('proxy_mode') == 'manual' and not section.get('proxy_host', '').strip():
 		section['proxy_mode'] = 'auto'
-		return True
-	return False
+	return True
 
 def get_config():
 	global _config

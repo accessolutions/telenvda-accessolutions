@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: TeleNVDA Accessolutions 2026.08.26.1050\n"
+"Project-Id-Version: TeleNVDA Accessolutions 2026.08.31.1444\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-08-26 10:48+0200\n"
+"POT-Creation-Date: 2026-08-31 14:41+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -73,26 +73,26 @@ msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:74
 #: addon\globalPlugins\remoteClient\dialogs.py:269
-#: addon\globalPlugins\remoteClient\dialogs.py:514
+#: addon\globalPlugins\remoteClient\dialogs.py:517
 msgid "&Transport:"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:75
 #: addon\globalPlugins\remoteClient\dialogs.py:270
-#: addon\globalPlugins\remoteClient\dialogs.py:515
+#: addon\globalPlugins\remoteClient\dialogs.py:518
 msgid "Standard (TCP)"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:75
 #: addon\globalPlugins\remoteClient\dialogs.py:270
-#: addon\globalPlugins\remoteClient\dialogs.py:515
+#: addon\globalPlugins\remoteClient\dialogs.py:518
 msgid "WebSocket over HTTPS"
 msgstr ""
 
 #. Translators: The label of an edit field in connect dialog to enter name or address of the remote computer.
 #: addon\globalPlugins\remoteClient\dialogs.py:80
 #: addon\globalPlugins\remoteClient\dialogs.py:261
-#: addon\globalPlugins\remoteClient\dialogs.py:520
+#: addon\globalPlugins\remoteClient\dialogs.py:523
 msgid "&Host:"
 msgstr ""
 
@@ -106,7 +106,7 @@ msgstr ""
 #. Translators: Label of the edit field to enter key (password) to secure the remote connection.
 #: addon\globalPlugins\remoteClient\dialogs.py:87
 #: addon\globalPlugins\remoteClient\dialogs.py:328
-#: addon\globalPlugins\remoteClient\dialogs.py:535
+#: addon\globalPlugins\remoteClient\dialogs.py:538
 msgid "&Key:"
 msgstr ""
 
@@ -119,13 +119,13 @@ msgstr ""
 #. Translators: Label of an edit field to enter a second password to exchange encrypted data.
 #: addon\globalPlugins\remoteClient\dialogs.py:95
 #: addon\globalPlugins\remoteClient\dialogs.py:335
-#: addon\globalPlugins\remoteClient\dialogs.py:540
+#: addon\globalPlugins\remoteClient\dialogs.py:543
 msgid "En&cryption password (optional):"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:98
 #: addon\globalPlugins\remoteClient\dialogs.py:273
-#: addon\globalPlugins\remoteClient\dialogs.py:544
+#: addon\globalPlugins\remoteClient\dialogs.py:547
 msgid "WebSocket &path:"
 msgstr ""
 
@@ -135,40 +135,40 @@ msgid "Proxy"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:112
-#: addon\globalPlugins\remoteClient\dialogs.py:548
+#: addon\globalPlugins\remoteClient\dialogs.py:551
 msgid "Proxy &mode:"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:117
-#: addon\globalPlugins\remoteClient\dialogs.py:554
+#: addon\globalPlugins\remoteClient\dialogs.py:557
 msgid "HTTP/SOCKS &proxy host:"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:120
-#: addon\globalPlugins\remoteClient\dialogs.py:558
+#: addon\globalPlugins\remoteClient\dialogs.py:561
 msgid "Proxy por&t:"
 msgstr ""
 
 #. Translators: tooltip clarifying that this port is the intermediary proxy port, not the relay/server port above.
 #: addon\globalPlugins\remoteClient\dialogs.py:123
-#: addon\globalPlugins\remoteClient\dialogs.py:562
+#: addon\globalPlugins\remoteClient\dialogs.py:565
 msgid ""
 "Port of an intermediary HTTP/SOCKS proxy server, if any. Left at 0 when no "
 "proxy is used. Unrelated to the relay/server port above."
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:125
-#: addon\globalPlugins\remoteClient\dialogs.py:564
+#: addon\globalPlugins\remoteClient\dialogs.py:567
 msgid "Proxy &type:"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:129
-#: addon\globalPlugins\remoteClient\dialogs.py:569
+#: addon\globalPlugins\remoteClient\dialogs.py:572
 msgid "Proxy &username:"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:132
-#: addon\globalPlugins\remoteClient\dialogs.py:573
+#: addon\globalPlugins\remoteClient\dialogs.py:576
 msgid "Proxy pass&word:"
 msgstr ""
 
@@ -184,15 +184,15 @@ msgstr ""
 #: addon\globalPlugins\remoteClient\dialogs.py:447
 #: addon\globalPlugins\remoteClient\dialogs.py:451
 #: addon\globalPlugins\remoteClient\dialogs.py:456
-#: addon\globalPlugins\remoteClient\dialogs.py:461
-#: addon\globalPlugins\remoteClient\dialogs.py:465
-#: addon\globalPlugins\remoteClient\dialogs.py:470
-#: addon\globalPlugins\remoteClient\dialogs.py:847
-#: addon\globalPlugins\remoteClient\dialogs.py:856
-#: addon\globalPlugins\remoteClient\dialogs.py:863
+#: addon\globalPlugins\remoteClient\dialogs.py:464
+#: addon\globalPlugins\remoteClient\dialogs.py:468
+#: addon\globalPlugins\remoteClient\dialogs.py:473
+#: addon\globalPlugins\remoteClient\dialogs.py:850
+#: addon\globalPlugins\remoteClient\dialogs.py:859
 #: addon\globalPlugins\remoteClient\dialogs.py:866
-#: addon\globalPlugins\remoteClient\dialogs.py:870
-#: addon\globalPlugins\remoteClient\dialogs.py:875
+#: addon\globalPlugins\remoteClient\dialogs.py:869
+#: addon\globalPlugins\remoteClient\dialogs.py:873
+#: addon\globalPlugins\remoteClient\dialogs.py:878
 #: addon\globalPlugins\remoteClient\file_transfer.py:575
 #: addon\globalPlugins\remoteClient\file_transfer.py:586
 #: addon\globalPlugins\remoteClient\file_transfer.py:603
@@ -235,7 +235,7 @@ msgstr ""
 
 #. Translators: label of a checkbox which allows forwarding a port using UPNP
 #: addon\globalPlugins\remoteClient\dialogs.py:326
-#: addon\globalPlugins\remoteClient\dialogs.py:532
+#: addon\globalPlugins\remoteClient\dialogs.py:535
 msgid "Use &UPNP to forward this port if possible"
 msgstr ""
 
@@ -287,244 +287,244 @@ msgid "Server"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:419
-#: addon\globalPlugins\remoteClient\dialogs.py:494
+#: addon\globalPlugins\remoteClient\dialogs.py:497
 msgid "Allow this machine to be controlled"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:419
-#: addon\globalPlugins\remoteClient\dialogs.py:494
+#: addon\globalPlugins\remoteClient\dialogs.py:497
 msgid "Control another machine"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\dialogs.py:447
-#: addon\globalPlugins\remoteClient\dialogs.py:863
+#: addon\globalPlugins\remoteClient\dialogs.py:866
 msgid "Both host and key must be set."
 msgstr ""
 
 #. Translators: error message for key/password length less than 6 characters
 #: addon\globalPlugins\remoteClient\dialogs.py:451
-#: addon\globalPlugins\remoteClient\dialogs.py:465
-#: addon\globalPlugins\remoteClient\dialogs.py:870
+#: addon\globalPlugins\remoteClient\dialogs.py:468
+#: addon\globalPlugins\remoteClient\dialogs.py:873
 msgid "The key must be longer than 6 characters."
 msgstr ""
 
 #. Translators: error message for key/password being sequential, example 123456
 #: addon\globalPlugins\remoteClient\dialogs.py:456
-#: addon\globalPlugins\remoteClient\dialogs.py:470
-#: addon\globalPlugins\remoteClient\dialogs.py:875
+#: addon\globalPlugins\remoteClient\dialogs.py:473
+#: addon\globalPlugins\remoteClient\dialogs.py:878
 msgid ""
 "The key must not be sequential. Please, avoid keys such as 1234, 4321 or "
 "similar."
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:461
-#: addon\globalPlugins\remoteClient\dialogs.py:866
+#: addon\globalPlugins\remoteClient\dialogs.py:464
+#: addon\globalPlugins\remoteClient\dialogs.py:869
 msgid "Both port and key must be set."
 msgstr ""
 
 #. Translators: title for the TeleNVDA settings category in NVDA settings dialog
 #. Translators: script category for add-on gestures
-#: addon\globalPlugins\remoteClient\dialogs.py:478
+#: addon\globalPlugins\remoteClient\dialogs.py:481
 #: addon\globalPlugins\remoteClient\__init__.py:160
 #: addon\globalPlugins\remoteClient\__init__.py:717
 msgid "TeleNVDA"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether remote server is started when NVDA starts.
-#: addon\globalPlugins\remoteClient\dialogs.py:482
+#: addon\globalPlugins\remoteClient\dialogs.py:485
 msgid "Auto-connect to control server on startup"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to enable update checks when NVDA starts.
-#: addon\globalPlugins\remoteClient\dialogs.py:486
+#: addon\globalPlugins\remoteClient\dialogs.py:489
 msgid "Check for TeleNVDA updates on startup"
 msgstr ""
 
 #. Translators: Whether or not to use a relay server when autoconnecting
-#: addon\globalPlugins\remoteClient\dialogs.py:489
+#: addon\globalPlugins\remoteClient\dialogs.py:492
 msgid "Use Remote Control Server"
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:489
+#: addon\globalPlugins\remoteClient\dialogs.py:492
 msgid "Host Control Server"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a configurable period without any real remote control activity.
-#: addon\globalPlugins\remoteClient\dialogs.py:500
+#: addon\globalPlugins\remoteClient\dialogs.py:503
 msgid "Automatically disable auto-connect without any remote control activity"
 msgstr ""
 
 #. Translators: Label for the inactivity duration field. The value uses days:hours:minutes.
-#: addon\globalPlugins\remoteClient\dialogs.py:505
+#: addon\globalPlugins\remoteClient\dialogs.py:508
 msgid "Inactivity duration (days:hours:minutes):"
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:511
+#: addon\globalPlugins\remoteClient\dialogs.py:514
 msgid ""
 "Format: days:hours:minutes. For example, 30:00:00 means 30 days and 00:00:01 "
 "means 1 minute."
 msgstr ""
 
 #. Translators: label of the port used to reach the relay or server, as opposed to the proxy port below.
-#: addon\globalPlugins\remoteClient\dialogs.py:525
+#: addon\globalPlugins\remoteClient\dialogs.py:528
 msgid "&Port (server/relay):"
 msgstr ""
 
 #. Translators: tooltip clarifying that this port is used to reach the relay/server, not the proxy below.
-#: addon\globalPlugins\remoteClient\dialogs.py:529
+#: addon\globalPlugins\remoteClient\dialogs.py:532
 msgid ""
 "Port used to reach the relay or server (default 6837, or 443 for WebSocket "
 "over HTTPS). Unrelated to the proxy port below."
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether sounds play instead of beeps.
-#: addon\globalPlugins\remoteClient\dialogs.py:578
+#: addon\globalPlugins\remoteClient\dialogs.py:581
 msgid "Play sounds instead of beeps"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether to display an alert before the controlled computer disconnects.
-#: addon\globalPlugins\remoteClient\dialogs.py:581
+#: addon\globalPlugins\remoteClient\dialogs.py:584
 msgid "Display an alert before the controlled computer disconnects"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether to mute remote speech when controlling the local machine.
-#: addon\globalPlugins\remoteClient\dialogs.py:584
+#: addon\globalPlugins\remoteClient\dialogs.py:587
 msgid "Mute remote speech when controlling local machine"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether allow or block speech commands
-#: addon\globalPlugins\remoteClient\dialogs.py:587
+#: addon\globalPlugins\remoteClient\dialogs.py:590
 msgid "Process speech commands when controlling another computer"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to set whether server welcome messages are displayed only once
-#: addon\globalPlugins\remoteClient\dialogs.py:590
+#: addon\globalPlugins\remoteClient\dialogs.py:593
 msgid "Show server welcome messages only once"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to prevent the computer from going to sleep when it is left unattended.
-#: addon\globalPlugins\remoteClient\dialogs.py:593
+#: addon\globalPlugins\remoteClient\dialogs.py:596
 msgid "Prevent this computer from going to sleep when it is not used"
 msgstr ""
 
 #. Translators: Label for the delay after which an F15 key press is sent to keep the computer awake.
-#: addon\globalPlugins\remoteClient\dialogs.py:597
+#: addon\globalPlugins\remoteClient\dialogs.py:600
 msgid "Delay without activity before keeping the computer awake (in seconds):"
 msgstr ""
 
 #. Translators: Label for the maximum duration during which sleep is prevented.
-#: addon\globalPlugins\remoteClient\dialogs.py:601
+#: addon\globalPlugins\remoteClient\dialogs.py:604
 msgid "Maximum duration for preventing the computer from going to sleep:"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to allow sending files larger than 10 MB to computers running the original TeleNVDA.
-#: addon\globalPlugins\remoteClient\dialogs.py:606
+#: addon\globalPlugins\remoteClient\dialogs.py:609
 msgid ""
 "Allow files larger than 10 MB even when the other computer does not support "
 "the new transfer system"
 msgstr ""
 
 #. Translators: Label for the maximum size of a file sent without the new transfer system.
-#: addon\globalPlugins\remoteClient\dialogs.py:610
+#: addon\globalPlugins\remoteClient\dialogs.py:613
 msgid "Maximum size of those transfers (in MB):"
 msgstr ""
 
 #. Translators: Label for the maximum size of a file accepted from the other computer, 0 meaning no limit.
-#: addon\globalPlugins\remoteClient\dialogs.py:614
+#: addon\globalPlugins\remoteClient\dialogs.py:617
 msgid "Maximum size of received files, in MB (0 for no limit):"
 msgstr ""
 
 #. Translators: A checkbox in add-on options dialog to allow sharing this screen and its mouse with the controlling computer.
-#: addon\globalPlugins\remoteClient\dialogs.py:618
+#: addon\globalPlugins\remoteClient\dialogs.py:621
 msgid ""
 "Allow sharing the screen of this computer and the use of its mouse, after "
 "confirmation"
 msgstr ""
 
 #. Translators: Label for the maximum number of images per second sent while sharing the screen.
-#: addon\globalPlugins\remoteClient\dialogs.py:622
+#: addon\globalPlugins\remoteClient\dialogs.py:625
 msgid "Maximum number of images per second:"
 msgstr ""
 
 #. Translators: Label for the width the shared picture is reduced to before being sent.
-#: addon\globalPlugins\remoteClient\dialogs.py:626
+#: addon\globalPlugins\remoteClient\dialogs.py:629
 msgid "Reduce the shared picture to this width, in pixels:"
 msgstr ""
 
 #. Translators: Label for the quality of the shared picture.
-#: addon\globalPlugins\remoteClient\dialogs.py:630
+#: addon\globalPlugins\remoteClient\dialogs.py:633
 msgid "Quality of the shared picture:"
 msgstr ""
 
 #. Translators: A choice of screen sharing quality, using the least bandwidth.
-#: addon\globalPlugins\remoteClient\dialogs.py:633
+#: addon\globalPlugins\remoteClient\dialogs.py:636
 msgid "Low, for a slow connection"
 msgstr ""
 
 #. Translators: A choice of screen sharing quality, the default one.
-#: addon\globalPlugins\remoteClient\dialogs.py:635
+#: addon\globalPlugins\remoteClient\dialogs.py:638
 msgid "Balanced"
 msgstr ""
 
 #. Translators: A choice of screen sharing quality, using the most bandwidth.
-#: addon\globalPlugins\remoteClient\dialogs.py:637
+#: addon\globalPlugins\remoteClient\dialogs.py:640
 msgid "High, for a fast connection"
 msgstr ""
 
 #. Translators: a text field in add-on options dialog to set the portcheck service URL
-#: addon\globalPlugins\remoteClient\dialogs.py:641
+#: addon\globalPlugins\remoteClient\dialogs.py:644
 msgid "Portcheck &service URL: "
 msgstr ""
 
 #. Translators: A button in add-on options dialog to delete all fingerprints of unauthorized certificates.
-#: addon\globalPlugins\remoteClient\dialogs.py:645
+#: addon\globalPlugins\remoteClient\dialogs.py:648
 msgid "Delete all trusted fingerprints"
 msgstr ""
 
 #. Translators: Label for the folder where received screenshots are saved.
-#: addon\globalPlugins\remoteClient\dialogs.py:649
+#: addon\globalPlugins\remoteClient\dialogs.py:652
 msgid "Screenshot save &folder:"
 msgstr ""
 
 #. Translators: Button used to choose the folder where received screenshots are saved.
-#: addon\globalPlugins\remoteClient\dialogs.py:654
+#: addon\globalPlugins\remoteClient\dialogs.py:657
 msgid "&Browse..."
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:812
+#: addon\globalPlugins\remoteClient\dialogs.py:815
 msgid ""
 "When connecting to an unauthorized server, you will again be prompted to "
 "accepts its certificate."
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:812
+#: addon\globalPlugins\remoteClient\dialogs.py:815
 msgid "Are you sure you want to delete all stored trusted fingerprints?"
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:825
+#: addon\globalPlugins\remoteClient\dialogs.py:828
 msgid "Choose the folder where received screenshots will be saved"
 msgstr ""
 
 #. Translators: error message for invalid format on Portcheck service URL
-#: addon\globalPlugins\remoteClient\dialogs.py:847
+#: addon\globalPlugins\remoteClient\dialogs.py:850
 #, python-brace-format
 msgid ""
 "Invalid format for portcheck service URL. You must include {port} somewhere."
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:855
+#: addon\globalPlugins\remoteClient\dialogs.py:858
 msgid ""
 "Invalid inactivity duration. Use the format jj:hh:mm, for example 30:00:00 "
 "or 00:00:01."
 msgstr ""
 
 #. Translators: A title bar of a window presented when an attempt has been made to connect with a server with unauthorized certificate.
-#: addon\globalPlugins\remoteClient\dialogs.py:941
+#: addon\globalPlugins\remoteClient\dialogs.py:944
 msgid "TeleNVDA Connection Security Warning"
 msgstr ""
 
 #. Translators: A message of a window presented when an attempt has been made to connect with a server with unauthorized certificate.
-#: addon\globalPlugins\remoteClient\dialogs.py:943
+#: addon\globalPlugins\remoteClient\dialogs.py:946
 #, python-brace-format
 msgid ""
 "Warning! The certificate of this server could not be verified.\n"
@@ -539,11 +539,11 @@ msgid ""
 "Do you want to continue connecting?"
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:945
+#: addon\globalPlugins\remoteClient\dialogs.py:948
 msgid "Connect and do not ask again for this server"
 msgstr ""
 
-#: addon\globalPlugins\remoteClient\dialogs.py:945
+#: addon\globalPlugins\remoteClient\dialogs.py:948
 msgid "Connect"
 msgstr ""
 

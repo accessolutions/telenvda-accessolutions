@@ -456,6 +456,9 @@ class DirectConnectDialog(wx.Dialog):
 				gui.messageBox(_("The key must not be sequential. Please, avoid keys such as 1234, 4321 or similar."), _("Error"), wx.OK | wx.ICON_ERROR)
 				self.panel.key.SetFocus()
 				return
+			# The proxy is read from the configuration by the transport layer, so it must be
+			# persisted here: otherwise the choice only lasts for the current connection.
+			self.panel.save_proxy_settings()
 		elif self.client_or_server.GetSelection() == 1:
 			if not self.panel.port.GetValue() or not self.panel.key.GetValue():
 				gui.messageBox(_("Both port and key must be set."), _("Error"), wx.OK | wx.ICON_ERROR)

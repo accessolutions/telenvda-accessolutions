@@ -17,6 +17,7 @@ This release brings the following changes:
 * Fall back to the native capture when PowerShell is unavailable or blocked on the controlled computer, and run PowerShell from its absolute path so a restricted PATH no longer prevents the capture.
 * Encode remote screenshots as JPEG instead of the raw bitmap before Base64 encoding, so that captures transfer faster.
 * Add proxy settings to the connection dialog, with a proxy mode which can be manual, automatic Windows detection or no proxy. Existing configurations left in manual mode without a proxy address are switched to automatic detection.
+* Fix the proxy settings of the connection dialog, which were forgotten as soon as the dialog was validated and had to be entered again after each restart of NVDA. The one-off conversion of manual configurations without an address no longer discards the chosen mode at every start.
 
 Important: some anti-virus software may flag parts of this add-on as malicious. Specifically, `url_handler.exe`, which opens `remote://` and `tele://` links. If you don't use this feature, you can safely quarantine or delete the file. Otherwise, you must add it as an exception.
 
