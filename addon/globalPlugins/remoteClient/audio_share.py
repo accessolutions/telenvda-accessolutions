@@ -26,19 +26,20 @@ of what screen sharing at its lowest quality asks for.
 
 import base64
 import threading
-from logging import getLogger
 
 import wx
 
 import addonHandler
 import gui
 import ui
+# NVDA only adds its handlers to its own logger, so a logger of this module's own
+# would write nothing at all below the warning level.
+from logHandler import log as logger
 
 from . import capabilities, configuration
 from .screen_share import ROLE_PUBLISHER, ROLE_VIEWER, STATE_ACTIVE, STATE_IDLE, STATE_REQUESTING
 from .transport import TransportEvents
 
-logger = getLogger("audio_share")
 
 #: Capturing sound, listing what is playing and pouring it back into a sound card
 #: all reach into Windows through raw pointers and into NVDA's own player. A machine
@@ -63,6 +64,7 @@ MSG_RESPONSE = "remote_audio_response"
 MSG_STOP = "remote_audio_stop"
 MSG_DATA = "remote_audio_data"
 MSG_SOURCES = "remote_audio_sources"
+MSG_EXCLUDE = "remote_audio_exclude"
 
 #: Blocks of sound gathered before one message is sent. Twenty milliseconds at a
 #: time would mean fifty messages a second, each carrying less than it costs to
@@ -172,6 +174,7 @@ class AudioShareManager:
 		callbacks.register_callback("msg_" + MSG_STOP, self.handle_stop)
 		callbacks.register_callback("msg_" + MSG_DATA, self.handle_data)
 		callbacks.register_callback("msg_" + MSG_SOURCES, self.handle_sources)
+		callbacks.register_callback("msg_" + MSG_EXCLUDE, self.handle_exclude)
 		callbacks.register_callback(TransportEvents.DISCONNECTED, self.terminate)
 
 	# Session control.
@@ -189,6 +192,27 @@ class AudioShareManager:
 		if self.role == ROLE_VIEWER:
 			return list(self._remote_sounding)
 		return sorted(set(self._sounding.values()))
+
+	def unwanted_applications(self):
+		"""Return the applications this session is currently leaving out."""
+		return sorted(self._excluded)
+
+	def set_unwanted_applications(self, names):
+		"""Change, in the middle of a session, which applications are left out.
+
+		The list belongs to the computer that listens, so that one only sends it and
+		the assisted computer is the one that acts on it. Waiting for the next look at
+		what is playing would leave a program audible for another couple of seconds
+		after it was silenced, so the captures already running are dropped at once.
+		"""
+		names = {str(name).strip().lower() for name in names if str(name).strip()}
+		if not self.active:
+			return
+		if self.role == ROLE_VIEWER:
+			self._send(MSG_EXCLUDE, excluded=sorted(names)[:_MAX_EXCLUSIONS])
+			return
+		self._excluded = names
+		self._drop_unwanted()
 
 	def toggle(self):
 		"""Start the session when there is none, stop the current one otherwise.
@@ -323,7 +347,9 @@ class AudioShareManager:
 		before = sorted(set(self._sounding.values()))
 		own = audio_capture.own_process_tree_root()
 		wanted = {}
+		found = []
 		for session in audio_sources.list_sessions():
+			found.append(session["name"])
 			if session["pid"] == own:
 				continue
 			if session["name"] in self._excluded:
@@ -338,6 +364,23 @@ class AudioShareManager:
 				continue
 			mixer.add(pid, lambda on_block, pid=pid: audio_capture.ProcessCapture(pid, on_block))
 			self._sounding[pid] = name
+		logger.debug(
+			"Remote audio, applications holding a sound session: %s ; captured: %s",
+			", ".join(sorted(set(found))) or "none",
+			", ".join(sorted(set(wanted.values()))) or "none",
+		)
+		self._announce_sources(before)
+
+	def _drop_unwanted(self):
+		"""Stop capturing the applications which are no longer wanted."""
+		mixer = self._mixer
+		if mixer is None:
+			return
+		before = sorted(set(self._sounding.values()))
+		for pid, name in list(self._sounding.items()):
+			if name in self._excluded:
+				mixer.remove(pid)
+				self._sounding.pop(pid, None)
 		self._announce_sources(before)
 
 	def _announce_sources(self, before):
@@ -349,8 +392,9 @@ class AudioShareManager:
 		names = sorted(set(self._sounding.values()))
 		if names == before:
 			return
+		logger.info("Remote audio, telling the other computer it is hearing: %s", ", ".join(names) or "nothing")
 		try:
-			self.transport.send(type=MSG_SOURCES, applications=names)
+			self._send(MSG_SOURCES, applications=names)
 		except Exception:
 			logger.exception("Unable to send the list of applications being heard")
 
@@ -390,12 +434,19 @@ class AudioShareManager:
 		wx.CallAfter(self._ask_permission, origin, names)
 
 	def _ask_permission(self, origin, excluded):
+		if audio_capture.is_process_capture_available():
+			# Translators: question asked before the sound of this computer is shared
+			message = _("Do you want to share the sound of this computer? The controlling computer will hear the applications playing here.")
+		else:
+			# This Windows cannot capture one program on its own, so consent has to be
+			# asked for what will really happen rather than for what usually happens.
+			# Translators: question asked before the sound of this computer is shared, when Windows cannot separate the applications
+			message = _("Do you want to share the sound of this computer? This version of Windows cannot separate the applications, so everything played here will be heard, including the speech of this screen reader.")
 		answer = gui.messageBox(
 			parent=gui.mainFrame,
 			# Translators: title of the remote audio request dialog
 			caption=_("Remote audio request"),
-			# Translators: question asked before the sound of this computer is shared
-			message=_("Do you want to share the sound of this computer? The controlling computer will hear the applications playing here."),
+			message=message,
 			style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
 		)
 		if answer == wx.YES:
@@ -484,6 +535,26 @@ class AudioShareManager:
 			name.strip().lower() for name in applications[:_MAX_EXCLUSIONS]
 			if isinstance(name, str) and name.strip()
 		})
+		logger.info(
+			"Remote audio, the other computer says it is playing: %s",
+			", ".join(self._remote_sounding) or "nothing",
+		)
+
+	def handle_exclude(self, origin=None, excluded=None, **kwargs):
+		"""The listening computer changed which of the applications here it wants."""
+		if not self._accept_from(origin) or origin != self.peer_id:
+			return
+		if self.role != ROLE_PUBLISHER or not self.active or not isinstance(excluded, list):
+			return
+		self._excluded = {
+			name.strip().lower() for name in excluded[:_MAX_EXCLUSIONS]
+			if isinstance(name, str) and name.strip()
+		}
+		logger.info(
+			"Remote audio, the other computer no longer wants to hear: %s",
+			", ".join(sorted(self._excluded)) or "nothing",
+		)
+		self._drop_unwanted()
 
 	def _accept_from(self, origin):
 		if origin is None:

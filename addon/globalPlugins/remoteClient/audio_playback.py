@@ -18,13 +18,14 @@ rather than talking to a person.
 
 import queue
 import threading
-from logging import getLogger
 
 import nvwave
+# NVDA only adds its handlers to its own logger, so a logger of this module's own
+# would write nothing at all below the warning level.
+from logHandler import log as logger
 
 from .audio_capture import OUTPUT_CHANNELS, OUTPUT_RATE
 
-logger = getLogger("audio_playback")
 
 
 class Player:

@@ -64,6 +64,25 @@ MSG_TURN_CREDENTIALS = "turn_credentials"
 MAX_SIGNALING_PAYLOAD = 64 * 1024
 
 
+def _ice_urls(ice_servers):
+	"""List every address contained in the ICE server list sent by the relay.
+
+	The relay groups its addresses by credentials, so a list of four addresses arrives
+	as one entry for the plain ones and another for those needing a login. Counting the
+	entries would therefore always report one or two, which tells nothing about the
+	fallbacks actually offered.
+	"""
+	urls = []
+	for server in ice_servers:
+		if not isinstance(server, dict):
+			continue
+		value = server.get("urls")
+		if isinstance(value, str):
+			urls.append(value)
+		elif isinstance(value, list):
+			urls.extend(v for v in value if isinstance(v, str))
+	return urls
+
 
 def is_enabled():
 	"""Whether the user left screen sharing turned on."""
@@ -316,7 +335,16 @@ class ScreenShareManager:
 		"""The relay sent the temporary credentials of its TURN server."""
 		if isinstance(ice_servers, list):
 			self.ice_servers = ice_servers
-			logger.info("The relay gave %d ICE server(s)", len(ice_servers))
+			# The relay groups its addresses by credentials, so the number of entries is
+			# always one or two and says nothing about how many servers were configured.
+			# Only the addresses themselves tell whether a fallback is missing.
+			urls = _ice_urls(ice_servers)
+			logger.info(
+				"The relay gave %d ICE address(es) in %d group(s): %s",
+				len(urls),
+				len(ice_servers),
+				", ".join(urls) or "none",
+			)
 
 	def _log_ice_servers(self):
 		"""Warn when the link is about to be attempted without any relay of last resort.

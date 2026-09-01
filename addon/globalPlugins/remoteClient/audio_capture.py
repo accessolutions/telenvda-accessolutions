@@ -31,9 +31,11 @@ import threading
 import time
 from ctypes import POINTER, byref, c_void_p, sizeof
 from ctypes.wintypes import BYTE, DWORD, HANDLE, LPCWSTR, UINT, WORD
-from logging import getLogger
 
-logger = getLogger("audio_capture")
+# NVDA only adds its handlers to its own logger, so a logger of this module's own
+# would write nothing at all below the warning level.
+from logHandler import log as logger
+
 
 #: Format every capture is opened with, so that mixing is a plain sum of samples.
 SAMPLE_RATE = 48000

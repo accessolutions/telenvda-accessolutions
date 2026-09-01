@@ -235,12 +235,18 @@ captured on its own and the results are mixed. The screen reader of the
 controlled computer is never among them, so its voice is not heard twice.
 
 The **Audio sources** button in the add-on options lists the applications heard
-during the current session, and lets any of them be silenced. Only the
-applications that are refused are remembered, by the name of their program, so a
-computer used to assist many others never builds a list of everything they ever
-ran. An application which is not running can be named in advance with **Add an
-application**, and an application refused earlier stays in the list so that the
-decision can be undone.
+during the current session, and lets any of them be silenced. Pressing
+**NVDA+Control+Shift+K** twice quickly opens that same list without going through
+the options, from either computer: the one which listens, when something it did
+not ask for starts playing, and the one which is heard, when it would rather keep
+a program to itself. A change made while the sound is running takes effect at
+once. Only the applications that are refused are remembered, by the name of their
+program, so a computer used to assist many others never builds a list of
+everything they ever ran. An application which is not running can be named in
+advance with **Add an application**, and an application refused earlier stays in
+the list so that the decision can be undone. What the listened computer decides
+for itself lasts only for the session, because the list it keeps says which
+applications its own user does not want to hear from others.
 
 Before anything is heard, the controlled computer asks its user to agree, and
 that answer only lasts for the session. Nothing is recorded at either end.

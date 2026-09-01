@@ -77,7 +77,13 @@ function report(text) {
 
 function createConnection(iceServers) {
 	const servers = Array.isArray(iceServers) ? iceServers : [];
-	report("Setting the connection up with " + servers.length + " ICE server(s)");
+	/* Addresses are grouped by credentials, so counting the entries would always
+	   report one or two whatever the relay was configured with. */
+	const addresses = servers.reduce(
+		(total, server) => total + (Array.isArray(server.urls) ? server.urls.length : (server.urls ? 1 : 0)),
+		0,
+	);
+	report("Setting the connection up with " + addresses + " ICE address(es) in " + servers.length + " group(s)");
 	pc = new RTCPeerConnection({
 		iceServers: servers,
 		bundlePolicy: "max-bundle",

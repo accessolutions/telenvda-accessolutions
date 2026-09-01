@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TeleNVDA\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-09-01 11:21+0200\n"
+"POT-Creation-Date: 2026-09-01 13:21+0200\n"
 "PO-Revision-Date: 2025-03-08 10:38+0100\n"
 "Last-Translator: Rémy Ruiz <remyruiz@gmail.com>\n"
 "Language-Team: Corentin Bacqué-Cazenave <corentin@progaccess.net>\n"
@@ -36,37 +36,32 @@ msgid "Running NVDA Remote detected"
 msgstr "Accès distant NVDA en cours d'exécution détecté"
 
 #. Translators: message spoken when remote audio is turned off
-#: addon\globalPlugins\remoteClient\audio_share.py:201
+#: addon\globalPlugins\remoteClient\audio_share.py:225
 msgid "Remote audio stopped"
 msgstr "Son distant arrêté"
 
 #. Translators: message spoken when remote audio is requested from the wrong computer
-#: addon\globalPlugins\remoteClient\audio_share.py:208
+#: addon\globalPlugins\remoteClient\audio_share.py:232
 msgid "Remote audio can only be started from the controlling computer"
 msgstr "Le son distant ne peut être démarré que depuis l'ordinateur contrôleur"
 
 #. Translators: message spoken when remote audio cannot run on this computer
-#: addon\globalPlugins\remoteClient\audio_share.py:211
+#: addon\globalPlugins\remoteClient\audio_share.py:235
 msgid "Remote audio is not available on this computer"
 msgstr "Le son distant n'est pas disponible sur cet ordinateur"
 
 #. Translators: message spoken when the other computer cannot share its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:215
+#: addon\globalPlugins\remoteClient\audio_share.py:239
 msgid "The other computer does not support remote audio"
 msgstr "L'autre ordinateur ne prend pas en charge le son distant"
 
 #. Translators: message spoken when remote audio has been requested
-#: addon\globalPlugins\remoteClient\audio_share.py:222
+#: addon\globalPlugins\remoteClient\audio_share.py:246
 msgid "Remote audio requested"
 msgstr "Son distant demandé"
 
-#. Translators: title of the remote audio request dialog
-#: addon\globalPlugins\remoteClient\audio_share.py:396
-msgid "Remote audio request"
-msgstr "Demande de son distant"
-
 #. Translators: question asked before the sound of this computer is shared
-#: addon\globalPlugins\remoteClient\audio_share.py:398
+#: addon\globalPlugins\remoteClient\audio_share.py:439
 msgid ""
 "Do you want to share the sound of this computer? The controlling computer "
 "will hear the applications playing here."
@@ -74,28 +69,46 @@ msgstr ""
 "Souhaitez-vous partager le son de cet ordinateur ? L'ordinateur contrôleur "
 "entendra les applications qui jouent ici."
 
+#. This Windows cannot capture one program on its own, so consent has to be
+#. asked for what will really happen rather than for what usually happens.
+#. Translators: question asked before the sound of this computer is shared, when Windows cannot separate the applications
+#: addon\globalPlugins\remoteClient\audio_share.py:444
+msgid ""
+"Do you want to share the sound of this computer? This version of Windows "
+"cannot separate the applications, so everything played here will be heard, "
+"including the speech of this screen reader."
+msgstr ""
+"Souhaitez-vous partager le son de cet ordinateur ? Cette version de Windows "
+"ne sait pas séparer les applications : tout ce qui est joué ici sera "
+"entendu, y compris la parole de ce lecteur d'écran."
+
+#. Translators: title of the remote audio request dialog
+#: addon\globalPlugins\remoteClient\audio_share.py:448
+msgid "Remote audio request"
+msgstr "Demande de son distant"
+
 #. Translators: message spoken when the sound of the whole computer is shared
-#: addon\globalPlugins\remoteClient\audio_share.py:422
+#: addon\globalPlugins\remoteClient\audio_share.py:473
 msgid "Sharing all the sound of this computer, including this speech"
 msgstr "Partage de tout le son de cet ordinateur, y compris cette parole"
 
 #. Translators: message spoken on the assisted computer when it starts sharing its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:425
+#: addon\globalPlugins\remoteClient\audio_share.py:476
 msgid "Sharing the sound of this computer"
 msgstr "Partage du son de cet ordinateur"
 
 #. Translators: message spoken when the remote sound cannot be played here
-#: addon\globalPlugins\remoteClient\audio_share.py:447
+#: addon\globalPlugins\remoteClient\audio_share.py:498
 msgid "Unable to play the remote sound on this computer"
 msgstr "Impossible de jouer le son distant sur cet ordinateur"
 
 #. Translators: message spoken when the remote sound starts being heard
-#: addon\globalPlugins\remoteClient\audio_share.py:452
+#: addon\globalPlugins\remoteClient\audio_share.py:503
 msgid "Remote audio started"
 msgstr "Son distant démarré"
 
 #. Translators: message spoken when the assisted computer can only share all of its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:455
+#: addon\globalPlugins\remoteClient\audio_share.py:506
 msgid ""
 "This computer can only share all of its sound, including the speech of its "
 "screen reader"
@@ -104,22 +117,22 @@ msgstr ""
 "lecteur d'écran"
 
 #. Translators: message spoken when the other computer ended remote audio
-#: addon\globalPlugins\remoteClient\audio_share.py:462
+#: addon\globalPlugins\remoteClient\audio_share.py:513
 msgid "Remote audio ended"
 msgstr "Son distant terminé"
 
 #. Translators: message spoken when the other computer refused to share its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:508
+#: addon\globalPlugins\remoteClient\audio_share.py:579
 msgid "The other computer refused to share its sound"
 msgstr "L'autre ordinateur a refusé de partager son son"
 
 #. Translators: message spoken when the other computer is already sharing its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:511
+#: addon\globalPlugins\remoteClient\audio_share.py:582
 msgid "The other computer is already sharing its sound"
 msgstr "L'autre ordinateur partage déjà son son"
 
 #. Translators: message spoken when the other computer cannot share its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:513
+#: addon\globalPlugins\remoteClient\audio_share.py:584
 msgid "The other computer is unable to share its sound"
 msgstr "L'autre ordinateur ne peut pas partager son son"
 
@@ -283,12 +296,12 @@ msgstr "L'adresse du serveur doit être renseignée."
 #: addon\globalPlugins\remoteClient\dialogs.py:467
 #: addon\globalPlugins\remoteClient\dialogs.py:471
 #: addon\globalPlugins\remoteClient\dialogs.py:476
-#: addon\globalPlugins\remoteClient\dialogs.py:883
-#: addon\globalPlugins\remoteClient\dialogs.py:892
-#: addon\globalPlugins\remoteClient\dialogs.py:899
-#: addon\globalPlugins\remoteClient\dialogs.py:902
-#: addon\globalPlugins\remoteClient\dialogs.py:906
-#: addon\globalPlugins\remoteClient\dialogs.py:911
+#: addon\globalPlugins\remoteClient\dialogs.py:875
+#: addon\globalPlugins\remoteClient\dialogs.py:884
+#: addon\globalPlugins\remoteClient\dialogs.py:891
+#: addon\globalPlugins\remoteClient\dialogs.py:894
+#: addon\globalPlugins\remoteClient\dialogs.py:898
+#: addon\globalPlugins\remoteClient\dialogs.py:903
 #: addon\globalPlugins\remoteClient\file_transfer.py:575
 #: addon\globalPlugins\remoteClient\file_transfer.py:586
 #: addon\globalPlugins\remoteClient\file_transfer.py:603
@@ -367,7 +380,7 @@ msgstr ""
 
 #. Translators: The title of the warning dialog displayed when handle keys from other applications is disabled.
 #: addon\globalPlugins\remoteClient\dialogs.py:407
-#: addon\globalPlugins\remoteClient\__init__.py:1508
+#: addon\globalPlugins\remoteClient\__init__.py:1544
 msgid "Warning"
 msgstr "Avertissement"
 
@@ -400,21 +413,21 @@ msgid "Control another machine"
 msgstr "Contrôler un autre ordinateur"
 
 #: addon\globalPlugins\remoteClient\dialogs.py:453
-#: addon\globalPlugins\remoteClient\dialogs.py:899
+#: addon\globalPlugins\remoteClient\dialogs.py:891
 msgid "Both host and key must be set."
 msgstr "L'adresse du serveur et la clé doivent être tous deux renseignés."
 
 #. Translators: error message for key/password length less than 6 characters
 #: addon\globalPlugins\remoteClient\dialogs.py:457
 #: addon\globalPlugins\remoteClient\dialogs.py:471
-#: addon\globalPlugins\remoteClient\dialogs.py:906
+#: addon\globalPlugins\remoteClient\dialogs.py:898
 msgid "The key must be longer than 6 characters."
 msgstr "La clé doit compter plus de 6 caractères."
 
 #. Translators: error message for key/password being sequential, example 123456
 #: addon\globalPlugins\remoteClient\dialogs.py:462
 #: addon\globalPlugins\remoteClient\dialogs.py:476
-#: addon\globalPlugins\remoteClient\dialogs.py:911
+#: addon\globalPlugins\remoteClient\dialogs.py:903
 msgid ""
 "The key must not be sequential. Please, avoid keys such as 1234, 4321 or "
 "similar."
@@ -423,7 +436,7 @@ msgstr ""
 "1234, 4321 ou similaires."
 
 #: addon\globalPlugins\remoteClient\dialogs.py:467
-#: addon\globalPlugins\remoteClient\dialogs.py:902
+#: addon\globalPlugins\remoteClient\dialogs.py:894
 msgid "Both port and key must be set."
 msgstr "Le port et la clé doivent être tous deux renseignés."
 
@@ -431,7 +444,7 @@ msgstr "Le port et la clé doivent être tous deux renseignés."
 #. Translators: script category for add-on gestures
 #: addon\globalPlugins\remoteClient\dialogs.py:484
 #: addon\globalPlugins\remoteClient\__init__.py:160
-#: addon\globalPlugins\remoteClient\__init__.py:718
+#: addon\globalPlugins\remoteClient\__init__.py:721
 msgid "TeleNVDA"
 msgstr "TeleNVDA"
 
@@ -628,7 +641,7 @@ msgstr "Dossier d'enregistrement des &captures d'écran :"
 msgid "&Browse..."
 msgstr "&Parcourir..."
 
-#: addon\globalPlugins\remoteClient\dialogs.py:848
+#: addon\globalPlugins\remoteClient\dialogs.py:840
 msgid ""
 "When connecting to an unauthorized server, you will again be prompted to "
 "accepts its certificate."
@@ -636,19 +649,19 @@ msgstr ""
 "Lorsque vous vous connectez à un serveur non autorisé, vous serez à nouveau "
 "invité à accepter son certificat."
 
-#: addon\globalPlugins\remoteClient\dialogs.py:848
+#: addon\globalPlugins\remoteClient\dialogs.py:840
 msgid "Are you sure you want to delete all stored trusted fingerprints?"
 msgstr ""
 "Êtes-vous sûr de vouloir supprimer toutes les empreintes de certificat "
 "approuvées stockées ?"
 
-#: addon\globalPlugins\remoteClient\dialogs.py:861
+#: addon\globalPlugins\remoteClient\dialogs.py:853
 msgid "Choose the folder where received screenshots will be saved"
 msgstr ""
 "Choisissez le dossier où les captures d'écran reçues seront enregistrées"
 
 #. Translators: error message for invalid format on Portcheck service URL
-#: addon\globalPlugins\remoteClient\dialogs.py:883
+#: addon\globalPlugins\remoteClient\dialogs.py:875
 #, python-brace-format
 msgid ""
 "Invalid format for portcheck service URL. You must include {port} somewhere."
@@ -656,7 +669,7 @@ msgstr ""
 "Format non valide pour l'URL du service portcheck. Vous devez inclure {port} "
 "quelque part."
 
-#: addon\globalPlugins\remoteClient\dialogs.py:891
+#: addon\globalPlugins\remoteClient\dialogs.py:883
 msgid ""
 "Invalid inactivity duration. Use the format jj:hh:mm, for example 30:00:00 "
 "or 00:00:01."
@@ -665,44 +678,43 @@ msgstr ""
 "30:00:00 ou 00:00:01."
 
 #. Translators: title of the dialog listing the applications whose sound is heard
-#: addon\globalPlugins\remoteClient\dialogs.py:988
+#: addon\globalPlugins\remoteClient\dialogs.py:1027
 msgid "Audio sources"
 msgstr "Sources audio"
 
 #. Translators: instructions in the dialog listing the applications whose sound is heard
-#: addon\globalPlugins\remoteClient\dialogs.py:996
+#: addon\globalPlugins\remoteClient\dialogs.py:1036
 msgid "Uncheck the applications whose sound you do not want to hear:"
 msgstr "Décochez les applications dont vous ne voulez pas entendre le son :"
 
 #. Translators: a button to name an application which has not been heard yet
-#: addon\globalPlugins\remoteClient\dialogs.py:1001
+#: addon\globalPlugins\remoteClient\dialogs.py:1041
 msgid "&Add an application..."
 msgstr "&Ajouter une application..."
 
 #. Translators: an application in the audio sources dialog which is not running
-#: addon\globalPlugins\remoteClient\dialogs.py:1020
-#: addon\globalPlugins\remoteClient\dialogs.py:1049
+#: addon\globalPlugins\remoteClient\dialogs.py:1069
 #, python-brace-format
 msgid "{application} (not running)"
 msgstr "{application} (non lancée)"
 
 #. Translators: prompt asking for the file name of an application to exclude
-#: addon\globalPlugins\remoteClient\dialogs.py:1039
+#: addon\globalPlugins\remoteClient\dialogs.py:1086
 msgid "File name of the application, for example vlc.exe:"
 msgstr "Nom de fichier de l'application, par exemple vlc.exe :"
 
 #. Translators: title of the dialog asking for an application to exclude
-#: addon\globalPlugins\remoteClient\dialogs.py:1041
+#: addon\globalPlugins\remoteClient\dialogs.py:1088
 msgid "Add an application"
 msgstr "Ajouter une application"
 
 #. Translators: A title bar of a window presented when an attempt has been made to connect with a server with unauthorized certificate.
-#: addon\globalPlugins\remoteClient\dialogs.py:1067
+#: addon\globalPlugins\remoteClient\dialogs.py:1113
 msgid "TeleNVDA Connection Security Warning"
 msgstr "Avertissement de sécurité de connexion à TeleNVDA"
 
 #. Translators: A message of a window presented when an attempt has been made to connect with a server with unauthorized certificate.
-#: addon\globalPlugins\remoteClient\dialogs.py:1069
+#: addon\globalPlugins\remoteClient\dialogs.py:1115
 #, python-brace-format
 msgid ""
 "Warning! The certificate of this server could not be verified.\n"
@@ -727,11 +739,11 @@ msgstr ""
 "\n"
 "Voulez-vous continuer à vous connecter ?"
 
-#: addon\globalPlugins\remoteClient\dialogs.py:1071
+#: addon\globalPlugins\remoteClient\dialogs.py:1117
 msgid "Connect and do not ask again for this server"
 msgstr "Se connecter et ne plus demander pour ce serveur"
 
-#: addon\globalPlugins\remoteClient\dialogs.py:1071
+#: addon\globalPlugins\remoteClient\dialogs.py:1117
 msgid "Connect"
 msgstr "Se connecter"
 
@@ -916,7 +928,7 @@ msgstr ""
 #. Translators: Title of a warning dialog.
 #. Translators: question title
 #: addon\globalPlugins\remoteClient\file_transfer.py:627
-#: addon\globalPlugins\remoteClient\__init__.py:877
+#: addon\globalPlugins\remoteClient\__init__.py:881
 msgid "Warning!"
 msgstr "Avertissement !"
 
@@ -944,7 +956,7 @@ msgstr "Choisissez où enregistrer le fichier reçu ({name}, {size})"
 #. Translators: supported file types when sending or receiving files
 #: addon\globalPlugins\remoteClient\file_transfer.py:697
 #: addon\globalPlugins\remoteClient\local_machine.py:338
-#: addon\globalPlugins\remoteClient\__init__.py:934
+#: addon\globalPlugins\remoteClient\__init__.py:938
 msgid "All files (*.*)"
 msgstr "Tous les fichiers (*.*)"
 
@@ -989,33 +1001,33 @@ msgid "Remote mouse control refused"
 msgstr "Contrôle de la souris à distance refusé"
 
 #. Translators: message spoken when screen sharing is turned off
-#: addon\globalPlugins\remoteClient\screen_share.py:158
+#: addon\globalPlugins\remoteClient\screen_share.py:177
 msgid "Screen sharing stopped"
 msgstr "Partage d'écran arrêté"
 
 #. Translators: message spoken when screen sharing is requested from the wrong computer
-#: addon\globalPlugins\remoteClient\screen_share.py:165
+#: addon\globalPlugins\remoteClient\screen_share.py:184
 msgid "Screen sharing can only be started from the controlling computer"
 msgstr ""
 "Le partage d'écran ne peut être démarré que depuis l'ordinateur contrôleur"
 
 #. Translators: message spoken when screen sharing cannot run on this computer
-#: addon\globalPlugins\remoteClient\screen_share.py:168
+#: addon\globalPlugins\remoteClient\screen_share.py:187
 msgid "Screen sharing is not available on this computer"
 msgstr "Le partage d'écran n'est pas disponible sur cet ordinateur"
 
 #. Translators: message spoken when the other computer cannot share its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:172
+#: addon\globalPlugins\remoteClient\screen_share.py:191
 msgid "The other computer does not support screen sharing"
 msgstr "L'autre ordinateur ne prend pas en charge le partage d'écran"
 
 #. Translators: message spoken when screen sharing has been requested
-#: addon\globalPlugins\remoteClient\screen_share.py:182
+#: addon\globalPlugins\remoteClient\screen_share.py:201
 msgid "Screen sharing requested"
 msgstr "Partage d'écran demandé"
 
 #. Translators: question asked before this screen is shared, with mouse control
-#: addon\globalPlugins\remoteClient\screen_share.py:220
+#: addon\globalPlugins\remoteClient\screen_share.py:239
 msgid ""
 "Do you want to share your screen? The controlling computer will see this "
 "screen and will be able to use its mouse."
@@ -1024,7 +1036,7 @@ msgstr ""
 "écran et pourra utiliser sa souris."
 
 #. Translators: question asked before this screen is shared
-#: addon\globalPlugins\remoteClient\screen_share.py:223
+#: addon\globalPlugins\remoteClient\screen_share.py:242
 msgid ""
 "Do you want to share your screen? The controlling computer will see this "
 "screen."
@@ -1033,39 +1045,39 @@ msgstr ""
 "écran."
 
 #. Translators: title of the screen sharing request dialog
-#: addon\globalPlugins\remoteClient\screen_share.py:227
+#: addon\globalPlugins\remoteClient\screen_share.py:246
 msgid "Screen sharing request"
 msgstr "Demande de partage d'écran"
 
 #. Translators: message spoken on the controlled computer when it starts sharing its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:265
+#: addon\globalPlugins\remoteClient\screen_share.py:284
 msgid "Sharing this screen"
 msgstr "Partage de cet écran en cours"
 
 #. Translators: message spoken when the screen sharing window could not be opened
-#: addon\globalPlugins\remoteClient\screen_share.py:288
+#: addon\globalPlugins\remoteClient\screen_share.py:307
 msgid "Unable to start screen sharing"
 msgstr "Impossible de démarrer le partage d'écran"
 
 #. Translators: message spoken when the other computer ended screen sharing
 #. Translators: message spoken when screen sharing stopped unexpectedly
-#: addon\globalPlugins\remoteClient\screen_share.py:304
-#: addon\globalPlugins\remoteClient\screen_share.py:445
+#: addon\globalPlugins\remoteClient\screen_share.py:323
+#: addon\globalPlugins\remoteClient\screen_share.py:473
 msgid "Screen sharing ended"
 msgstr "Partage d'écran terminé"
 
 #. Translators: message spoken when the screen sharing picture starts flowing
-#: addon\globalPlugins\remoteClient\screen_share.py:370
+#: addon\globalPlugins\remoteClient\screen_share.py:398
 msgid "Screen sharing started"
 msgstr "Partage d'écran démarré"
 
 #. Translators: message spoken when the screen sharing link could not be established
-#: addon\globalPlugins\remoteClient\screen_share.py:450
+#: addon\globalPlugins\remoteClient\screen_share.py:478
 msgid "Unable to establish the screen sharing connection"
 msgstr "Impossible d'établir la connexion de partage d'écran"
 
 #. Translators: message spoken when the shared screen is not being received
-#: addon\globalPlugins\remoteClient\screen_share.py:461
+#: addon\globalPlugins\remoteClient\screen_share.py:489
 msgid ""
 "The shared picture has not arrived. The connection between the two computers "
 "may be blocked."
@@ -1074,17 +1086,17 @@ msgstr ""
 "est peut-être bloquée."
 
 #. Translators: message spoken when the other computer refused to share its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:492
+#: addon\globalPlugins\remoteClient\screen_share.py:520
 msgid "The other computer refused to share its screen"
 msgstr "L'autre ordinateur a refusé de partager son écran"
 
 #. Translators: message spoken when the other computer is already sharing its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:495
+#: addon\globalPlugins\remoteClient\screen_share.py:523
 msgid "The other computer is already sharing its screen"
 msgstr "L'autre ordinateur partage déjà son écran"
 
 #. Translators: message spoken when the other computer cannot share its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:497
+#: addon\globalPlugins\remoteClient\screen_share.py:525
 msgid "The other computer is unable to share its screen"
 msgstr "L'autre ordinateur ne peut pas partager son écran"
 
@@ -1128,18 +1140,18 @@ msgstr "URL invalide"
 msgid "Unable to parse url \"%s\""
 msgstr "Impossible de traiter l'URL \"%s\""
 
-#: addon\globalPlugins\remoteClient\__init__.py:219
+#: addon\globalPlugins\remoteClient\__init__.py:222
 msgid "Your NVDA Remote configuration was corrupted and has been reset."
 msgstr ""
 "Votre configuration d'Accès distant NVDA a été corrompue et a été "
 "réinitialisée."
 
-#: addon\globalPlugins\remoteClient\__init__.py:219
+#: addon\globalPlugins\remoteClient\__init__.py:222
 msgid "NVDA Remote Configuration Error"
 msgstr "Erreur de configuration d'Accès distant NVDA"
 
 #. Translators: Spoken when auto-connect is automatically disabled after a long period without remote control activity.
-#: addon\globalPlugins\remoteClient\__init__.py:477
+#: addon\globalPlugins\remoteClient\__init__.py:480
 msgid ""
 "The auto-connect option was automatically disabled after a long period "
 "without any remote control activity."
@@ -1147,7 +1159,7 @@ msgstr ""
 "La connexion automatique a été désactivée automatiquement après une longue "
 "période sans activité de contrôle à distance."
 
-#: addon\globalPlugins\remoteClient\__init__.py:532
+#: addon\globalPlugins\remoteClient\__init__.py:535
 msgid ""
 "A previously downloaded TeleNVDA update could not be finished automatically. "
 "NVDA must be restarted to complete the installation. Restart NVDA now?"
@@ -1156,23 +1168,23 @@ msgstr ""
 "terminée automatiquement. NVDA doit être redémarré pour terminer "
 "l'installation. Redémarrer NVDA maintenant ?"
 
-#: addon\globalPlugins\remoteClient\__init__.py:536
-#: addon\globalPlugins\remoteClient\__init__.py:559
-#: addon\globalPlugins\remoteClient\__init__.py:574
-#: addon\globalPlugins\remoteClient\__init__.py:582
-#: addon\globalPlugins\remoteClient\__init__.py:590
-#: addon\globalPlugins\remoteClient\__init__.py:597
-#: addon\globalPlugins\remoteClient\__init__.py:616
-#: addon\globalPlugins\remoteClient\__init__.py:625
-#: addon\globalPlugins\remoteClient\__init__.py:631
+#: addon\globalPlugins\remoteClient\__init__.py:539
+#: addon\globalPlugins\remoteClient\__init__.py:562
+#: addon\globalPlugins\remoteClient\__init__.py:577
+#: addon\globalPlugins\remoteClient\__init__.py:585
+#: addon\globalPlugins\remoteClient\__init__.py:593
+#: addon\globalPlugins\remoteClient\__init__.py:600
+#: addon\globalPlugins\remoteClient\__init__.py:619
+#: addon\globalPlugins\remoteClient\__init__.py:628
+#: addon\globalPlugins\remoteClient\__init__.py:634
 msgid "TeleNVDA update"
 msgstr "Mise à jour de TeleNVDA"
 
-#: addon\globalPlugins\remoteClient\__init__.py:558
+#: addon\globalPlugins\remoteClient\__init__.py:561
 msgid "An update check is already in progress."
 msgstr "Une vérification des mises à jour est déjà en cours."
 
-#: addon\globalPlugins\remoteClient\__init__.py:573
+#: addon\globalPlugins\remoteClient\__init__.py:576
 #, python-brace-format
 msgid ""
 "Unable to check for TeleNVDA updates.\n"
@@ -1183,11 +1195,11 @@ msgstr ""
 "\n"
 "{error}"
 
-#: addon\globalPlugins\remoteClient\__init__.py:581
+#: addon\globalPlugins\remoteClient\__init__.py:584
 msgid "TeleNVDA is up to date."
 msgstr "TeleNVDA est à jour."
 
-#: addon\globalPlugins\remoteClient\__init__.py:587
+#: addon\globalPlugins\remoteClient\__init__.py:590
 #, python-brace-format
 msgid ""
 "A TeleNVDA update is available: version {version}.\n"
@@ -1198,11 +1210,11 @@ msgstr ""
 "\n"
 "Voulez-vous la télécharger et l'installer maintenant ?"
 
-#: addon\globalPlugins\remoteClient\__init__.py:596
+#: addon\globalPlugins\remoteClient\__init__.py:599
 msgid "Another TeleNVDA update operation is already in progress."
 msgstr "Une autre opération de mise à jour de TeleNVDA est déjà en cours."
 
-#: addon\globalPlugins\remoteClient\__init__.py:615
+#: addon\globalPlugins\remoteClient\__init__.py:618
 #, python-brace-format
 msgid ""
 "Unable to download or verify the TeleNVDA update.\n"
@@ -1213,7 +1225,7 @@ msgstr ""
 "\n"
 "{error}"
 
-#: addon\globalPlugins\remoteClient\__init__.py:624
+#: addon\globalPlugins\remoteClient\__init__.py:627
 #, python-brace-format
 msgid ""
 "NVDA could not install the TeleNVDA update.\n"
@@ -1224,7 +1236,7 @@ msgstr ""
 "\n"
 "{error}"
 
-#: addon\globalPlugins\remoteClient\__init__.py:630
+#: addon\globalPlugins\remoteClient\__init__.py:633
 msgid ""
 "The TeleNVDA update was installed. NVDA must be restarted to finish the "
 "installation. Restart NVDA now?"
@@ -1233,78 +1245,78 @@ msgstr ""
 "terminer l'installation. Redémarrer NVDA maintenant ?"
 
 #. Translators: Item in TeleNVDA submenu to connect to a remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:668
+#: addon\globalPlugins\remoteClient\__init__.py:671
 msgid "Connect..."
 msgstr "Se connecter..."
 
-#: addon\globalPlugins\remoteClient\__init__.py:668
+#: addon\globalPlugins\remoteClient\__init__.py:671
 msgid ""
 "Remotely connect to another computer running NVDA Remote Access or TeleNVDA"
 msgstr ""
 "Se connecter à un autre ordinateur exécutant Accès distant NVDA ou TeleNVDA"
 
 #. Translators: Item in TeleNVDA submenu to disconnect from a remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:671
+#: addon\globalPlugins\remoteClient\__init__.py:674
 msgid "Disconnect"
 msgstr "Se déconnecter"
 
-#: addon\globalPlugins\remoteClient\__init__.py:671
+#: addon\globalPlugins\remoteClient\__init__.py:674
 msgid "Disconnect from another computer running NVDA Remote Access or TeleNVDA"
 msgstr ""
 "Se déconnecter d'un autre ordinateur exécutant Accès distant NVDA ou TeleNVDA"
 
 #. Translators: Menu item in TeleNVDA submenu to mute speech and sounds from the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:675
-#: addon\globalPlugins\remoteClient\__init__.py:900
-#: addon\globalPlugins\remoteClient\__init__.py:1280
+#: addon\globalPlugins\remoteClient\__init__.py:678
+#: addon\globalPlugins\remoteClient\__init__.py:904
+#: addon\globalPlugins\remoteClient\__init__.py:1316
 msgid "Mute remote"
 msgstr "Couper le son distant"
 
-#: addon\globalPlugins\remoteClient\__init__.py:675
-#: addon\globalPlugins\remoteClient\__init__.py:894
+#: addon\globalPlugins\remoteClient\__init__.py:678
+#: addon\globalPlugins\remoteClient\__init__.py:898
 msgid "Mute speech and sounds from the remote computer"
 msgstr "Couper les sons et la synthèse vocale de l'ordinateur distant"
 
 #. Translators: Menu item in TeleNVDA submenu to push clipboard content to the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:679
+#: addon\globalPlugins\remoteClient\__init__.py:682
 msgid "&Push clipboard"
 msgstr "Envoyer le &presse-papiers"
 
-#: addon\globalPlugins\remoteClient\__init__.py:679
+#: addon\globalPlugins\remoteClient\__init__.py:682
 msgid "Push the clipboard to the other machine"
 msgstr "Envoyer le contenu du presse-papiers vers l'ordinateur distant"
 
 #. Translators: Menu item in TeleNVDA submenu to send a file to the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:683
+#: addon\globalPlugins\remoteClient\__init__.py:686
 msgid "Send &file..."
 msgstr "Envoyer un &fichier..."
 
-#: addon\globalPlugins\remoteClient\__init__.py:683
+#: addon\globalPlugins\remoteClient\__init__.py:686
 msgid "Send a file to the other machine"
 msgstr "Envoyer un fichier à un autre ordinateur"
 
-#: addon\globalPlugins\remoteClient\__init__.py:686
+#: addon\globalPlugins\remoteClient\__init__.py:689
 msgid "Request &screenshot"
 msgstr "Demander une &capture d'écran"
 
-#: addon\globalPlugins\remoteClient\__init__.py:686
+#: addon\globalPlugins\remoteClient\__init__.py:689
 msgid "Capture the remote screen using TeleNVDA"
 msgstr "Capturer l'écran distant avec TeleNVDA"
 
-#: addon\globalPlugins\remoteClient\__init__.py:689
+#: addon\globalPlugins\remoteClient\__init__.py:692
 msgid "Request screenshot (&PowerShell)"
 msgstr "Demander une capture d'écran (&PowerShell)"
 
-#: addon\globalPlugins\remoteClient\__init__.py:689
+#: addon\globalPlugins\remoteClient\__init__.py:692
 msgid "Capture the remote screen using the PowerShell beta method"
 msgstr "Capturer l'écran distant avec la méthode bêta PowerShell"
 
 #. Translators: Menu item in TeleNVDA submenu to copy a link to the current session compatible with NVDA Remote.
-#: addon\globalPlugins\remoteClient\__init__.py:694
+#: addon\globalPlugins\remoteClient\__init__.py:697
 msgid "NVDA &Remote protocol (recommended)"
 msgstr "Protocole NVDA &Remote (recommandé)"
 
-#: addon\globalPlugins\remoteClient\__init__.py:694
+#: addon\globalPlugins\remoteClient\__init__.py:697
 msgid ""
 "Copy a link to the remote session compatible with both NVDA Remote and "
 "TeleNVDA"
@@ -1313,102 +1325,102 @@ msgstr ""
 "qu'avec TeleNVDA"
 
 #. Translators: Menu item in TeleNVDA submenu to copy a link to the current session compatible with TeleNVDA.
-#: addon\globalPlugins\remoteClient\__init__.py:698
+#: addon\globalPlugins\remoteClient\__init__.py:701
 msgid "&TeleNVDA protocol"
 msgstr "Protocole de &TeleNVDA"
 
-#: addon\globalPlugins\remoteClient\__init__.py:698
+#: addon\globalPlugins\remoteClient\__init__.py:701
 msgid "Copy a link to the remote session compatible only with TeleNVDA"
 msgstr ""
 "Copier le lien de la session distante compatible uniquement avec TeleNVDA"
 
 #. Translators: Menu item in TeleNVDA submenu to copy a link to the current session.
-#: addon\globalPlugins\remoteClient\__init__.py:702
+#: addon\globalPlugins\remoteClient\__init__.py:705
 msgid "Copy &link"
 msgstr "Copier le &lien"
 
-#: addon\globalPlugins\remoteClient\__init__.py:702
+#: addon\globalPlugins\remoteClient\__init__.py:705
 msgid "Copy a link to the remote session"
 msgstr "Copier le lien de la session distante"
 
 #. Translators: Menu item in TeleNVDA submenu to open add-on options.
-#: addon\globalPlugins\remoteClient\__init__.py:704
+#: addon\globalPlugins\remoteClient\__init__.py:707
 msgid "&Options..."
 msgstr "&Options..."
 
-#: addon\globalPlugins\remoteClient\__init__.py:704
+#: addon\globalPlugins\remoteClient\__init__.py:707
 msgid "Options"
 msgstr "Options"
 
 #. Translators: Item in TeleNVDA submenu to check for updates.
-#: addon\globalPlugins\remoteClient\__init__.py:707
+#: addon\globalPlugins\remoteClient\__init__.py:710
 msgid "Check for &updates..."
 msgstr "Rechercher les &mises à jour..."
 
-#: addon\globalPlugins\remoteClient\__init__.py:707
+#: addon\globalPlugins\remoteClient\__init__.py:710
 msgid "Check for TeleNVDA updates"
 msgstr "Rechercher les mises à jour de TeleNVDA"
 
 #. Translators: Item in TeleNVDA submenu to test relay connectivity.
-#: addon\globalPlugins\remoteClient\__init__.py:710
+#: addon\globalPlugins\remoteClient\__init__.py:713
 msgid "Connectivity &test..."
 msgstr "Tester la &connectivité..."
 
-#: addon\globalPlugins\remoteClient\__init__.py:710
+#: addon\globalPlugins\remoteClient\__init__.py:713
 msgid "Test DNS, TLS and WebSocket connectivity"
 msgstr "Tester la connectivité DNS, TLS et WebSocket"
 
 #. Translators: Menu item in TeleNVDA submenu to send Control+Alt+Delete to the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:713
+#: addon\globalPlugins\remoteClient\__init__.py:716
 msgid "Send Ctrl+Alt+Del"
 msgstr "Envoyer Ctrl+Alt+Suppr"
 
 #. Translators: Label of menu in NVDA tools menu.
-#: addon\globalPlugins\remoteClient\__init__.py:718
+#: addon\globalPlugins\remoteClient\__init__.py:721
 msgid "R&emote"
 msgstr "&Accès distant"
 
 #. Translators: question before disconnecting
-#: addon\globalPlugins\remoteClient\__init__.py:875
+#: addon\globalPlugins\remoteClient\__init__.py:879
 msgid "Are you sure you want to disconnect the controlled computer?"
 msgstr "Êtes-vous sûr de vouloir déconnecter l'ordinateur contrôlé ?"
 
 #. Translators: Menu item in TeleNVDA submenu to unmute speech and sounds from the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:893
+#: addon\globalPlugins\remoteClient\__init__.py:897
 msgid "Unmute remote"
 msgstr "Rétablir le son distant"
 
-#: addon\globalPlugins\remoteClient\__init__.py:901
+#: addon\globalPlugins\remoteClient\__init__.py:905
 msgid "Unmute speech and sounds from the remote computer"
 msgstr "Rétablir les sons et la synthèse vocale de l'ordinateur distant"
 
 #. Translators: message spoken when remote mouse control is asked for without a connection.
-#: addon\globalPlugins\remoteClient\__init__.py:920
-#: addon\globalPlugins\remoteClient\__init__.py:954
-#: addon\globalPlugins\remoteClient\__init__.py:975
-#: addon\globalPlugins\remoteClient\__init__.py:1004
-#: addon\globalPlugins\remoteClient\__init__.py:1044
-#: addon\globalPlugins\remoteClient\__init__.py:1063
-#: addon\globalPlugins\remoteClient\__init__.py:1095
-#: addon\globalPlugins\remoteClient\__init__.py:1754
-#: addon\globalPlugins\remoteClient\__init__.py:1766
-#: addon\globalPlugins\remoteClient\__init__.py:1789
+#: addon\globalPlugins\remoteClient\__init__.py:924
+#: addon\globalPlugins\remoteClient\__init__.py:958
+#: addon\globalPlugins\remoteClient\__init__.py:979
+#: addon\globalPlugins\remoteClient\__init__.py:1008
+#: addon\globalPlugins\remoteClient\__init__.py:1080
+#: addon\globalPlugins\remoteClient\__init__.py:1099
+#: addon\globalPlugins\remoteClient\__init__.py:1131
+#: addon\globalPlugins\remoteClient\__init__.py:1790
+#: addon\globalPlugins\remoteClient\__init__.py:1802
+#: addon\globalPlugins\remoteClient\__init__.py:1825
 msgid "Not connected."
 msgstr "Non connecté."
 
 #. Translators: message displayed in transfer file dialog when sending a file
-#: addon\globalPlugins\remoteClient\__init__.py:932
+#: addon\globalPlugins\remoteClient\__init__.py:936
 msgid "Choose the file you want to send to the remote computer"
 msgstr ""
 "Choisissez le fichier que vous souhaitez envoyer à l'ordinateur distant"
 
 #. Translators: report number of connected computers gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:949
+#: addon\globalPlugins\remoteClient\__init__.py:953
 msgid "Reports number of computers connected to a session"
 msgstr "Indique le nombre d'ordinateurs connectés à une session"
 
 #. TRANSLATORS: message reported when get number of clients gesture is pressed
-#: addon\globalPlugins\remoteClient\__init__.py:957
+#: addon\globalPlugins\remoteClient\__init__.py:961
 #, python-brace-format
 msgid "This is the only computer connected to this session"
 msgid_plural "There are {} computers connected to this session"
@@ -1416,60 +1428,64 @@ msgstr[0] "C'est le seul ordinateur connecté à cette session"
 msgstr[1] "Il y a {} ordinateurs connectés à cette session"
 
 #. Translators: send file gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:961
+#: addon\globalPlugins\remoteClient\__init__.py:965
 msgid "Sends the specified file to the remote machine"
 msgstr "Envoie le fichier spécifié à l'ordinateur distant"
 
 #. Translators: push clipboard gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:969
+#: addon\globalPlugins\remoteClient\__init__.py:973
 msgid "Sends the contents of the clipboard to the remote machine"
 msgstr "Envoie le contenu du presse-papiers vers l'ordinateur distant"
 
-#: addon\globalPlugins\remoteClient\__init__.py:981
+#: addon\globalPlugins\remoteClient\__init__.py:985
 msgid "Clipboard pushed"
 msgstr "Presse-papiers envoyé"
 
-#: addon\globalPlugins\remoteClient\__init__.py:983
+#: addon\globalPlugins\remoteClient\__init__.py:987
 msgid "Unable to push clipboard"
 msgstr "Impossible d'envoyer le presse-papiers"
 
 #. Translators: toggle screen sharing gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:987
+#: addon\globalPlugins\remoteClient\__init__.py:991
 msgid "Shows or stops showing the screen of the controlled computer"
 msgstr "Affiche ou cesse d'afficher l'écran de l'ordinateur contrôlé"
 
 #. Translators: toggle remote audio gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1028
-msgid "Starts or stops hearing the sound of the controlled computer"
-msgstr "Démarre ou arrête l'écoute du son de l'ordinateur contrôlé"
+#: addon\globalPlugins\remoteClient\__init__.py:1032
+msgid ""
+"Starts or stops hearing the sound of the controlled computer, or lists the "
+"applications heard when pressed twice"
+msgstr ""
+"Démarre ou arrête l'écoute du son de l'ordinateur contrôlé, ou affiche la "
+"liste des applications entendues si la commande est effectuée deux fois"
 
 #. Translators: toggle remote mouse control gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1051
+#: addon\globalPlugins\remoteClient\__init__.py:1087
 msgid "Starts or stops driving the mouse of the controlled computer"
 msgstr "Démarre ou arrête le pilotage de la souris de l'ordinateur contrôlé"
 
 #. Translators: message spoken when the local mouse stops driving the controlled computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1070
+#: addon\globalPlugins\remoteClient\__init__.py:1106
 msgid "Remote mouse control stopped"
 msgstr "Contrôle de la souris à distance arrêté"
 
 #. Translators: message spoken when the local mouse starts driving the controlled computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1074
+#: addon\globalPlugins\remoteClient\__init__.py:1110
 msgid "Remote mouse control started"
 msgstr "Contrôle de la souris à distance démarré"
 
 #. Translators: message spoken when a screenshot of the remote computer has been requested
-#: addon\globalPlugins\remoteClient\__init__.py:1087
+#: addon\globalPlugins\remoteClient\__init__.py:1123
 msgid "Screenshot requested"
 msgstr "Capture d'écran demandée"
 
 #. Translators: message spoken when this computer sends a screenshot to the controlling computer
-#: addon\globalPlugins\remoteClient\__init__.py:1093
+#: addon\globalPlugins\remoteClient\__init__.py:1129
 msgid "Sending screenshot"
 msgstr "Envoi de la capture d'écran"
 
 #. Translators: remote screenshot gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1099
+#: addon\globalPlugins\remoteClient\__init__.py:1135
 msgid ""
 "Takes a screenshot of the controlled computer and opens it on the "
 "controlling computer"
@@ -1478,7 +1494,7 @@ msgstr ""
 "l'ordinateur qui contrôle"
 
 #. Translators: remote screenshot using PowerShell gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1107
+#: addon\globalPlugins\remoteClient\__init__.py:1143
 msgid ""
 "Takes a screenshot of the controlled computer using the PowerShell beta "
 "method and opens it on the controlling computer"
@@ -1487,17 +1503,17 @@ msgstr ""
 "PowerShell en version bêta et l'ouvre sur l'ordinateur qui contrôle"
 
 #. Translators: message spoken when the Ctrl+Alt+Delete has been sent to the remote machine successfully
-#: addon\globalPlugins\remoteClient\__init__.py:1149
+#: addon\globalPlugins\remoteClient\__init__.py:1185
 msgid "Ctrl+Alt+Delete has been sent to the remote machine"
 msgstr "Ctrl+Alt+Suppr a été envoyé à l'ordinateur distant"
 
 #. Translators: Presented when disconnected from the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1162
+#: addon\globalPlugins\remoteClient\__init__.py:1198
 msgid "Disconnected!"
 msgstr "Déconnecté !"
 
 #. Translators: Presented when the controlled computer left the session while keyboard control was remote.
-#: addon\globalPlugins\remoteClient\__init__.py:1202
+#: addon\globalPlugins\remoteClient\__init__.py:1238
 msgid ""
 "The remote computer is no longer connected. Control returned to local "
 "machine."
@@ -1506,49 +1522,49 @@ msgstr ""
 "l'ordinateur local."
 
 #. Translators: Presented when keyboard control is back to the controlling computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1216
-#: addon\globalPlugins\remoteClient\__init__.py:1868
+#: addon\globalPlugins\remoteClient\__init__.py:1252
+#: addon\globalPlugins\remoteClient\__init__.py:1904
 msgid "Controlling local machine."
 msgstr "Contrôle de la machine locale."
 
 #. Translators: Title of the connection error dialog.
-#: addon\globalPlugins\remoteClient\__init__.py:1302
+#: addon\globalPlugins\remoteClient\__init__.py:1338
 msgid "Error Connecting"
 msgstr "Erreur de connexion"
 
 #. Translators: Message shown when cannot connect to the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1304
+#: addon\globalPlugins\remoteClient\__init__.py:1340
 msgid "Unable to connect to the remote computer"
 msgstr "Impossible de se connecter à l'ordinateur distant"
 
 #. Translators: Title of the connect dialog.
-#: addon\globalPlugins\remoteClient\__init__.py:1373
+#: addon\globalPlugins\remoteClient\__init__.py:1409
 msgid "TeleNVDA - Connect"
 msgstr "TeleNVDA - Se connecter"
 
 #. Translators: Presented when connected to the remote computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1454
+#: addon\globalPlugins\remoteClient\__init__.py:1490
 msgid "Connected!"
 msgstr "Connecté !"
 
 #. Translators: Presented when an interrupted remote connection becomes available again. Keyboard control remains local until the user toggles it.
-#: addon\globalPlugins\remoteClient\__init__.py:1457
+#: addon\globalPlugins\remoteClient\__init__.py:1493
 msgid "The remote computer is available again. Control remains local."
 msgstr ""
 "L'ordinateur distant est de nouveau disponible. Le contrôle reste local."
 
 #. Translators: Presented when the remote connection is interrupted while keyboard control is remote.
-#: addon\globalPlugins\remoteClient\__init__.py:1469
+#: addon\globalPlugins\remoteClient\__init__.py:1505
 msgid "Connection interrupted. Control returned to local machine."
 msgstr "Connexion interrompue. Le contrôle est revenu à l'ordinateur local."
 
 #. Translators: Presented when connection to a remote computer was interrupted.
-#: addon\globalPlugins\remoteClient\__init__.py:1472
+#: addon\globalPlugins\remoteClient\__init__.py:1508
 msgid "Connection interrupted"
 msgstr "Connexion interrompue"
 
 #. Translators: A message to warn the user that handle keys from other applications should be on.
-#: addon\globalPlugins\remoteClient\__init__.py:1506
+#: addon\globalPlugins\remoteClient\__init__.py:1542
 msgid ""
 "The option to handle keys from other applications is disabled in your NVDA "
 "keyboard settings. In order to allow the keyboard of this machine to be "
@@ -1560,30 +1576,30 @@ msgstr ""
 "Souhaitez-vous l'activer maintenant ?"
 
 #. Translators: Presented in direct (client to server) remote connection when the controlled computer is ready.
-#: addon\globalPlugins\remoteClient\__init__.py:1550
+#: addon\globalPlugins\remoteClient\__init__.py:1586
 msgid "Connected to control server"
 msgstr "Connecté au serveur de contrôle"
 
-#: addon\globalPlugins\remoteClient\__init__.py:1722
+#: addon\globalPlugins\remoteClient\__init__.py:1758
 msgid ""
 "TeleNVDA is already connected. Disconnect before opening a new connection."
 msgstr ""
 "TeleNVDA est déjà connecté. Déconnectez-vous avant d'ouvrir une nouvelle "
 "connexion."
 
-#: addon\globalPlugins\remoteClient\__init__.py:1722
-#: addon\globalPlugins\remoteClient\__init__.py:1778
+#: addon\globalPlugins\remoteClient\__init__.py:1758
+#: addon\globalPlugins\remoteClient\__init__.py:1814
 msgid "TeleNVDA Already Connected"
 msgstr "TeleNVDA déjà connecté"
 
-#: addon\globalPlugins\remoteClient\__init__.py:1729
+#: addon\globalPlugins\remoteClient\__init__.py:1765
 #, python-brace-format
 msgid "Do you wish to control the machine on server {server} with key {key}?"
 msgstr ""
 "Souhaitez-vous contrôler la machine sur le serveur {server} avec la clé "
 "{key} ?"
 
-#: addon\globalPlugins\remoteClient\__init__.py:1731
+#: addon\globalPlugins\remoteClient\__init__.py:1767
 #, python-brace-format
 msgid ""
 "Do you wish to allow this machine to be controlled on server {server} with "
@@ -1592,12 +1608,12 @@ msgstr ""
 "Souhaitez-vous autoriser cette machine à être contrôlée sur le serveur "
 "{server} avec la clé {key} ?"
 
-#: addon\globalPlugins\remoteClient\__init__.py:1732
+#: addon\globalPlugins\remoteClient\__init__.py:1768
 msgid "TeleNVDA Connection Request"
 msgstr "Demande de connexion à TeleNVDA"
 
 #. Translators: Copy link compatible with NVDA Remote gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1749
+#: addon\globalPlugins\remoteClient\__init__.py:1785
 msgid ""
 "Copies a link to the remote session to the clipboard compatible with both "
 "NVDA Remote and TeleNVDA"
@@ -1605,13 +1621,13 @@ msgstr ""
 "Copie le lien de la session distante dans le presse-papiers compatible aussi "
 "bien avec NVDA Remote qu'avec TeleNVDA"
 
-#: addon\globalPlugins\remoteClient\__init__.py:1757
-#: addon\globalPlugins\remoteClient\__init__.py:1769
+#: addon\globalPlugins\remoteClient\__init__.py:1793
+#: addon\globalPlugins\remoteClient\__init__.py:1805
 msgid "Copied link"
 msgstr "Lien copié"
 
 #. Translators: Copy link compatible with TeleNVDA gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1761
+#: addon\globalPlugins\remoteClient\__init__.py:1797
 msgid ""
 "Copies a link to the remote session to the clipboard compatible only with "
 "TeleNVDA"
@@ -1620,17 +1636,17 @@ msgstr ""
 "uniquement avec TeleNVDA"
 
 #. Translators: description for the Connect gesture
-#: addon\globalPlugins\remoteClient\__init__.py:1773
+#: addon\globalPlugins\remoteClient\__init__.py:1809
 msgid "Opens a dialog to start a remote session"
 msgstr "Ouvre une boîte de dialogue pour démarrer une session distante"
 
 #. Translators: description for the Disconnect gesture
-#: addon\globalPlugins\remoteClient\__init__.py:1784
+#: addon\globalPlugins\remoteClient\__init__.py:1820
 msgid "Disconnect a remote session"
 msgstr "Déconnecte une session distante"
 
 #. Translators: description for the gesture that connects or disconnects a remote session.
-#: addon\globalPlugins\remoteClient\__init__.py:1795
+#: addon\globalPlugins\remoteClient\__init__.py:1831
 msgid ""
 "If a remote session is active, disconnects it; otherwise opens a dialog to "
 "start a remote session"
@@ -1639,7 +1655,7 @@ msgstr ""
 "dialogue pour démarrer une session distante"
 
 #. Translators: gesture description for the ignoreNextGesture script
-#: addon\globalPlugins\remoteClient\__init__.py:1806
+#: addon\globalPlugins\remoteClient\__init__.py:1842
 msgid ""
 "Set the host to ignore the next gesture completely, sending next gesture to "
 "the guest as is. Useful when you need to use the gesture asigned to toggle "
@@ -1651,12 +1667,12 @@ msgstr ""
 "invité."
 
 #. Translators: Report when the next gesture will be send to the guest ignoring everything else.
-#: addon\globalPlugins\remoteClient\__init__.py:1814
+#: addon\globalPlugins\remoteClient\__init__.py:1850
 msgid "Send next gesture to the guest"
 msgstr "Envoie le geste suivant à l'invité"
 
 #. Translators: Documentation string for the script that toggles the control between guest and host machine.
-#: addon\globalPlugins\remoteClient\__init__.py:1818
+#: addon\globalPlugins\remoteClient\__init__.py:1854
 msgid "Toggles the control between guest and host machine"
 msgstr "Bascule le contrôle entre l'invité et l'ordinateur hôte"
 
@@ -1664,28 +1680,28 @@ msgstr "Bascule le contrôle entre l'invité et l'ordinateur hôte"
 #. Connected to the relay, but no controlled computer is in the channel.
 #. Taking control now would swallow every keystroke locally.
 #. Translators: Presented when Insert+Alt+Tab is pressed without an active remote connection.
-#: addon\globalPlugins\remoteClient\__init__.py:1829
-#: addon\globalPlugins\remoteClient\__init__.py:1835
+#: addon\globalPlugins\remoteClient\__init__.py:1865
+#: addon\globalPlugins\remoteClient\__init__.py:1871
 msgid "No remote computer is connected."
 msgstr "Aucun PC distant n'est connecté."
 
 #. Translators: Presented when sending keyboard keys from the controlling computer to the controlled computer.
-#: addon\globalPlugins\remoteClient\__init__.py:1859
+#: addon\globalPlugins\remoteClient\__init__.py:1895
 msgid "Controlling remote machine."
 msgstr "Contrôle de la machine distante."
 
 #. Translators: gesture description for the toggle remote mute script
-#: addon\globalPlugins\remoteClient\__init__.py:1909
+#: addon\globalPlugins\remoteClient\__init__.py:1945
 msgid "Mute or unmute the speech coming from the remote computer"
 msgstr "Coupe ou rétablit la synthèse vocale provenant de l'ordinateur distant"
 
 #. Translators: send Ctrl+Alt+Delete gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1918
+#: addon\globalPlugins\remoteClient\__init__.py:1954
 msgid "Sends Ctrl+Alt+Delete to the remote machine"
 msgstr "Envoie Ctrl+Alt+Suppr à l'ordinateur distant"
 
 #. Translators: open addon settings gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:1926
+#: addon\globalPlugins\remoteClient\__init__.py:1962
 msgid "Opens the addon settings panel inside NVDA settings dialog"
 msgstr ""
 "Ouvre le panneau des paramètres de l'extension dans la boîte de dialogue des "

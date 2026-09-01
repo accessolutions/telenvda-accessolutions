@@ -41,7 +41,7 @@ try:
 except ImportError:
 	canModifiersPerformAction = None
 from logHandler import log
-from scriptHandler import script
+from scriptHandler import script, getLastScriptRepeatCount
 from winUser import WM_QUIT
 try:
 	from winUser import VK_NONE
@@ -190,6 +190,9 @@ class GlobalPlugin(_GlobalPlugin):
 		# Whether keyboard control was taken by starting a screen sharing session, so that
 		# ending that session gives the keyboard back rather than leaving it stranded.
 		self.screen_share_took_control = False
+		# A remote audio gesture waiting to be sure it was not the first half of a
+		# double press, which asks for the list of applications instead.
+		self.remote_audio_timer = None
 		self.key_modifiers = set()
 		self.hostPendingModifiers = set()
 		self.hostPendingNonmodifier = None
@@ -781,6 +784,7 @@ class GlobalPlugin(_GlobalPlugin):
 			inputCore.decide_handleRawKey.unregister(self.handleRawKeys)
 		self.stop_mouse_hook()
 		self.keep_awake.stop()
+		self._cancel_pending_remote_audio()
 		if self._inactivity_timer is not None:
 			self._inactivity_timer.Stop()
 			self._inactivity_timer = None
@@ -1025,7 +1029,7 @@ class GlobalPlugin(_GlobalPlugin):
 
 	@script(
 		# Translators: toggle remote audio gesture description
-		_("Starts or stops hearing the sound of the controlled computer"),
+		_("Starts or stops hearing the sound of the controlled computer, or lists the applications heard when pressed twice"),
 		gesture="kb:control+shift+NVDA+k",
 		**speakOnDemand)
 	def script_toggle_remote_audio(self, gesture):
@@ -1034,7 +1038,39 @@ class GlobalPlugin(_GlobalPlugin):
 		The sound is a session of its own: it needs no picture, and the keyboard stays
 		where it is. The gesture works from either end, the controlled one being able
 		only to end a session it accepted.
+
+		Pressed twice, it opens the list of applications instead, so that either user
+		can silence one of them without going through the settings. Starting or stopping
+		therefore waits for the time a second press is allowed to take, otherwise asking
+		for the list would end the very session it is about.
 		"""
+		self._cancel_pending_remote_audio()
+		if getLastScriptRepeatCount() >= 1:
+			wx.CallAfter(dialogs.open_audio_sources)
+			return
+		self.remote_audio_timer = wx.CallLater(
+			self._double_press_delay(), self._toggle_remote_audio
+		)
+
+	def _double_press_delay(self):
+		"""Return how long to wait, in milliseconds, before a press counts as single.
+
+		The user decides how fast a double press has to be, so the wait follows that
+		setting rather than a figure of its own. A little is added to it because the
+		second press is only seen once it has been read and turned into a script.
+		"""
+		try:
+			return int(nvda_conf["keyboard"]["multiPressTimeout"]) + 100
+		except Exception:
+			return 600
+
+	def _cancel_pending_remote_audio(self):
+		timer, self.remote_audio_timer = self.remote_audio_timer, None
+		if timer is not None:
+			timer.Stop()
+
+	def _toggle_remote_audio(self):
+		self.remote_audio_timer = None
 		session = None
 		if self.master_session is not None and self._is_master_connected():
 			session = self.master_session

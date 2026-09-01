@@ -698,16 +698,8 @@ class OptionsDialog(SettingsPanel):
 		evt.Skip()
 
 	def on_remote_audio_sources(self, evt):
-		"""Open the list of applications whose sound is not wanted.
-
-		The volume and this list are settings of the computer that listens, so they
-		stay available even when this one refuses to share its own sound.
-		"""
-		from . import audio_share
-		dialog = AudioSourcesDialog(self, audio_share.excluded_applications())
-		if dialog.ShowModal() == wx.ID_OK:
-			audio_share.set_excluded_applications(dialog.excluded())
-		dialog.Destroy()
+		"""Open the list of applications whose sound is not wanted."""
+		open_audio_sources(self)
 		evt.Skip()
 
 	def on_autoconnect(self, evt):
@@ -972,6 +964,53 @@ class OptionsDialog(SettingsPanel):
 			plugin.restart_inactivity_monitor()
 			plugin.keep_awake.reload()
 
+def remote_audio_in_progress():
+	"""Return the remote audio being played, whichever end of the session this is.
+
+	Both users may want to change what is heard while it is being heard: the one who
+	listens because something they did not ask for started playing, the one who is
+	heard because they would rather keep a program to themselves.
+	"""
+	plugin = getattr(sys.modules.get(__package__), 'client', None)
+	if plugin is None:
+		return None
+	for name in ('master_session', 'slave_session'):
+		session = getattr(plugin, name, None)
+		manager = getattr(session, 'remote_audio', None) if session is not None else None
+		if manager is not None and manager.active:
+			return manager
+	return None
+
+
+def open_audio_sources(parent=None):
+	"""Show the applications heard and let the user silence some of them.
+
+	When nothing is being heard, or when this computer is the one listening, the list
+	is the setting of this computer and is remembered. On the computer being heard,
+	what is decided only concerns the session in progress: the stored list says which
+	applications this user does not want to hear from others, which is another matter
+	altogether and must not be overwritten here.
+	"""
+	from . import audio_share
+	manager = remote_audio_in_progress()
+	sharing = manager is not None and manager.role == audio_share.ROLE_PUBLISHER
+	if sharing:
+		excluded = manager.unwanted_applications()
+	else:
+		excluded = audio_share.excluded_applications()
+	dialog = AudioSourcesDialog(parent or gui.mainFrame, excluded)
+	try:
+		if dialog.ShowModal() != wx.ID_OK:
+			return
+		chosen = dialog.excluded()
+	finally:
+		dialog.Destroy()
+	if not sharing:
+		audio_share.set_excluded_applications(chosen)
+	if manager is not None:
+		manager.set_unwanted_applications(chosen)
+
+
 class AudioSourcesDialog(wx.Dialog):
 	"""Choose which applications of the other computer are heard.
 
@@ -988,6 +1027,7 @@ class AudioSourcesDialog(wx.Dialog):
 			title=_("Audio sources"),
 		)
 		self._names = []
+		self._heard = set()
 		main_sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer.Add(wx.StaticText(
@@ -1012,25 +1052,32 @@ class AudioSourcesDialog(wx.Dialog):
 	def _fill(self, excluded):
 		excluded = {name.lower() for name in excluded}
 		heard = set(self._heard_now())
+		self._heard = heard
 		for name in sorted(heard | excluded):
 			# An application that is not running can still be excluded in advance, and an
 			# exclusion decided earlier must stay visible so that it can be undone.
-			label = name if name in heard else _(
-				# Translators: an application in the audio sources dialog which is not running
-				"{application} (not running)"
-			).format(application=name)
 			self._names.append(name)
-			index = self.applications.Append(label)
+			index = self.applications.Append(self._label(name))
 			self.applications.Check(index, name not in excluded)
 
+	def _label(self, name):
+		"""Return how an application is presented, saying so when it is not playing."""
+		if name in self._heard:
+			return name
+		return _(
+			# Translators: an application in the audio sources dialog which is not running
+			"{application} (not running)"
+		).format(application=name)
+
 	def _heard_now(self):
-		"""Return the applications the other computer is playing sound from, if any."""
-		plugin = getattr(sys.modules.get(__package__), 'client', None)
-		session = getattr(plugin, 'master_session', None) if plugin is not None else None
-		manager = getattr(session, 'remote_audio', None) if session is not None else None
+		"""Return the applications sound is being heard from, if any."""
+		manager = remote_audio_in_progress()
 		if manager is None:
+			log.info("Audio sources dialog: no remote audio session to ask about the applications")
 			return []
-		return manager.sounding_applications()
+		names = manager.sounding_applications()
+		log.info("Audio sources dialog: sound is being heard from %s", ", ".join(names) or "nothing")
+		return names
 
 	def on_add(self, evt):
 		entry = wx.TextEntryDialog(
@@ -1044,10 +1091,9 @@ class AudioSourcesDialog(wx.Dialog):
 			name = entry.GetValue().strip().lower()
 			if name and name not in self._names:
 				self._names.append(name)
-				index = self.applications.Append(_(
-					# Translators: an application in the audio sources dialog which is not running
-					"{application} (not running)"
-				).format(application=name))
+				# The name is presented like any other, so that an application which is
+				# playing right now is not wrongly said to be stopped.
+				index = self.applications.Append(self._label(name))
 				self.applications.Check(index, False)
 		entry.Destroy()
 		evt.Skip()
