@@ -36,6 +36,7 @@ it would open in.
 """
 
 import ctypes
+import ctypes.wintypes
 import os
 import shutil
 import subprocess
@@ -86,63 +87,126 @@ _OFF_SCREEN_POSITION = "-32000,-32000"
 #: web/screen_share.html.
 _WINDOW_TITLE = "TeleNVDA screen sharing"
 
-#: How long the off screen window is watched for taking the keyboard, and how often.
-#: Chromium creates its window a moment after the process starts, and on a busy
-#: computer opening a brand new profile that moment can be a couple of seconds.
+#: How long the off screen window is watched for appearing, and how often. Chromium
+#: creates its window a moment after the process starts, and on a busy computer
+#: opening a brand new profile that moment can be a couple of seconds.
 _FOCUS_GRACE = 10.0
 _FOCUS_INTERVAL = 0.2
+
+#: What is needed to take a window out of the task switcher and off the taskbar.
+#: A tool window is by definition an accessory of another one, so the shell leaves
+#: it out of both, which is exactly what a window nobody can see should be.
+_GWL_EXSTYLE = -20
+_WS_EX_TOOLWINDOW = 0x00000080
+_WS_EX_APPWINDOW = 0x00040000
+_SW_HIDE = 0
+_SW_SHOWNOACTIVATE = 4
 
 #: How long to keep trying to delete the temporary profile. Edge releases its files
 #: a moment after the window closes, so the first attempt usually fails.
 _CLEANUP_ATTEMPTS = 10
 _CLEANUP_DELAY = 1.0
 
+_ENUM_WINDOWS_PROC = ctypes.WINFUNCTYPE(
+	ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM
+)
+
+
+def _get_window_api():
+	"""Return a private user32 binding with the prototypes used to tame a window.
+
+	A binding of its own, as elsewhere in the add-on, so that these prototypes cannot
+	interfere with the ones NVDA sets on the binding it uses.
+	"""
+	user32 = getattr(_get_window_api, "_cached", None)
+	if user32 is not None:
+		return user32
+	user32 = ctypes.WinDLL("user32")
+	user32.GetForegroundWindow.restype = ctypes.wintypes.HWND
+	user32.GetForegroundWindow.argtypes = []
+	user32.EnumWindows.restype = ctypes.wintypes.BOOL
+	user32.EnumWindows.argtypes = [_ENUM_WINDOWS_PROC, ctypes.wintypes.LPARAM]
+	user32.GetWindowTextW.restype = ctypes.c_int
+	user32.GetWindowTextW.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.LPWSTR, ctypes.c_int]
+	user32.GetWindowLongW.restype = ctypes.c_long
+	user32.GetWindowLongW.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+	user32.SetWindowLongW.restype = ctypes.c_long
+	user32.SetWindowLongW.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, ctypes.c_long]
+	user32.ShowWindow.restype = ctypes.wintypes.BOOL
+	user32.ShowWindow.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+	_get_window_api._cached = user32
+	return user32
+
 
 def _foreground_window():
 	"""Return the handle of the window that currently has the keyboard, or 0."""
-	# Imported here and not at the top of the module: the package imports this one.
-	from . import _get_user32
-
 	try:
-		return _get_user32().GetForegroundWindow() or 0
+		return _get_window_api().GetForegroundWindow() or 0
 	except Exception:
 		logger.debug("Unable to read the foreground window", exc_info=True)
 		return 0
 
 
-def _restore_focus(previous):
-	"""Give the keyboard back to the window its user was working in.
+def _find_sharing_window(user32):
+	"""Return the handle of the off screen sharing window, or 0 while it has yet to open."""
+	found = []
+	# One character more than the title being looked for, so that a longer title which
+	# merely starts the same way does not read as a match.
+	buffer = ctypes.create_unicode_buffer(len(_WINDOW_TITLE) + 2)
 
-	Chromium always opens its window in the foreground, even one placed far outside
-	the desktop. On the computer being watched that takes the keyboard away from
-	whatever its user was doing, and their screen reader starts reading them a page
-	they cannot see and did not ask for.
+	@_ENUM_WINDOWS_PROC
+	def visit(handle, _parameter):
+		user32.GetWindowTextW(handle, buffer, len(buffer))
+		if buffer.value == _WINDOW_TITLE:
+			found.append(handle)
+			return False
+		return True
 
-	The focus is therefore taken back, but only from the sharing window, and only
-	once: someone who moves elsewhere while the browser is still starting has made a
-	choice, and that choice wins over this one.
+	user32.EnumWindows(visit, 0)
+	return found[0] if found else 0
+
+
+def _tame_off_screen_window(previous):
+	"""Keep the invisible window out of the way of the user whose screen is shared.
+
+	Chromium always opens its window in the foreground and always gives it a place in
+	the task switcher, even a window placed far outside the desktop, and no command
+	line option changes either. Both are a nuisance on the computer being watched:
+	the keyboard is taken away from whatever its user was doing, their screen reader
+	starts reading them a page they cannot see, and a window they can never reach is
+	offered to them every time they press alt and tab.
+
+	So the window is turned into a tool window, which the shell leaves out of the task
+	switcher and off the taskbar, and the keyboard is handed back. Only once: someone
+	who moves elsewhere while the browser is still starting has made a choice, and
+	that choice wins over this one.
 	"""
-	from . import _get_user32, force_window_to_foreground
+	# Imported here and not at the top of the module: the package imports this one.
+	from . import force_window_to_foreground
 
 	try:
-		user32 = _get_user32()
-		# One character more than the title being looked for, so that a longer title
-		# which merely starts the same way does not read as a match.
-		buffer = ctypes.create_unicode_buffer(len(_WINDOW_TITLE) + 2)
+		user32 = _get_window_api()
 		deadline = time.monotonic() + _FOCUS_GRACE
 		while time.monotonic() < deadline:
 			time.sleep(_FOCUS_INTERVAL)
-			handle = user32.GetForegroundWindow()
-			if not handle or handle == previous:
+			handle = _find_sharing_window(user32)
+			if not handle:
 				continue
-			user32.GetWindowTextW(handle, buffer, len(buffer))
-			if buffer.value != _WINDOW_TITLE:
-				return
-			if force_window_to_foreground(previous):
+			# The shell reads the style when the window is shown, so it is hidden for the
+			# time it takes to change it. The browser is told not to slow a window down
+			# for being out of sight, which is what makes this safe for the capture.
+			user32.ShowWindow(handle, _SW_HIDE)
+			style = user32.GetWindowLongW(handle, _GWL_EXSTYLE)
+			user32.SetWindowLongW(
+				handle, _GWL_EXSTYLE, (style | _WS_EX_TOOLWINDOW) & ~_WS_EX_APPWINDOW
+			)
+			user32.ShowWindow(handle, _SW_SHOWNOACTIVATE)
+			logger.info("Screen sharing: the invisible window was taken out of the task switcher")
+			if previous and force_window_to_foreground(previous):
 				logger.info("Screen sharing: the keyboard was given back to the window it was in")
-				return
+			return
 	except Exception:
-		logger.debug("Unable to give the focus back after starting the browser", exc_info=True)
+		logger.debug("Unable to tame the off screen window", exc_info=True)
 
 
 def _find_one(executable, program_files_subdir):
@@ -246,11 +310,11 @@ class EdgeWindow:
 			creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
 		)
 		logger.info("Screen sharing: %s started, off screen: %s", os.path.basename(browser), off_screen)
-		if previous_focus:
+		if off_screen:
 			threading.Thread(
-				target=_restore_focus,
+				target=_tame_off_screen_window,
 				args=(previous_focus,),
-				name="screen_share_focus",
+				name="screen_share_window",
 				daemon=True,
 			).start()
 
