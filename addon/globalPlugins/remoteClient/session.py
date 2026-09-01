@@ -15,9 +15,17 @@ from . import nvda_patcher
 from . import compat_screenshot
 from . import capabilities
 from . import file_transfer
-from . import audio_share, screen_share
+from . import screen_share
 from . import mouse_control
 from . import RelayTransport
+try:
+	# The remote sound is the newest and the least essential of the features. A
+	# computer where it cannot even be loaded must still be able to be assisted, so
+	# it is imported apart from everything the session actually needs.
+	from . import audio_share
+except Exception:
+	audio_share = None
+	log.exception("Remote audio could not be loaded; the rest of TeleNVDA is unaffected")
 from collections import defaultdict
 from . import connection_info
 from . import cues
@@ -70,9 +78,10 @@ class RemoteSession:
 			)
 			# The sound is a session of its own: it is often wanted without any picture,
 			# and stopping one must not stop the other.
-			self.remote_audio = audio_share.AudioShareManager(
-				transport, self.capabilities, self.SCREEN_SHARE_ROLE
-			)
+			if audio_share is not None:
+				self.remote_audio = audio_share.AudioShareManager(
+					transport, self.capabilities, self.SCREEN_SHARE_ROLE
+				)
 		self.client_count = 1
 
 	def handle_version_mismatch(self, **kwargs):

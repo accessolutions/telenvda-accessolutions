@@ -9,6 +9,48 @@ import scriptHandler
 import buildVersion
 
 
+def _speech_modules():
+	"""Return every module whose ``speak`` has to be replaced to catch them all.
+
+	Since NVDA 2021.1 the speech is a package, and most of what NVDA says goes
+	through the function of its inner module rather than through the name the package
+	exports. Replacing only one of the two would leave the other untouched.
+	"""
+	modules = [speech]
+	inner = getattr(speech, "speech", None)
+	if inner is not None and inner is not speech:
+		modules.append(inner)
+	return modules
+
+
+def _get_speech_mode():
+	try:
+		return speech.getState().speechMode
+	except AttributeError:
+		return speech.speechMode
+
+
+def _set_speech_mode(mode):
+	try:
+		speech.setSpeechMode(mode)
+	except AttributeError:
+		speech.speechMode = mode
+
+
+def _speech_mode_off():
+	try:
+		return speech.SpeechMode.off
+	except AttributeError:
+		return speech.speechMode_off
+
+
+def _speech_mode_talk():
+	try:
+		return speech.SpeechMode.talk
+	except AttributeError:
+		return speech.speechMode_talk
+
+
 class NVDAPatcher(callback_manager.CallbackManager):
 	"""Base class to manage patching of braille display changes."""
 
@@ -65,6 +107,10 @@ class NVDASlavePatcher(NVDAPatcher):
 		self.orig_beep = None
 		self.orig_playWaveFile = None
 		self.orig_display = None
+		self.orig_speak_entries = []
+		#: True while a sequence which this computer was told not to say is being
+		#: prepared for the controlling one.
+		self.forwarding_silenced_speech = False
 
 	def patch_speech(self):
 		if self.orig_speak is not None:
@@ -75,6 +121,15 @@ class NVDASlavePatcher(NVDAPatcher):
 		speech._manager.cancel = self.cancel
 		self.orig_pauseSpeech = speech.pauseSpeech
 		speech.pauseSpeech = self.pauseSpeech
+		self.patch_silenced_speech()
+
+	def patch_silenced_speech(self):
+		"""Catch the speech before NVDA drops it because it was turned off here."""
+		if self.orig_speak_entries:
+			return
+		self.orig_speak_entries = [(module, module.speak) for module in _speech_modules()]
+		for module, _original in self.orig_speak_entries:
+			module.speak = self.speak_entry
 
 	def patch_tones(self):
 		if buildVersion.version_year >= 2023:
@@ -104,6 +159,7 @@ class NVDASlavePatcher(NVDAPatcher):
 		braille.handler._writeCells = self.display
 
 	def unpatch_speech(self):
+		self.unpatch_silenced_speech()
 		if self.orig_speak is None:
 			return
 		speech._manager.speak = self.orig_speak
@@ -112,6 +168,14 @@ class NVDASlavePatcher(NVDAPatcher):
 		self.orig_cancel = None
 		speech.pauseSpeech = self.orig_pauseSpeech
 		self.orig_pauseSpeech = None
+
+	def unpatch_silenced_speech(self):
+		if not self.orig_speak_entries:
+			return
+		for module, original in self.orig_speak_entries:
+			module.speak = original
+		self.orig_speak_entries = []
+		self.forwarding_silenced_speech = False
 
 	def unpatch_tones(self):
 		if buildVersion.version_year >= 2023:
@@ -158,8 +222,33 @@ class NVDASlavePatcher(NVDAPatcher):
 		self.unpatch_nvwave()
 		self.unpatch_braille()
 
+	def speak_entry(self, speechSequence, symbolLevel=None, priority=None):
+		"""Let the controlling computer hear what this one was told not to say.
+
+		When the speech is turned off, NVDA gives up before producing anything at all,
+		so the controlling computer would stay silent and its user would believe the
+		connection is dead. The sequence is therefore prepared exactly as it would have
+		been, but handed over to the controlling computer instead of to the sound card
+		of this one.
+		"""
+		orig_speak_entry = self.orig_speak_entries[0][1]
+		mode = _get_speech_mode()
+		if self.forwarding_silenced_speech or mode != _speech_mode_off():
+			return orig_speak_entry(speechSequence, symbolLevel=symbolLevel, priority=priority)
+		self.forwarding_silenced_speech = True
+		try:
+			_set_speech_mode(_speech_mode_talk())
+			return orig_speak_entry(speechSequence, symbolLevel=symbolLevel, priority=priority)
+		finally:
+			_set_speech_mode(mode)
+			self.forwarding_silenced_speech = False
+
 	def speak(self, speechSequence, priority):
 		self.call_callbacks("speak", speechSequence=speechSequence, priority=priority)
+		if self.forwarding_silenced_speech:
+			# The user of this computer turned the speech off: only the controlling one is
+			# meant to hear this.
+			return
 		self.orig_speak(speechSequence, priority)
 
 	def cancel(self):

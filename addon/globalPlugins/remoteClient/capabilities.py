@@ -53,11 +53,15 @@ def available_features():
 	"""
 	features = list(LOCAL_FEATURES)
 	# Imported lazily: screen_share imports this module to read the feature names.
-	from . import audio_share, screen_share
+	from . import screen_share
 	if screen_share.is_available():
 		features.append(FEATURE_SCREEN_SHARE)
-	if audio_share.is_available():
-		features.append(FEATURE_REMOTE_AUDIO)
+	try:
+		from . import audio_share
+		if audio_share.is_available():
+			features.append(FEATURE_REMOTE_AUDIO)
+	except Exception:
+		logger.exception("Unable to tell whether remote audio is available")
 	return features
 
 

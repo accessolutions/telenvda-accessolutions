@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: 'remote' '2.5'\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-09-01 09:19+0200\n"
+"POT-Creation-Date: 2026-09-01 10:47+0200\n"
 "PO-Revision-Date: 2024-08-08 15:43+0100\n"
 "Last-Translator: Simone Dal Maso <simone.dalmaso@gmail.com>\n"
 "Language-Team: \n"
@@ -34,26 +34,26 @@ msgid "Running NVDA Remote detected"
 msgstr "Rilevato NVDA Remote in esecuzione"
 
 #. Translators: message spoken when remote audio is turned off
-#: addon\globalPlugins\remoteClient\audio_share.py:190
+#: addon\globalPlugins\remoteClient\audio_share.py:201
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Remote audio stopped"
 msgstr "Salvataggio schermata nella cartella &:"
 
 #. Translators: message spoken when remote audio is requested from the wrong computer
-#: addon\globalPlugins\remoteClient\audio_share.py:197
+#: addon\globalPlugins\remoteClient\audio_share.py:208
 #, fuzzy
 #| msgid "Are you sure you want to disconnect the controlled computer?"
 msgid "Remote audio can only be started from the controlling computer"
 msgstr "Sei sicuro di voler disconnettere il computer controllato?"
 
 #. Translators: message spoken when remote audio cannot run on this computer
-#: addon\globalPlugins\remoteClient\audio_share.py:200
+#: addon\globalPlugins\remoteClient\audio_share.py:211
 msgid "Remote audio is not available on this computer"
 msgstr ""
 
 #. Translators: message spoken when the other computer cannot share its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:204
+#: addon\globalPlugins\remoteClient\audio_share.py:215
 #, fuzzy
 #| msgid "This is the only computer connected to this session"
 #| msgid_plural "There are {} computers connected to this session"
@@ -61,64 +61,64 @@ msgid "The other computer does not support remote audio"
 msgstr "Questo è l'unico computer connesso alla sessione"
 
 #. Translators: message spoken when remote audio has been requested
-#: addon\globalPlugins\remoteClient\audio_share.py:211
+#: addon\globalPlugins\remoteClient\audio_share.py:222
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Remote audio requested"
 msgstr "Salvataggio schermata nella cartella &:"
 
 #. Translators: title of the remote audio request dialog
-#: addon\globalPlugins\remoteClient\audio_share.py:385
+#: addon\globalPlugins\remoteClient\audio_share.py:396
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Remote audio request"
 msgstr "Salvataggio schermata nella cartella &:"
 
 #. Translators: question asked before the sound of this computer is shared
-#: addon\globalPlugins\remoteClient\audio_share.py:387
+#: addon\globalPlugins\remoteClient\audio_share.py:398
 msgid ""
 "Do you want to share the sound of this computer? The controlling computer "
 "will hear the applications playing here."
 msgstr ""
 
 #. Translators: message spoken when the sound of the whole computer is shared
-#: addon\globalPlugins\remoteClient\audio_share.py:411
+#: addon\globalPlugins\remoteClient\audio_share.py:422
 msgid "Sharing all the sound of this computer, including this speech"
 msgstr ""
 
 #. Translators: message spoken on the assisted computer when it starts sharing its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:414
+#: addon\globalPlugins\remoteClient\audio_share.py:425
 msgid "Sharing the sound of this computer"
 msgstr ""
 
 #. Translators: message spoken when the remote sound cannot be played here
-#: addon\globalPlugins\remoteClient\audio_share.py:436
+#: addon\globalPlugins\remoteClient\audio_share.py:447
 #, fuzzy
 #| msgid "Unable to connect to the remote computer"
 msgid "Unable to play the remote sound on this computer"
 msgstr "Impossibile connettersi al computer remoto"
 
 #. Translators: message spoken when the remote sound starts being heard
-#: addon\globalPlugins\remoteClient\audio_share.py:441
+#: addon\globalPlugins\remoteClient\audio_share.py:452
 #, fuzzy
 #| msgid "Connected to control server"
 msgid "Remote audio started"
 msgstr "Collegato al server di controllo remoto"
 
 #. Translators: message spoken when the assisted computer can only share all of its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:444
+#: addon\globalPlugins\remoteClient\audio_share.py:455
 msgid ""
 "This computer can only share all of its sound, including the speech of its "
 "screen reader"
 msgstr ""
 
 #. Translators: message spoken when the other computer ended remote audio
-#: addon\globalPlugins\remoteClient\audio_share.py:451
+#: addon\globalPlugins\remoteClient\audio_share.py:462
 msgid "Remote audio ended"
 msgstr ""
 
 #. Translators: message spoken when the other computer refused to share its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:497
+#: addon\globalPlugins\remoteClient\audio_share.py:508
 #, fuzzy
 #| msgid "This is the only computer connected to this session"
 #| msgid_plural "There are {} computers connected to this session"
@@ -126,7 +126,7 @@ msgid "The other computer refused to share its sound"
 msgstr "Questo è l'unico computer connesso alla sessione"
 
 #. Translators: message spoken when the other computer is already sharing its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:500
+#: addon\globalPlugins\remoteClient\audio_share.py:511
 #, fuzzy
 #| msgid "The remote computer is available again. Control remains local."
 msgid "The other computer is already sharing its sound"
@@ -134,7 +134,7 @@ msgstr ""
 "Il computer remoto è nuovamente disponibile. Il controllo rimane locale."
 
 #. Translators: message spoken when the other computer cannot share its sound
-#: addon\globalPlugins\remoteClient\audio_share.py:502
+#: addon\globalPlugins\remoteClient\audio_share.py:513
 #, fuzzy
 #| msgid "The remote computer is available again. Control remains local."
 msgid "The other computer is unable to share its sound"
@@ -1115,7 +1115,7 @@ msgstr ""
 "Il computer remoto è nuovamente disponibile. Il controllo rimane locale."
 
 #. translators: Message for version mismatch
-#: addon\globalPlugins\remoteClient\session.py:80
+#: addon\globalPlugins\remoteClient\session.py:89
 msgid ""
 "The version of the relay server which you have connected to is not "
 "compatible with this version of the Remote Client.\n"
@@ -1126,24 +1126,24 @@ msgstr ""
 "Si consiglia di utilizzare un altro server o aggiornare la versione del "
 "componente aggiuntivo."
 
-#: addon\globalPlugins\remoteClient\session.py:88
+#: addon\globalPlugins\remoteClient\session.py:97
 msgid "Message of the Day"
 msgstr "Messaggio del Giorno"
 
 #. Translators: message spoken when this computer has sent a screenshot to the controlling computer
-#: addon\globalPlugins\remoteClient\session.py:311
+#: addon\globalPlugins\remoteClient\session.py:320
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Screenshot sent"
 msgstr "Salvataggio schermata nella cartella &:"
 
-#: addon\globalPlugins\remoteClient\session.py:405
+#: addon\globalPlugins\remoteClient\session.py:414
 msgid "Remote NVDA not connected."
 msgstr "NVDA remoto non connesso."
 
 #. Translators: message spoken when the controlled computer never returned the
 #. requested screenshot.
-#: addon\globalPlugins\remoteClient\session.py:482
+#: addon\globalPlugins\remoteClient\session.py:491
 #, fuzzy
 #| msgid "Mute speech and sounds from the remote computer"
 msgid "No screenshot received from the remote computer"
@@ -1756,18 +1756,28 @@ msgstr ""
 #. Translators: what's new content for the add-on version to be shown in the add-on store
 #: buildVars.py:43
 msgid ""
-"Fix automatic updates that failed to complete with an \"access denied\" "
-"error, recover installations stuck pending, add WebSocket relay connections "
-"over HTTPS, including port 443, add Windows SSPI authentication for NTLM and "
-"Kerberos HTTP proxies, improve proxy compatibility, and provide two remote "
-"screenshot methods."
+"The controlling computer no longer stays silent when the user of the "
+"controlled one has turned the speech of their NVDA off. Add remote audio, so "
+"that the controlling computer can hear what the controlled one is playing, "
+"application by application, without any program other than NVDA. Add screen "
+"sharing of the controlled computer, with mouse control when its user allows "
+"it. Add a chunked file transfer which is no longer limited to 10 MB, with "
+"progress, speed and a SHA-256 check."
 msgstr ""
-"Correggere gli aggiornamenti automatici che non sono stati completati con un "
-"errore di \"accesso negato\", ripristinare le installazioni bloccate in "
-"sospeso, aggiungere connessioni di inoltro WebSocket su HTTPS, inclusa la "
-"porta 443, aggiungere l'autenticazione SSPI di Windows per i proxy HTTP NTLM "
-"e Kerberos, migliorare la compatibilità dei proxy e fornire due metodi di "
-"screenshot remoti."
+
+#~ msgid ""
+#~ "Fix automatic updates that failed to complete with an \"access denied\" "
+#~ "error, recover installations stuck pending, add WebSocket relay "
+#~ "connections over HTTPS, including port 443, add Windows SSPI "
+#~ "authentication for NTLM and Kerberos HTTP proxies, improve proxy "
+#~ "compatibility, and provide two remote screenshot methods."
+#~ msgstr ""
+#~ "Correggere gli aggiornamenti automatici che non sono stati completati con "
+#~ "un errore di \"accesso negato\", ripristinare le installazioni bloccate "
+#~ "in sospeso, aggiungere connessioni di inoltro WebSocket su HTTPS, inclusa "
+#~ "la porta 443, aggiungere l'autenticazione SSPI di Windows per i proxy "
+#~ "HTTP NTLM e Kerberos, migliorare la compatibilità dei proxy e fornire due "
+#~ "metodi di screenshot remoti."
 
 #~ msgid "Update channel"
 #~ msgstr "Aggiorna canale"

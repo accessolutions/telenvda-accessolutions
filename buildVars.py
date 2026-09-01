@@ -40,7 +40,7 @@ addon_info = AddonInfo(
 	addon_sourceURL= "https://github.com/Accessolutions/telenvda-accessolutions",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Add remote audio, so that the controlling computer can hear what the controlled one is playing, application by application, without any program other than NVDA. Add screen sharing of the controlled computer, with mouse control when its user allows it. Add a chunked file transfer which is no longer limited to 10 MB, with progress, speed and a SHA-256 check."""),
+	addon_changelog=_("""The controlling computer no longer stays silent when the user of the controlled one has turned the speech of their NVDA off. Add remote audio, so that the controlling computer can hear what the controlled one is playing, application by application, without any program other than NVDA. Add screen sharing of the controlled computer, with mouse control when its user allows it. Add a chunked file transfer which is no longer limited to 10 MB, with progress, speed and a SHA-256 check."""),
 )
 
 import os.path

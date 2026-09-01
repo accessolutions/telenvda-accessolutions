@@ -34,11 +34,21 @@ import addonHandler
 import gui
 import ui
 
-from . import audio_capture, audio_playback, audio_sources, capabilities, configuration
+from . import capabilities, configuration
 from .screen_share import ROLE_PUBLISHER, ROLE_VIEWER, STATE_ACTIVE, STATE_IDLE, STATE_REQUESTING
 from .transport import TransportEvents
 
 logger = getLogger("audio_share")
+
+#: Capturing sound, listing what is playing and pouring it back into a sound card
+#: all reach into Windows through raw pointers and into NVDA's own player. A machine
+#: where any of that is refused must still be able to be assisted, so a failure here
+#: turns the feature off instead of taking the whole add-on down with it.
+try:
+	from . import audio_capture, audio_playback, audio_sources
+except Exception:
+	audio_capture = audio_playback = audio_sources = None
+	logger.exception("Remote audio cannot be used on this computer")
 
 try:
 	addonHandler.initTranslation()
@@ -93,9 +103,10 @@ def is_available():
 	"""Whether this installation can take part in a remote audio session.
 
 	Nothing is needed beyond NVDA itself: no browser, no encoder, no port to open.
-	The setting is therefore the only thing there is to look at.
+	The setting is therefore almost the only thing there is to look at, the other being
+	whether the capture could be loaded at all on this computer.
 	"""
-	return is_enabled()
+	return audio_capture is not None and is_enabled()
 
 
 def excluded_applications():
