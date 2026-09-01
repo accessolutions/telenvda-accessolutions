@@ -41,7 +41,7 @@ try:
 except ImportError:
 	canModifiersPerformAction = None
 from logHandler import log
-from scriptHandler import script, getLastScriptRepeatCount
+from scriptHandler import script
 from winUser import WM_QUIT
 try:
 	from winUser import VK_NONE
@@ -1043,14 +1043,35 @@ class GlobalPlugin(_GlobalPlugin):
 		can silence one of them without going through the settings. Starting or stopping
 		therefore waits for the time a second press is allowed to take, otherwise asking
 		for the list would end the very session it is about.
+
+		A press is known to be the second one because the first is still waiting, rather
+		than by asking how many times the screen reader ran this script: while the
+		keyboard is being sent to the controlled computer, the gestures kept here are
+		called directly and that count is never raised.
 		"""
-		self._cancel_pending_remote_audio()
-		if getLastScriptRepeatCount() >= 1:
-			wx.CallAfter(dialogs.open_audio_sources)
+		if self.remote_audio_timer is not None:
+			self._cancel_pending_remote_audio()
+			wx.CallAfter(self._open_audio_sources)
 			return
 		self.remote_audio_timer = wx.CallLater(
 			self._double_press_delay(), self._toggle_remote_audio
 		)
+
+	def _open_audio_sources(self):
+		"""Show the applications heard, taking the keyboard back for as long as needed.
+
+		While the controlled computer is being driven, every key typed here goes there,
+		so a window opened on this computer would answer to nothing. Control is given
+		back for the time the list is shown, then handed over again.
+		"""
+		resume = self.sending_keys
+		if resume:
+			self._return_to_local_control(release_keys=True)
+		try:
+			dialogs.open_audio_sources()
+		finally:
+			if resume and self._is_master_connected() and self._remote_slave_available():
+				self._switch_to_remote_control(None)
 
 	def _double_press_delay(self):
 		"""Return how long to wait, in milliseconds, before a press counts as single.
