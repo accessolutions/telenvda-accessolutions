@@ -11,9 +11,10 @@ Chrome and Brave are accepted as fallbacks. They are the same engine and take th
 very same command line, so nothing else in the add-on has to know which one ran.
 
 The window is always started on a throwaway profile. That matters for more than
-tidiness: the page is granted every media permission without being asked, which
-is the only way found to suppress the source picker (see below), so it must never
-run alongside the browsing data, extensions or open tabs of the user.
+tidiness: on the capturing computer the page is granted every media permission
+without being asked, which is the only way found to suppress the source picker
+(see below), so it must never run alongside the browsing data, extensions or open
+tabs of the user.
 
 Measured on Edge 151.0.4129.72:
 
@@ -22,7 +23,9 @@ Measured on Edge 151.0.4129.72:
   therefore not used.
 * ``--use-fake-ui-for-media-stream`` does suppress the picker, and the capture
   starts in under a second. Its cost is that it grants microphone and camera as
-  well, which is why the throwaway profile and the single local page matter.
+  well, which is why the throwaway profile and the single local page matter. The
+  browser also answers it with a warning bar across the top of the window, so it
+  is passed only on the capturing side, whose window is off screen.
 * A window placed at ``-32000,-32000`` is not throttled: the frame rate holds and
   the page timers stay regular. Without the anti throttling flags the average rate
   holds too, but freezes appear, so they are kept.
@@ -130,9 +133,6 @@ def _build_arguments(browser, url, profile, off_screen):
 		"--disable-extensions",
 		"--disable-sync",
 		"--disable-features=Translate,EdgeCollections",
-		# See the module docstring: this is what removes the source picker, and the
-		# reason the profile above is throwaway.
-		"--use-fake-ui-for-media-stream",
 		# Not for the average frame rate, which holds without them, but to suppress
 		# the freezes measured on a window that is not on screen.
 		"--disable-background-timer-throttling",
@@ -141,6 +141,12 @@ def _build_arguments(browser, url, profile, off_screen):
 	]
 	if off_screen:
 		arguments += [
+			# See the module docstring: this is what removes the source picker, and the
+			# reason the profile above is throwaway. It is only passed on the computer
+			# that captures, both because the watching side never calls getDisplayMedia
+			# and because the browser answers it with a warning bar across the top of
+			# the window, which is precisely the window the watching user is looking at.
+			"--use-fake-ui-for-media-stream",
 			"--window-position=" + _OFF_SCREEN_POSITION,
 			"--window-size=320,240",
 		]
