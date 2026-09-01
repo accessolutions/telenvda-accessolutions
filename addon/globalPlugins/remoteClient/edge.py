@@ -41,9 +41,11 @@ import subprocess
 import tempfile
 import threading
 import time
-from logging import getLogger
 
-logger = getLogger("edge")
+# See the same import in screen_share: a logger of its own would write nothing below
+# the warning level, and which browser started with which layout is exactly what has
+# to be readable when a session shows nothing.
+from logHandler import log as logger
 
 try:
 	import winreg
@@ -182,7 +184,7 @@ class EdgeWindow:
 			stderr=subprocess.DEVNULL,
 			creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
 		)
-		logger.debug("%s started, off screen: %s", os.path.basename(browser), off_screen)
+		logger.info("Screen sharing: %s started, off screen: %s", os.path.basename(browser), off_screen)
 
 	def stop(self):
 		"""Close the window and delete its profile, without blocking the caller."""

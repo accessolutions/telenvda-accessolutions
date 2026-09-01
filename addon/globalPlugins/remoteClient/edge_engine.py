@@ -14,11 +14,12 @@ and ICE candidates between the page and the relay.
 
 import threading
 import time
-from logging import getLogger
 
 from . import edge, local_bridge
 
-logger = getLogger("edge_engine")
+# See the same import in screen_share: a logger of its own would write nothing below
+# the warning level, and how a session ended is exactly what has to be readable.
+from logHandler import log as logger
 
 #: How often the state of the session is checked.
 _WATCH_INTERVAL = 1.0
@@ -138,11 +139,11 @@ class EdgeEngine:
 			if silence is None:
 				if time.monotonic() - started < _START_GRACE:
 					continue
-				logger.debug("The screen sharing page never opened")
+				logger.warning("The screen sharing page never opened")
 			elif silence < _SILENCE_LIMIT:
 				continue
 			else:
-				logger.debug("The screen sharing page went silent for %.1f s", silence)
+				logger.info("The screen sharing page went silent for %.1f s", silence)
 			try:
 				self._on_exit()
 			except Exception:

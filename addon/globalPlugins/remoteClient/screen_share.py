@@ -19,8 +19,6 @@ screen sharing is turned off in the configuration, :func:`is_available` returns
 False, the feature is never announced, and the add-on behaves exactly as before.
 """
 
-from logging import getLogger
-
 import wx
 
 import addonHandler
@@ -30,7 +28,10 @@ import ui
 from . import capabilities, configuration, edge_engine
 from .transport import TransportEvents
 
-logger = getLogger("screen_share")
+# The log of NVDA, and not a logger of its own: a logger created here has no handler,
+# so everything below the warning level would be written nowhere at all, and this is
+# the only account there is of what happens inside the browser window.
+from logHandler import log as logger
 
 try:
 	addonHandler.initTranslation()
@@ -315,7 +316,7 @@ class ScreenShareManager:
 		"""The relay sent the temporary credentials of its TURN server."""
 		if isinstance(ice_servers, list):
 			self.ice_servers = ice_servers
-			logger.debug("The relay gave %d ICE server(s)", len(ice_servers))
+			logger.info("The relay gave %d ICE server(s)", len(ice_servers))
 
 	def _log_ice_servers(self):
 		"""Warn when the link is about to be attempted without any relay of last resort.
@@ -370,8 +371,23 @@ class ScreenShareManager:
 		elif kind == "failed":
 			logger.warning("Screen sharing failed: %s", event.get("reason", ""))
 			wx.CallAfter(self._report_failure)
+		elif kind == "no_picture":
+			wx.CallAfter(self._report_missing_picture)
+		elif kind == "log":
+			self._log_page(event.get("text", ""))
 		elif kind == "closed":
 			wx.CallAfter(self._handle_helper_exit)
+
+	def _log_page(self, text):
+		"""Record what the video page reports.
+
+		The session lives inside a browser window NVDA cannot look into, and a session
+		which ends in a black window leaves nothing behind. These lines are the only
+		account of what the link actually did, so they go to the log unconditionally.
+		"""
+		if not isinstance(text, str):
+			return
+		logger.info("Screen sharing, %s side: %s", self.role, text[:500])
 
 	def _forward_input(self, event):
 		"""Send a mouse event aimed at the picture to the computer being watched.
@@ -432,6 +448,17 @@ class ScreenShareManager:
 		self.stop()
 		# Translators: message spoken when the screen sharing link could not be established
 		ui.message(_("Unable to establish the screen sharing connection"))
+
+	def _report_missing_picture(self):
+		"""Say that the window stayed black, which nothing else would reveal.
+
+		The session is left running: the picture may still arrive on a slow link, and
+		ending it here would take away the only thing that could still work.
+		"""
+		if not self.active:
+			return
+		# Translators: message spoken when the shared screen is not being received
+		ui.message(_("The shared picture has not arrived. The connection between the two computers may be blocked."))
 
 	# Sending.
 

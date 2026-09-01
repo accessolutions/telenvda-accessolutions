@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TeleNVDA\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-09-01 10:47+0200\n"
+"POT-Creation-Date: 2026-09-01 11:21+0200\n"
 "PO-Revision-Date: 2025-03-08 10:43+0300\n"
 "Last-Translator: Umut KORKMAZ <umutkork@gmail.com>\n"
 "Language-Team: Umut KORKMAZ <umutkork@gmail.com\n"
@@ -1008,62 +1008,62 @@ msgid "Remote mouse control refused"
 msgstr "Uzak kontrol sunucusunu kullan"
 
 #. Translators: message spoken when screen sharing is turned off
-#: addon\globalPlugins\remoteClient\screen_share.py:157
+#: addon\globalPlugins\remoteClient\screen_share.py:158
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Screen sharing stopped"
 msgstr "Ekran görüntüsü kaydetme &klasörü:"
 
 #. Translators: message spoken when screen sharing is requested from the wrong computer
-#: addon\globalPlugins\remoteClient\screen_share.py:164
+#: addon\globalPlugins\remoteClient\screen_share.py:165
 msgid "Screen sharing can only be started from the controlling computer"
 msgstr ""
 
 #. Translators: message spoken when screen sharing cannot run on this computer
-#: addon\globalPlugins\remoteClient\screen_share.py:167
+#: addon\globalPlugins\remoteClient\screen_share.py:168
 msgid "Screen sharing is not available on this computer"
 msgstr ""
 
 #. Translators: message spoken when the other computer cannot share its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:171
+#: addon\globalPlugins\remoteClient\screen_share.py:172
 msgid "The other computer does not support screen sharing"
 msgstr ""
 
 #. Translators: message spoken when screen sharing has been requested
-#: addon\globalPlugins\remoteClient\screen_share.py:181
+#: addon\globalPlugins\remoteClient\screen_share.py:182
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Screen sharing requested"
 msgstr "Ekran görüntüsü kaydetme &klasörü:"
 
 #. Translators: question asked before this screen is shared, with mouse control
-#: addon\globalPlugins\remoteClient\screen_share.py:219
+#: addon\globalPlugins\remoteClient\screen_share.py:220
 msgid ""
 "Do you want to share your screen? The controlling computer will see this "
 "screen and will be able to use its mouse."
 msgstr ""
 
 #. Translators: question asked before this screen is shared
-#: addon\globalPlugins\remoteClient\screen_share.py:222
+#: addon\globalPlugins\remoteClient\screen_share.py:223
 msgid ""
 "Do you want to share your screen? The controlling computer will see this "
 "screen."
 msgstr ""
 
 #. Translators: title of the screen sharing request dialog
-#: addon\globalPlugins\remoteClient\screen_share.py:226
+#: addon\globalPlugins\remoteClient\screen_share.py:227
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Screen sharing request"
 msgstr "Ekran görüntüsü kaydetme &klasörü:"
 
 #. Translators: message spoken on the controlled computer when it starts sharing its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:264
+#: addon\globalPlugins\remoteClient\screen_share.py:265
 msgid "Sharing this screen"
 msgstr ""
 
 #. Translators: message spoken when the screen sharing window could not be opened
-#: addon\globalPlugins\remoteClient\screen_share.py:287
+#: addon\globalPlugins\remoteClient\screen_share.py:288
 #, fuzzy
 #| msgid "Choose where to save the received file"
 msgid "Unable to start screen sharing"
@@ -1071,27 +1071,34 @@ msgstr "Alınan dosyanın nereye kaydedileceğini seçin"
 
 #. Translators: message spoken when the other computer ended screen sharing
 #. Translators: message spoken when screen sharing stopped unexpectedly
-#: addon\globalPlugins\remoteClient\screen_share.py:303
-#: addon\globalPlugins\remoteClient\screen_share.py:429
+#: addon\globalPlugins\remoteClient\screen_share.py:304
+#: addon\globalPlugins\remoteClient\screen_share.py:445
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Screen sharing ended"
 msgstr "Ekran görüntüsü kaydetme &klasörü:"
 
 #. Translators: message spoken when the screen sharing picture starts flowing
-#: addon\globalPlugins\remoteClient\screen_share.py:369
+#: addon\globalPlugins\remoteClient\screen_share.py:370
 #, fuzzy
 #| msgid "Screenshot save &folder:"
 msgid "Screen sharing started"
 msgstr "Ekran görüntüsü kaydetme &klasörü:"
 
 #. Translators: message spoken when the screen sharing link could not be established
-#: addon\globalPlugins\remoteClient\screen_share.py:434
+#: addon\globalPlugins\remoteClient\screen_share.py:450
 msgid "Unable to establish the screen sharing connection"
 msgstr ""
 
+#. Translators: message spoken when the shared screen is not being received
+#: addon\globalPlugins\remoteClient\screen_share.py:461
+msgid ""
+"The shared picture has not arrived. The connection between the two computers "
+"may be blocked."
+msgstr ""
+
 #. Translators: message spoken when the other computer refused to share its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:465
+#: addon\globalPlugins\remoteClient\screen_share.py:492
 #, fuzzy
 #| msgid "This is the only computer connected to this session"
 #| msgid_plural "There are {} computers connected to this session"
@@ -1099,14 +1106,14 @@ msgid "The other computer refused to share its screen"
 msgstr "Bu oturuma bağlı tek bir bilgisayar var"
 
 #. Translators: message spoken when the other computer is already sharing its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:468
+#: addon\globalPlugins\remoteClient\screen_share.py:495
 #, fuzzy
 #| msgid "The remote computer is available again. Control remains local."
 msgid "The other computer is already sharing its screen"
 msgstr "Uzak bilgisayar tekrar kullanılabilir. Kontrol yerel kalır."
 
 #. Translators: message spoken when the other computer cannot share its screen
-#: addon\globalPlugins\remoteClient\screen_share.py:470
+#: addon\globalPlugins\remoteClient\screen_share.py:497
 #, fuzzy
 #| msgid "The remote computer is available again. Control remains local."
 msgid "The other computer is unable to share its screen"

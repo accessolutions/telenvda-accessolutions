@@ -66,20 +66,44 @@ function fail(reason) {
 	show("" + reason);
 }
 
+/* What happens inside this page is invisible from NVDA, and a session which ends
+   in a black window leaves nothing at all to look at afterwards. Every step worth
+   knowing about is therefore sent back, and lands in the log of NVDA. */
+function report(text) {
+	post({ event: "log", text: String(text).slice(0, 500) });
+}
+
 /* ------------------------------------------------------------ session setup */
 
 function createConnection(iceServers) {
+	const servers = Array.isArray(iceServers) ? iceServers : [];
+	report("Setting the connection up with " + servers.length + " ICE server(s)");
 	pc = new RTCPeerConnection({
-		iceServers: Array.isArray(iceServers) ? iceServers : [],
+		iceServers: servers,
 		bundlePolicy: "max-bundle",
 	});
+	/* Which kinds of address were found says why a link failed: only host candidates
+	   means no STUN answered, and no relay candidate means the TURN server was not
+	   reachable, which is what breaks sessions between two different networks. */
+	const candidateTypes = Object.create(null);
 	pc.onicecandidate = (event) => {
 		if (event.candidate) {
+			const type = event.candidate.type || "unknown";
+			candidateTypes[type] = (candidateTypes[type] || 0) + 1;
 			post({ event: "candidate", candidate: JSON.stringify(event.candidate.toJSON()) });
+		} else {
+			const summary = Object.keys(candidateTypes)
+				.map((type) => type + ": " + candidateTypes[type])
+				.join(", ");
+			report("Address gathering finished (" + (summary || "no address at all") + ")");
 		}
+	};
+	pc.oniceconnectionstatechange = () => {
+		report("Address negotiation is " + pc.iceConnectionState);
 	};
 	pc.onconnectionstatechange = () => {
 		if (stopped) { return; }
+		report("The link is " + pc.connectionState);
 		if (pc.connectionState === "connected") {
 			post({ event: "connected" });
 			show("");
@@ -91,6 +115,7 @@ function createConnection(iceServers) {
 	};
 	if (!isPublisher) {
 		pc.ontrack = (event) => {
+			report("The picture track arrived");
 			video.srcObject = event.streams[0];
 		};
 	}
@@ -140,6 +165,9 @@ async function startPublisher(command) {
 		return;
 	}
 	stream.getVideoTracks().forEach((track) => {
+		const settings = track.getSettings ? track.getSettings() : {};
+		report("Capturing " + (settings.width || "?") + "x" + (settings.height || "?")
+			+ " at " + (settings.frameRate || "?") + " frames a second");
 		/* What is being watched is text, not a film. This tells the encoder to keep the
 		   picture sharp and drop frames rather than blur the letters when the bandwidth
 		   runs short. */
@@ -157,6 +185,7 @@ async function startPublisher(command) {
 	applyQuality(quality, maxFps);
 	const offer = await pc.createOffer();
 	await pc.setLocalDescription(offer);
+	report("Sending the offer");
 	post({ event: "offer", sdp: pc.localDescription.sdp });
 }
 
@@ -273,6 +302,37 @@ function enableInput() {
 	video.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
+/* --------------------------------------------------------- watching the picture */
+
+/* How long the watching user is left in front of a black window before being told
+   that nothing is coming. Setting a link up, and the first frame after it, take a
+   few seconds on a slow network. */
+const PICTURE_TIMEOUT = 15000;
+
+function watchPicture() {
+	/* A window that stays black tells a blind user nothing at all, and the message
+	   below is on a page they are not reading. The add-on is therefore told, and says
+	   it out loud. */
+	let warned = false;
+	const started = Date.now();
+	const timer = setInterval(() => {
+		if (stopped) { clearInterval(timer); return; }
+		if (video.videoWidth && video.videoHeight) {
+			clearInterval(timer);
+			report("The picture arrived, " + video.videoWidth + "x" + video.videoHeight);
+			show("");
+			return;
+		}
+		if (!warned && Date.now() - started > PICTURE_TIMEOUT) {
+			warned = true;
+			const state = pc ? pc.connectionState + ", addresses " + pc.iceConnectionState : "no connection";
+			report("No picture after " + Math.round(PICTURE_TIMEOUT / 1000) + " s (link " + state + ")");
+			post({ event: "no_picture" });
+			show("The picture has not arrived.");
+		}
+	}, 500);
+}
+
 /* --------------------------------------------------------- commands from NVDA */
 
 async function handleCommand(command) {
@@ -285,6 +345,7 @@ async function handleCommand(command) {
 		} else {
 			if (command.allow_input) { enableInput(); }
 			show("Waiting for the picture...");
+			watchPicture();
 		}
 	} else if (name === "offer") {
 		if (!pc) { return; }
@@ -292,10 +353,12 @@ async function handleCommand(command) {
 		await drainCandidates();
 		const answer = await pc.createAnswer();
 		await pc.setLocalDescription(answer);
+		report("Answering the offer");
 		post({ event: "answer", sdp: pc.localDescription.sdp });
 	} else if (name === "answer") {
 		if (!pc) { return; }
 		await pc.setRemoteDescription({ type: "answer", sdp: command.sdp });
+		report("The answer arrived");
 		await drainCandidates();
 	} else if (name === "candidate") {
 		let candidate;
@@ -358,6 +421,7 @@ window.addEventListener("pagehide", () => {
 if (role !== "publisher" && role !== "viewer") {
 	show("Unknown role");
 } else {
+	report("The page opened as " + role);
 	poll();
 }
 </script>
