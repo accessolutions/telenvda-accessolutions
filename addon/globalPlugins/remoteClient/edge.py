@@ -35,6 +35,7 @@ this runs. The browser dialog is not usable by someone who cannot see the window
 it would open in.
 """
 
+import ctypes
 import os
 import shutil
 import subprocess
@@ -80,10 +81,68 @@ _KNOWN_ROOTS = (
 #: picture would capture itself.
 _OFF_SCREEN_POSITION = "-32000,-32000"
 
+#: Title the signalling page gives to its window, and therefore the title Windows
+#: reads on the window the browser opens. Kept in step with the title element of
+#: web/screen_share.html.
+_WINDOW_TITLE = "TeleNVDA screen sharing"
+
+#: How long the off screen window is watched for taking the keyboard, and how often.
+#: Chromium creates its window a moment after the process starts, and on a busy
+#: computer opening a brand new profile that moment can be a couple of seconds.
+_FOCUS_GRACE = 10.0
+_FOCUS_INTERVAL = 0.2
+
 #: How long to keep trying to delete the temporary profile. Edge releases its files
 #: a moment after the window closes, so the first attempt usually fails.
 _CLEANUP_ATTEMPTS = 10
 _CLEANUP_DELAY = 1.0
+
+
+def _foreground_window():
+	"""Return the handle of the window that currently has the keyboard, or 0."""
+	# Imported here and not at the top of the module: the package imports this one.
+	from . import _get_user32
+
+	try:
+		return _get_user32().GetForegroundWindow() or 0
+	except Exception:
+		logger.debug("Unable to read the foreground window", exc_info=True)
+		return 0
+
+
+def _restore_focus(previous):
+	"""Give the keyboard back to the window its user was working in.
+
+	Chromium always opens its window in the foreground, even one placed far outside
+	the desktop. On the computer being watched that takes the keyboard away from
+	whatever its user was doing, and their screen reader starts reading them a page
+	they cannot see and did not ask for.
+
+	The focus is therefore taken back, but only from the sharing window, and only
+	once: someone who moves elsewhere while the browser is still starting has made a
+	choice, and that choice wins over this one.
+	"""
+	from . import _get_user32, force_window_to_foreground
+
+	try:
+		user32 = _get_user32()
+		# One character more than the title being looked for, so that a longer title
+		# which merely starts the same way does not read as a match.
+		buffer = ctypes.create_unicode_buffer(len(_WINDOW_TITLE) + 2)
+		deadline = time.monotonic() + _FOCUS_GRACE
+		while time.monotonic() < deadline:
+			time.sleep(_FOCUS_INTERVAL)
+			handle = user32.GetForegroundWindow()
+			if not handle or handle == previous:
+				continue
+			user32.GetWindowTextW(handle, buffer, len(buffer))
+			if buffer.value != _WINDOW_TITLE:
+				return
+			if force_window_to_foreground(previous):
+				logger.info("Screen sharing: the keyboard was given back to the window it was in")
+				return
+	except Exception:
+		logger.debug("Unable to give the focus back after starting the browser", exc_info=True)
 
 
 def _find_one(executable, program_files_subdir):
@@ -175,6 +234,8 @@ class EdgeWindow:
 			raise RuntimeError("No supported browser is installed")
 		if self.running:
 			return
+		# Read before the browser opens, which is the moment the foreground changes.
+		previous_focus = _foreground_window() if off_screen else 0
 		self._profile = tempfile.mkdtemp(prefix="telenvda-screenshare-")
 		arguments = _build_arguments(browser, url, self._profile, off_screen)
 		self._process = subprocess.Popen(
@@ -185,6 +246,13 @@ class EdgeWindow:
 			creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
 		)
 		logger.info("Screen sharing: %s started, off screen: %s", os.path.basename(browser), off_screen)
+		if previous_focus:
+			threading.Thread(
+				target=_restore_focus,
+				args=(previous_focus,),
+				name="screen_share_focus",
+				daemon=True,
+			).start()
 
 	def stop(self):
 		"""Close the window and delete its profile, without blocking the caller."""
