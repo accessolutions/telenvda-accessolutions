@@ -92,6 +92,11 @@ configspec = StringIO("""
 	max_width = integer(default=1600)
 	quality = option("low", "balanced", "high", default="balanced")
 
+[remote_audio]
+	enabled = boolean(default=True)
+	volume = integer(default=80)
+	excluded_applications = list(default=list())
+
 [keep_awake]
 	enabled = boolean(default=True)
 	delay_seconds = integer(default=60)

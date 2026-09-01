@@ -643,6 +643,18 @@ class OptionsDialog(SettingsPanel):
 			_("High, for a fast connection"),
 		])
 		sizer.Add(self.screen_share_quality)
+		# Translators: A checkbox in add-on options dialog to allow sharing the sound of this computer.
+		self.remote_audio_enabled = wx.CheckBox(self, wx.ID_ANY, label=_("Allow sharing the sound of this computer, after confirmation"))
+		self.remote_audio_enabled.Bind(wx.EVT_CHECKBOX, self.on_remote_audio_enabled)
+		sizer.Add(self.remote_audio_enabled)
+		# Translators: Label for the volume the sound of the other computer is played at.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Volume of the sound coming from the other computer, as a percentage:")))
+		self.remote_audio_volume = wx.SpinCtrl(self, wx.ID_ANY, min=0, max=100)
+		sizer.Add(self.remote_audio_volume)
+		# Translators: A button in add-on options dialog to choose which applications are heard.
+		self.remote_audio_sources = wx.Button(self, wx.ID_ANY, label=_("Audio &sources..."))
+		self.remote_audio_sources.Bind(wx.EVT_BUTTON, self.on_remote_audio_sources)
+		sizer.Add(self.remote_audio_sources)
 		# Translators: a text field in add-on options dialog to set the portcheck service URL
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Portcheck &service URL: ")))
 		self.portcheck = wx.TextCtrl(self, wx.ID_ANY)
@@ -681,6 +693,22 @@ class OptionsDialog(SettingsPanel):
 		self.screen_share_max_fps.Enable(enabled)
 		self.screen_share_max_width.Enable(enabled)
 		self.screen_share_quality.Enable(enabled)
+
+	def on_remote_audio_enabled(self, evt):
+		evt.Skip()
+
+	def on_remote_audio_sources(self, evt):
+		"""Open the list of applications whose sound is not wanted.
+
+		The volume and this list are settings of the computer that listens, so they
+		stay available even when this one refuses to share its own sound.
+		"""
+		from . import audio_share
+		dialog = AudioSourcesDialog(self, audio_share.excluded_applications())
+		if dialog.ShowModal() == wx.ID_OK:
+			audio_share.set_excluded_applications(dialog.excluded())
+		dialog.Destroy()
+		evt.Skip()
 
 	def on_autoconnect(self, evt):
 		if self.autoconnect.GetValue() and not self._autoconnect_was_enabled:
@@ -809,6 +837,8 @@ class OptionsDialog(SettingsPanel):
 			quality = SCREEN_SHARE_DEFAULT_QUALITY
 		self.screen_share_quality.SetSelection(SCREEN_SHARE_QUALITIES.index(quality))
 		self._update_screen_share_controls()
+		self.remote_audio_enabled.SetValue(bool(config['remote_audio']['enabled']))
+		self.remote_audio_volume.SetValue(int(config['remote_audio']['volume']))
 		self.screenshot_directory.SetValue(configuration.get_screenshot_directory())
 		self.originalProfileName = NVDAConfig.conf.profiles[-1].name
 		NVDAConfig.conf.profiles[-1].name = None
@@ -931,6 +961,8 @@ class OptionsDialog(SettingsPanel):
 		config['screen_share']['max_fps'] = int(self.screen_share_max_fps.GetValue())
 		config['screen_share']['max_width'] = SCREEN_SHARE_WIDTHS[self.screen_share_max_width.GetSelection()]
 		config['screen_share']['quality'] = SCREEN_SHARE_QUALITIES[self.screen_share_quality.GetSelection()]
+		config['remote_audio']['enabled'] = self.remote_audio_enabled.GetValue()
+		config['remote_audio']['volume'] = int(self.remote_audio_volume.GetValue())
 		config['updates']['check_at_startup'] = self.check_updates.GetValue()
 		if not configuration.readonly:
 			config.write()
@@ -939,6 +971,94 @@ class OptionsDialog(SettingsPanel):
 		if plugin is not None and not getattr(plugin, '_terminated', False):
 			plugin.restart_inactivity_monitor()
 			plugin.keep_awake.reload()
+
+class AudioSourcesDialog(wx.Dialog):
+	"""Choose which applications of the other computer are heard.
+
+	Only the applications that are not wanted are remembered, so a computer used to
+	assist many others never builds an inventory of everything they ever ran. What
+	is stored is the name of the executable, because the identifier of a process
+	changes every time the program is started again.
+	"""
+
+	def __init__(self, parent, excluded):
+		super().__init__(
+			parent,
+			# Translators: title of the dialog listing the applications whose sound is heard
+			title=_("Audio sources"),
+		)
+		self._names = []
+		main_sizer = wx.BoxSizer(wx.VERTICAL)
+		sizer = wx.BoxSizer(wx.VERTICAL)
+		sizer.Add(wx.StaticText(
+			self, wx.ID_ANY,
+			# Translators: instructions in the dialog listing the applications whose sound is heard
+			label=_("Uncheck the applications whose sound you do not want to hear:"),
+		))
+		self.applications = wx.CheckListBox(self, wx.ID_ANY, choices=[])
+		sizer.Add(self.applications, 1, wx.EXPAND | wx.TOP, 5)
+		# Translators: a button to name an application which has not been heard yet
+		self.add = wx.Button(self, wx.ID_ANY, label=_("&Add an application..."))
+		self.add.Bind(wx.EVT_BUTTON, self.on_add)
+		sizer.Add(self.add, 0, wx.TOP, 5)
+		main_sizer.Add(sizer, 1, wx.EXPAND | wx.ALL, 10)
+		buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
+		if buttons is not None:
+			main_sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 10)
+		self.SetSizerAndFit(main_sizer)
+		self._fill(excluded)
+		self.applications.SetFocus()
+
+	def _fill(self, excluded):
+		excluded = {name.lower() for name in excluded}
+		heard = set(self._heard_now())
+		for name in sorted(heard | excluded):
+			# An application that is not running can still be excluded in advance, and an
+			# exclusion decided earlier must stay visible so that it can be undone.
+			label = name if name in heard else _(
+				# Translators: an application in the audio sources dialog which is not running
+				"{application} (not running)"
+			).format(application=name)
+			self._names.append(name)
+			index = self.applications.Append(label)
+			self.applications.Check(index, name not in excluded)
+
+	def _heard_now(self):
+		"""Return the applications the other computer is playing sound from, if any."""
+		plugin = getattr(sys.modules.get(__package__), 'client', None)
+		session = getattr(plugin, 'master_session', None) if plugin is not None else None
+		manager = getattr(session, 'remote_audio', None) if session is not None else None
+		if manager is None:
+			return []
+		return manager.sounding_applications()
+
+	def on_add(self, evt):
+		entry = wx.TextEntryDialog(
+			self,
+			# Translators: prompt asking for the file name of an application to exclude
+			message=_("File name of the application, for example vlc.exe:"),
+			# Translators: title of the dialog asking for an application to exclude
+			caption=_("Add an application"),
+		)
+		if entry.ShowModal() == wx.ID_OK:
+			name = entry.GetValue().strip().lower()
+			if name and name not in self._names:
+				self._names.append(name)
+				index = self.applications.Append(_(
+					# Translators: an application in the audio sources dialog which is not running
+					"{application} (not running)"
+				).format(application=name))
+				self.applications.Check(index, False)
+		entry.Destroy()
+		evt.Skip()
+
+	def excluded(self):
+		"""Return the applications the user does not want to hear."""
+		return [
+			name for index, name in enumerate(self._names)
+			if not self.applications.IsChecked(index)
+		]
+
 
 class CertificateUnauthorizedDialog(wx.MessageDialog):
 

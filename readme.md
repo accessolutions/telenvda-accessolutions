@@ -26,6 +26,8 @@ version 2 or later.
 * Two remote screenshot workflows described below.
 * Optional peer to peer screen sharing of the controlled computer, with mouse
   control when its user allows it.
+* Optional remote audio, application by application, usable without any screen
+  sharing and without any program other than NVDA.
 
 ## Installation
 
@@ -218,6 +220,54 @@ will see this screen and will be able to use its mouse.* Nothing is shared and
 no mouse event is applied before that question has been answered, and the
 answer only lasts for the session. No keyboard input ever travels over this
 link.
+
+## Remote audio
+
+The picture is not always what is missing. The controlling computer can also
+hear what the controlled one is playing: a video, an alert, a program which
+starts talking on its own. Press **NVDA+Control+Shift+K** to start or stop
+hearing it. The sound is a session of its own and needs no picture, so it can be
+used alone; starting it does not take the keyboard.
+
+What travels is not everything the sound card plays. Windows can tell one
+program's sound from another's, and that is what is used: each application is
+captured on its own and the results are mixed. The screen reader of the
+controlled computer is never among them, so its voice is not heard twice.
+
+The **Audio sources** button in the add-on options lists the applications heard
+during the current session, and lets any of them be silenced. Only the
+applications that are refused are remembered, by the name of their program, so a
+computer used to assist many others never builds a list of everything they ever
+ran. An application which is not running can be named in advance with **Add an
+application**, and an application refused earlier stays in the list so that the
+decision can be undone.
+
+Before anything is heard, the controlled computer asks its user to agree, and
+that answer only lasts for the session. Nothing is recorded at either end.
+
+Unlike the picture, the sound is carried by the session itself: it is folded down
+to what a telephone carries and sent as ordinary messages of the protocol. It is
+therefore encrypted along with everything else when an encryption password is
+set, it needs no browser, no TURN server and no relay built for screen sharing,
+and it goes wherever the session already goes. It does pass through the relay,
+which the picture does not, and it arrives about half a second late; neither
+matters when one is listening to a computer rather than talking to a person. The
+cost on the line is about a hundred and seventy kilobits a second, roughly half
+of what screen sharing at its lowest quality asks for, and nothing at all during
+the stretches when no application is playing anything.
+
+Two more settings are available in the add-on options:
+
+* **Allow sharing the sound of this computer, after confirmation**, which turns
+  the feature off when cleared, on this computer only.
+* **Volume of the sound coming from the other computer**, which is worth
+  lowering, since that sound is played over the speech of the local screen
+  reader.
+
+Before Windows 10 version 2004, Windows cannot separate one program's sound from
+another's. On such a computer the whole sound card is shared instead, which
+includes the speech of the screen reader running there; both users are told when
+that happens.
 
 ## Controlling the remote computer
 

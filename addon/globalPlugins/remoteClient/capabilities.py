@@ -32,6 +32,10 @@ FEATURE_CHUNKED_FILE_TRANSFER = "chunked_file_transfer"
 #: WebRTC screen sharing of the controlled computer, with optional mouse control.
 FEATURE_SCREEN_SHARE = "screen_share"
 
+#: Sound of the controlled computer, application by application, carried by the
+#: messages of the protocol itself.
+FEATURE_REMOTE_AUDIO = "remote_audio"
+
 #: Optional features implemented by this build.
 LOCAL_FEATURES = (FEATURE_CHUNKED_FILE_TRANSFER,)
 
@@ -49,9 +53,11 @@ def available_features():
 	"""
 	features = list(LOCAL_FEATURES)
 	# Imported lazily: screen_share imports this module to read the feature names.
-	from . import screen_share
+	from . import audio_share, screen_share
 	if screen_share.is_available():
 		features.append(FEATURE_SCREEN_SHARE)
+	if audio_share.is_available():
+		features.append(FEATURE_REMOTE_AUDIO)
 	return features
 
 

@@ -204,6 +204,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.script_screenshot,
 			self.script_screenshot_powershell,
 			self.script_toggle_screen_share,
+			self.script_toggle_remote_audio,
 			self.script_toggle_remote_mouse,
 		)
 		self.is_connect_dialog_open = False
@@ -1021,6 +1022,29 @@ class GlobalPlugin(_GlobalPlugin):
 			return
 		self._switch_to_remote_control(gesture)
 		self.screen_share_took_control = True
+
+	@script(
+		# Translators: toggle remote audio gesture description
+		_("Starts or stops hearing the sound of the controlled computer"),
+		gesture="kb:control+shift+NVDA+k",
+		**speakOnDemand)
+	def script_toggle_remote_audio(self, gesture):
+		"""Start or stop hearing the applications playing on the controlled computer.
+
+		The sound is a session of its own: it needs no picture, and the keyboard stays
+		where it is. The gesture works from either end, the controlled one being able
+		only to end a session it accepted.
+		"""
+		session = None
+		if self.master_session is not None and self._is_master_connected():
+			session = self.master_session
+		elif self.slave_session is not None and self._is_slave_connected():
+			session = self.slave_session
+		if session is None or session.remote_audio is None:
+			ui.message(_("Not connected."))
+			return
+		configuration.record_activity()
+		ui.message(session.remote_audio.toggle())
 
 	@script(
 		# Translators: toggle remote mouse control gesture description

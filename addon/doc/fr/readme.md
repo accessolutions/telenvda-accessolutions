@@ -153,6 +153,94 @@ deux côtés et la session est bloquée pendant le transfert, elle est donc
 désactivée par défaut. Une autre option limite la taille des fichiers acceptés
 en réception.
 
+## Partage d'écran
+
+L'ordinateur qui contrôle peut afficher l'écran de l'ordinateur contrôlé et,
+lorsque son utilisateur l'accepte, déplacer sa souris. **NVDA+Contrôle+Maj+V**
+démarre ou arrête le partage. Le raccourci fonctionne des deux côtés :
+l'ordinateur contrôleur démarre la session, et l'un ou l'autre peut y mettre
+fin.
+
+L'image circule directement entre les deux ordinateurs chaque fois que le réseau
+le permet, elle ne passe donc pas par le serveur relais et ne consomme pas sa
+bande passante. Lorsqu'aucune route directe n'existe, un serveur TURN annoncé
+par le relais est utilisé en dernier recours. Rien n'est enregistré d'un côté ni
+de l'autre.
+
+Avant tout partage, l'ordinateur contrôlé demande son accord à son utilisateur.
+Accepter autorise du même coup l'ordinateur contrôleur à utiliser la souris de
+cet ordinateur, et cette réponse unique est oubliée à la fin de la session.
+Aucune frappe clavier ne circule par cette liaison.
+
+Le partage d'écran a besoin d'un navigateur Chromium installé sur les deux
+ordinateurs, d'un relais démarré avec le partage d'écran activé, et des deux
+ordinateurs équipés d'une version de TeleNVDA qui le prend en charge. Microsoft
+Edge est utilisé lorsqu'il est présent, ce qui est le cas sur tout Windows à
+jour ; Google Chrome et Brave servent de solutions de repli. Lorsqu'il manque
+l'un de ces éléments, la commande le signale et rien d'autre ne change.
+
+Le navigateur ne sert que de moteur vidéo. Sur l'ordinateur partagé, il tourne
+dans une fenêtre maintenue hors de l'écran, afin de ne jamais se capturer
+lui-même et de ne jamais prendre le focus à NVDA. Sur l'ordinateur contrôleur,
+il affiche l'image. Aucun profil de navigation de l'utilisateur n'est touché :
+un profil temporaire est créé pour la session puis supprimé.
+
+Trois réglages ajustent l'image dans les options : le nombre maximal d'images
+par seconde, la largeur maximale à laquelle l'image est réduite avant d'être
+encodée, et la qualité, qui fixe le plafond de bande passante. Réduire la
+largeur est de loin le moyen le plus efficace de fluidifier une session sur un
+grand écran ou un ordinateur lent.
+
+## Son distant
+
+L'image n'est pas toujours ce qui manque. L'ordinateur qui contrôle peut aussi
+entendre ce que l'ordinateur contrôlé joue : une vidéo, une alerte, un programme
+qui se met à parler tout seul. **NVDA+Contrôle+Maj+K** démarre ou arrête
+l'écoute. Le son est une session à part entière et n'a besoin d'aucune image, il
+peut donc servir seul ; le démarrer ne prend pas le clavier.
+
+Ce qui circule n'est pas tout ce que joue la carte son. Windows sait distinguer
+le son d'un programme de celui d'un autre, et c'est ce qui est utilisé : chaque
+application est capturée séparément puis les résultats sont mélangés. Le lecteur
+d'écran de l'ordinateur contrôlé n'en fait jamais partie, sa voix n'est donc pas
+entendue deux fois.
+
+Le bouton **Sources audio** des options énumère les applications entendues
+pendant la session en cours et permet d'en faire taire n'importe laquelle. Seules
+les applications refusées sont mémorisées, par le nom de leur programme : un
+ordinateur qui assiste beaucoup d'autres postes ne constitue jamais l'inventaire
+de tout ce qu'ils ont pu exécuter. Une application qui ne tourne pas peut être
+désignée à l'avance avec **Ajouter une application**, et une application refusée
+précédemment reste dans la liste pour que la décision puisse être annulée.
+
+Avant toute écoute, l'ordinateur contrôlé demande son accord à son utilisateur,
+et cette réponse ne vaut que pour la session. Rien n'est enregistré d'un côté ni
+de l'autre.
+
+Contrairement à l'image, le son est porté par la session elle-même : il est
+ramené à ce que transporte le téléphone puis envoyé comme un message ordinaire du
+protocole. Il est donc chiffré avec tout le reste lorsqu'un mot de passe de
+chiffrement est défini, il n'a besoin d'aucun navigateur, d'aucun serveur TURN et
+d'aucun relais prévu pour le partage d'écran, et il passe partout où la session
+passe déjà. Il traverse en revanche le relais, ce que l'image ne fait pas, et il
+arrive avec environ une demi-seconde de retard ; ni l'un ni l'autre n'importe
+lorsqu'on écoute un ordinateur plutôt qu'on ne parle à une personne. Le coût sur
+la ligne est d'environ cent soixante-dix kilobits par seconde, à peu près la
+moitié de ce que demande le partage d'écran à sa qualité la plus basse, et rien
+du tout pendant les périodes où aucune application ne joue quoi que ce soit.
+
+Deux réglages supplémentaires sont disponibles dans les options :
+
+* **Autoriser le partage du son de cet ordinateur, après confirmation**, qui
+  désactive la fonction lorsqu'elle est décochée, sur cet ordinateur seulement ;
+* **Volume du son provenant de l'autre ordinateur**, qu'il vaut mieux baisser,
+  puisque ce son est joué par-dessus la parole du lecteur d'écran local.
+
+Avant Windows 10 version 2004, Windows ne sait pas séparer le son d'un programme
+de celui d'un autre. Sur un tel ordinateur, c'est toute la carte son qui est
+partagée, ce qui comprend la parole du lecteur d'écran qui y tourne ; les deux
+utilisateurs en sont avertis.
+
 ## Sécurité
 
 N'utilisez pas une clé de session prévisible et ne partagez pas votre clé

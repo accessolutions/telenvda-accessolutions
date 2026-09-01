@@ -15,7 +15,7 @@ from . import nvda_patcher
 from . import compat_screenshot
 from . import capabilities
 from . import file_transfer
-from . import screen_share
+from . import audio_share, screen_share
 from . import mouse_control
 from . import RelayTransport
 from collections import defaultdict
@@ -63,8 +63,14 @@ class RemoteSession:
 		# read again every time the capabilities are announced.
 		self.capabilities.max_file_size = self.file_transfer_manager.max_receive_size
 		self.screen_share = None
+		self.remote_audio = None
 		if self.SCREEN_SHARE_ROLE is not None:
 			self.screen_share = screen_share.ScreenShareManager(
+				transport, self.capabilities, self.SCREEN_SHARE_ROLE
+			)
+			# The sound is a session of its own: it is often wanted without any picture,
+			# and stopping one must not stop the other.
+			self.remote_audio = audio_share.AudioShareManager(
 				transport, self.capabilities, self.SCREEN_SHARE_ROLE
 			)
 		self.client_count = 1
