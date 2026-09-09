@@ -1,5 +1,6 @@
 import sys
 import os
+import uuid
 import globalVars
 import wx
 from .transport import TransportEvents
@@ -17,6 +18,7 @@ from . import capabilities
 from . import file_transfer
 from . import screen_share
 from . import mouse_control
+from . import remote_keyboard
 from . import RelayTransport
 try:
 	# The remote sound is the newest and the least essential of the features. A
@@ -122,10 +124,16 @@ class SlaveSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_client_left', self.handle_client_disconnected)
 		self.transport.callback_manager.register_callback('msg_key', self.handle_key)
 		self.masters = defaultdict(dict)
+		self.remote_keyboard_passthrough = remote_keyboard.RemoteKeyboardPassthrough()
+		self.transport.callback_manager.register_callback(
+			'msg_' + remote_keyboard.MESSAGE_REQUEST,
+			self.handle_remote_keyboard_passthrough_request,
+		)
 		self.master_display_sizes = []
 
 		self.transport.callback_manager.register_callback('msg_index', self.recv_index)
 		self.transport.callback_manager.register_callback(TransportEvents.CLOSING, self.handle_transport_closing)
+		self.transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.handle_transport_disconnected)
 		self.patcher = nvda_patcher.NVDASlavePatcher()
 		self.patch_callbacks_added = False
 		self.transport.callback_manager.register_callback('msg_channel_joined', self.handle_channel_joined)
@@ -156,7 +164,46 @@ class SlaveSession(RemoteSession):
 	def handle_key(self, **kwargs):
 		"""A master performed a key action on this slave: record it as remote control activity."""
 		configuration.record_activity()
-		return self.local_machine.send_key(**kwargs)
+		kwargs = dict(kwargs)
+		# The bypass flag is session state, never a command supplied by the peer.
+		kwargs.pop('bypass_nvda', None)
+		return self.local_machine.send_key(
+			bypass_nvda=self.remote_keyboard_passthrough.enabled,
+			**kwargs,
+		)
+
+	def handle_remote_keyboard_passthrough_request(
+		self, request_id=None, enabled=None, origin=None, **kwargs
+	):
+		"""Apply a validated remote keyboard mode request and always answer it."""
+		if type(request_id) is str and len(request_id) <= remote_keyboard.MAX_REQUEST_ID_LENGTH:
+			response_request_id = request_id
+		else:
+			response_request_id = ""
+		reason = None
+		if origin is None or origin not in self.masters:
+			reason = remote_keyboard.ERROR_INVALID_ORIGIN
+		elif len(self.masters) != 1:
+			reason = remote_keyboard.ERROR_MULTIPLE_MASTERS
+		else:
+			reason = remote_keyboard.validate_request(request_id, enabled)
+			if reason is None and not remote_keyboard.is_available():
+				reason = remote_keyboard.ERROR_UNSUPPORTED_NVDA_VERSION
+		if reason is None:
+			try:
+				self.remote_keyboard_passthrough.set_enabled(enabled)
+			except Exception:
+				log.exception("Unable to change the remote keyboard mode")
+				reason = remote_keyboard.ERROR_INTERNAL
+		if reason is not None:
+			log.warning("Rejected remote keyboard mode request: %s", reason)
+		self.transport.send(
+			type=remote_keyboard.MESSAGE_STATE,
+			request_id=response_request_id,
+			success=reason is None,
+			enabled=self.remote_keyboard_passthrough.enabled,
+			reason=reason or "",
+		)
 
 	def handle_set_clipboard_text(self, **kwargs):
 		"""A master pushed clipboard content to this slave: record it as remote control activity."""
@@ -191,17 +238,21 @@ class SlaveSession(RemoteSession):
 			self.patch_callbacks_added = True
 		cues.client_connected()
 		if client['connection_type'] == 'master':
+			self.remote_keyboard_passthrough.reset()
 			self.masters[client['id']]['active'] = True
 		self.client_count += 1
 
 	def handle_channel_joined(self, channel=None, clients=None, origin=None, **kwargs):
 		if clients is None:
 			clients = []
+		self.masters.clear()
+		self.remote_keyboard_passthrough.reset()
 		for client in clients:
 			self.handle_client_connected(client)
 		self.client_count = len(clients)+1
 
 	def handle_transport_closing(self):
+		self.remote_keyboard_passthrough.reset()
 		self.patcher.unpatch()
 		if self.patch_callbacks_added:
 			self.remove_patch_callbacks()
@@ -212,13 +263,15 @@ class SlaveSession(RemoteSession):
 
 	def handle_transport_disconnected(self):
 		cues.client_connected()
+		self.remote_keyboard_passthrough.reset()
 		self.patcher.unpatch()
 
 	def handle_client_disconnected(self, client=None, **kwargs):
 		cues.client_disconnected()
-		if client['connection_type'] == 'master':
-			del self.masters[client['id']]
+		if isinstance(client, dict) and client.get('connection_type') == 'master':
+			self.masters.pop(client.get('id'), None)
 		if not self.masters:
+			self.remote_keyboard_passthrough.reset()
 			self.patcher.unpatch()
 			self.mouse_receiver.reset()
 		self.client_count -= 1
@@ -331,6 +384,9 @@ class MasterSession(RemoteSession):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.slaves = defaultdict(dict)
+		# None means that this connection has not yet received a confirmed state.
+		self.remote_keyboard_state = None
+		self._remote_keyboard_pending = None
 		# Pending capture driven with the standard protocol, when any.
 		self._compat_screenshot = None
 		# True once the relay has told us who is in the channel.
@@ -352,12 +408,17 @@ class MasterSession(RemoteSession):
 		self.transport.callback_manager.register_callback('msg_file_transfer', self.local_machine.file_transfer)
 		self.transport.callback_manager.register_callback('msg_send_braille_info', self.send_braille_info)
 		self.transport.callback_manager.register_callback('msg_screenshot', self.handle_screenshot)
+		self.transport.callback_manager.register_callback(
+			'msg_' + remote_keyboard.MESSAGE_STATE,
+			self.handle_remote_keyboard_passthrough_state,
+		)
 		self.transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.handle_connected)
 		self.transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.handle_disconnected)
 		self.mouse_sender = mouse_control.MouseSender(self.transport)
 		self.transport.callback_manager.register_callback(TransportEvents.CLOSING, self.handle_transport_closing)
 
 	def handle_transport_closing(self):
+		self._reset_remote_keyboard()
 		self.mouse_sender.stop()
 
 	def handle_set_clipboard_text(self, text=None, **kwargs):
@@ -406,9 +467,116 @@ class MasterSession(RemoteSession):
 		"""Whether at least one controlled (slave) computer is known to be in the channel."""
 		return bool(self.slaves)
 
+	def _reset_remote_keyboard(self):
+		pending = self._remote_keyboard_pending
+		self._remote_keyboard_pending = None
+		if pending is not None and pending.get("timer") is not None:
+			pending["timer"].Stop()
+		self.remote_keyboard_state = None
+
+	def _complete_remote_keyboard_request(self, request_id, success, enabled, reason):
+		pending = self._remote_keyboard_pending
+		if pending is None or pending["request_id"] != request_id:
+			return
+		self._remote_keyboard_pending = None
+		if pending.get("timer") is not None:
+			pending["timer"].Stop()
+		if success:
+			self.remote_keyboard_state = enabled
+		callback = pending.get("callback")
+		if callback is not None:
+			try:
+				callback(success, enabled, reason)
+			except Exception:
+				log.exception("Unable to report the remote keyboard mode result")
+
+	def _remote_keyboard_request_timed_out(self, request_id):
+		self._complete_remote_keyboard_request(
+			request_id,
+			False,
+			None,
+			remote_keyboard.ERROR_TIMEOUT,
+		)
+
+	def request_remote_keyboard_passthrough(self, enabled, on_result=None):
+		"""Ask the unique controlled peer to change its injection mode.
+
+		The return value is an immediate refusal code, or ``None`` when the request
+		was sent and its result will be delivered to ``on_result``.
+		"""
+		if type(enabled) is not bool:
+			return remote_keyboard.ERROR_INVALID_REQUEST
+		if self._remote_keyboard_pending is not None:
+			return remote_keyboard.ERROR_REQUEST_PENDING
+		if len(self.slaves) == 0:
+			return remote_keyboard.ERROR_NO_SLAVE
+		if len(self.slaves) != 1:
+			return remote_keyboard.ERROR_MULTIPLE_SLAVES
+		slave_id = next(iter(self.slaves))
+		if not self.capabilities.peer_supports(
+			slave_id,
+			remote_keyboard.FEATURE_REMOTE_KEYBOARD_PASSTHROUGH,
+		):
+			return remote_keyboard.ERROR_UNSUPPORTED_NVDA_VERSION
+
+		request_id = str(uuid.uuid4())
+		pending = {
+			"request_id": request_id,
+			"slave_id": slave_id,
+			"callback": on_result,
+			"timer": None,
+		}
+		self._remote_keyboard_pending = pending
+		pending["timer"] = wx.CallLater(
+			5000,
+			self._remote_keyboard_request_timed_out,
+			request_id,
+		)
+		try:
+			self.transport.send(
+				type=remote_keyboard.MESSAGE_REQUEST,
+				request_id=request_id,
+				enabled=enabled,
+			)
+		except Exception:
+			log.exception("Unable to send the remote keyboard mode request")
+			self._reset_remote_keyboard()
+			return remote_keyboard.ERROR_INTERNAL
+		return None
+
+	def handle_remote_keyboard_passthrough_state(
+		self, request_id=None, success=None, enabled=None, reason="", origin=None, **kwargs
+	):
+		"""Accept only the response to the request sent to the expected slave."""
+		pending = self._remote_keyboard_pending
+		if pending is None:
+			log.warning("Ignoring a remote keyboard mode response without a pending request")
+			return
+		if origin != pending["slave_id"]:
+			log.warning("Ignoring a remote keyboard mode response from an unexpected peer")
+			return
+		if request_id != pending["request_id"]:
+			log.warning("Ignoring a stale remote keyboard mode response")
+			return
+		if type(success) is not bool or type(enabled) is not bool:
+			log.warning("Ignoring a malformed remote keyboard mode response")
+			self._complete_remote_keyboard_request(
+				request_id,
+				False,
+				None,
+				remote_keyboard.ERROR_INTERNAL,
+			)
+			return
+		if not isinstance(reason, str):
+			reason = remote_keyboard.ERROR_INTERNAL
+		if success:
+			reason = ""
+		self._complete_remote_keyboard_request(request_id, success, enabled, reason)
+
 	def handle_nvda_not_connected(self):
 		# The relay told us that no controlled computer is in the channel.
 		self.slaves.clear()
+		self._reset_remote_keyboard()
 		self.slave_state_known = True
 		speech.cancelSpeech()
 		ui.message(_("Remote NVDA not connected."))
@@ -420,11 +588,13 @@ class MasterSession(RemoteSession):
 	def handle_disconnected(self):
 		# speech index approach changed in 2019.3
 		self._cancel_compat_screenshot()
+		self._reset_remote_keyboard()
 
 	def handle_channel_joined(self, channel=None, clients=None, origin=None, **kwargs):
 		if clients is None:
 			clients = []
 		self.slaves.clear()
+		self._reset_remote_keyboard()
 		self.slave_state_known = True
 		for client in clients:
 			self.handle_client_connected(client)
@@ -437,6 +607,7 @@ class MasterSession(RemoteSession):
 			self.patch_callbacks_added = True
 		if isinstance(client, dict) and client.get('connection_type') == 'slave':
 			self.slaves[client['id']]['active'] = True
+			self._reset_remote_keyboard()
 			self.slave_state_known = True
 		self.send_braille_info()
 		cues.client_connected()
@@ -445,6 +616,7 @@ class MasterSession(RemoteSession):
 	def handle_client_disconnected(self, client=None, **kwargs):
 		if isinstance(client, dict) and client.get('connection_type') == 'slave':
 			self.slaves.pop(client['id'], None)
+			self._reset_remote_keyboard()
 			self.slave_state_known = True
 		if not self.has_slaves():
 			self.patcher.unpatch()

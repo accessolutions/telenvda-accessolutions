@@ -85,7 +85,9 @@ class ClientPanel(wx.Panel):
 		sizer.Add(self.port)
 		# Translators: Label of the edit field to enter key (password) to secure the remote connection.
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Key:")))
-		self.key = wx.TextCtrl(self, wx.ID_ANY)
+		self.key = wx.ComboBox(self, wx.ID_ANY)
+		self.key.SetItems(configuration.get_key_history())
+		self.key.SetValue("")
 		sizer.Add(self.key)
 		# Translators: The button used to generate a random key/password.
 		self.generate_key = wx.Button(parent=self, label=_("&Generate Key"))

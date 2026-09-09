@@ -175,7 +175,7 @@ class BrailleInputGesture(braille.BrailleDisplayGesture, brailleInput.BrailleInp
 		return None
 
 
-def send_key(vk=None, scan=None, extended=False, pressed=True):
+def send_key(vk=None, scan=None, extended=False, pressed=True, bypass_nvda=False):
 	i = INPUT()
 	i.union.ki.wVk = vk
 	if scan:
@@ -187,7 +187,12 @@ def send_key(vk=None, scan=None, extended=False, pressed=True):
 	if extended:
 		i.union.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY
 	i.type = INPUT_KEYBOARD
-	ctypes.windll.user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(INPUT))
+	if bypass_nvda:
+		from . import remote_keyboard
+		with remote_keyboard.ignore_injection():
+			ctypes.windll.user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(INPUT))
+	else:
+		ctypes.windll.user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(INPUT))
 
 
 def get_virtual_desktop():

@@ -285,6 +285,22 @@ computer, the same gesture requests that the controller return control to the
 local machine. For best results, use matching keyboard layouts on both
 computers.
 
+When the keyboard is under local control, press **Control+Shift+F1** to switch
+the interpretation of remotely injected keys on the controlled computer. The
+controlled NVDA confirms each change before it is announced. In the normal
+state, remote keys may activate NVDA gestures there. In remote keyboard
+passthrough mode, only the keys injected by TeleNVDA bypass NVDA's gesture
+interpretation and reach Windows, the foreground application, JAWS, or
+Narrator. The physical keyboard, the mouse, and NVDA's global keyboard hook are
+not disabled. Press the gesture again to restore normal interpretation.
+
+This command is available only with exactly one compatible controlled computer
+and requires local keyboard control before it can be changed. It is not
+available on the secure desktop, with several controlled computers, or with an
+older peer that does not announce the capability. The state is temporary and
+returns to normal after the connection ends. The gesture can be reassigned in
+NVDA's Input Gestures dialog.
+
 The Remote menu also provides commands for sending Ctrl+Alt+Delete, muting
 remote speech, pushing clipboard text, and sending files. File transfers are
 available to session members and should only be used with trusted peers.

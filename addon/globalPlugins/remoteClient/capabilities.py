@@ -36,6 +36,9 @@ FEATURE_SCREEN_SHARE = "screen_share"
 #: messages of the protocol itself.
 FEATURE_REMOTE_AUDIO = "remote_audio"
 
+#: Remote key injection which is deliberately ignored by NVDA's gesture handler.
+FEATURE_REMOTE_KEYBOARD_PASSTHROUGH = "remote_keyboard_passthrough"
+
 #: Optional features implemented by this build.
 LOCAL_FEATURES = (FEATURE_CHUNKED_FILE_TRANSFER,)
 
@@ -52,6 +55,9 @@ def available_features():
 	turned off in the configuration, so it is only announced when usable.
 	"""
 	features = list(LOCAL_FEATURES)
+	from . import remote_keyboard
+	if remote_keyboard.is_available():
+		features.append(FEATURE_REMOTE_KEYBOARD_PASSTHROUGH)
 	# Imported lazily: screen_share imports this module to read the feature names.
 	from . import screen_share
 	if screen_share.is_available():
@@ -196,6 +202,11 @@ class CapabilityNegotiator:
 			if feature not in capabilities["features"]:
 				return False
 		return True
+
+	def peer_supports(self, peer_id, feature):
+		"""Whether one specific peer announced an optional feature."""
+		peer = self.peer_capabilities.get(peer_id)
+		return bool(peer and feature in peer.get("features", ()))
 
 	def peers_supporting(self, feature):
 		"""Return the identifiers of the peers which announced the given feature."""

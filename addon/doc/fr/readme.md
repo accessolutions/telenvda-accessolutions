@@ -191,6 +191,25 @@ encodée, et la qualité, qui fixe le plafond de bande passante. Réduire la
 largeur est de loin le moyen le plus efficace de fluidifier une session sur un
 grand écran ou un ordinateur lent.
 
+## Interprétation du clavier distant
+
+Lorsque le clavier est rendu à l'ordinateur local, **Contrôle+Maj+F1** permet
+de modifier l'interprétation des touches injectées à distance sur l'ordinateur
+contrôlé. NVDA confirme chaque changement avant de l'annoncer. Dans le mode
+normal, les touches distantes peuvent déclencher des gestes NVDA sur cet
+ordinateur. En mode clavier brut distant, seules les touches injectées par
+TeleNVDA contournent l'interprétation des gestes NVDA et atteignent Windows,
+l'application au premier plan, JAWS ou Narrator. Le clavier physique, la souris
+et le hook clavier global de NVDA ne sont pas désactivés. Le même geste rétablit
+l'interprétation normale.
+
+Cette commande exige exactement un ordinateur contrôlé compatible et le
+contrôle du clavier local avant toute modification. Elle n'est pas disponible
+sur le bureau sécurisé, avec plusieurs ordinateurs contrôlés, ni avec un pair
+ancien qui n'annonce pas cette fonction. L'état est temporaire et revient au
+mode normal à la fin de la connexion. Le geste reste réaffectable dans la boîte
+de dialogue Gestes de commandes de NVDA.
+
 ## Son distant
 
 L'image n'est pas toujours ce qui manque. L'ordinateur qui contrôle peut aussi

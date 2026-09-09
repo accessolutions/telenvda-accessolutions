@@ -154,8 +154,15 @@ class LocalMachine:
 	def handle_decide_enabled(self):
 		return not self.receiving_braille
 
-	def send_key(self, vk_code=None, extended=None, pressed=None, **kwargs):
-		wx.CallAfter(input.send_key, vk_code, None, extended, pressed)
+	def send_key(self, vk_code=None, extended=None, pressed=None, bypass_nvda=False, **kwargs):
+		wx.CallAfter(
+			input.send_key,
+			vk_code,
+			None,
+			extended,
+			pressed,
+			bypass_nvda,
+		)
 
 	def send_mouse(self, t=None, x=None, y=None, b=None, d=None, h=False, **kwargs):
 		"""Apply one mouse event sent by the controlling computer.

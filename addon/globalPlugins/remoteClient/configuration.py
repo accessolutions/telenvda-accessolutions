@@ -19,6 +19,8 @@ LEGACY_CONFIG_FILE_NAME = 'remote.ini'
 # but can still be entered manually when starting a connection.
 DEFAULT_SERVER_HOSTS = ("nvda.fr", "nvdaremote.com")
 
+MAX_KEY_HISTORY = 5
+
 # Addresses which may already exist in the connection history but should no
 # longer be suggested by the connection dialog.
 HIDDEN_SERVER_ADDRESSES = frozenset(("nvdaremote.accessolutions.fr:443",))
@@ -37,6 +39,7 @@ _config = None
 configspec = StringIO("""
 [connections]
 	last_connected = list(default=list("nvdaremote.accessolutions.fr"))
+	key_history = list(default=list())
 [controlserver]
 	autoconnect = boolean(default=False)
 	self_hosted = boolean(default=False)
@@ -498,6 +501,27 @@ def write_connection_to_config(address, transport_type='tcp'):
 	conf['connections']['last_connected'].append(address)
 	if not readonly:
 		conf.write()
+
+def get_key_history():
+	"""Return the most recent distinct keys used to control another machine."""
+	history = get_config()['connections'].get('key_history', [])
+	if isinstance(history, str):
+		history = [history] if history else []
+	return [str(key) for key in history if str(key)][:MAX_KEY_HISTORY]
+
+def write_key_to_config(key):
+	"""Remember a key after a successful controller connection."""
+	if readonly:
+		return False
+	key = str(key)
+	if not key:
+		return False
+	conf = get_config()
+	history = [item for item in get_key_history() if item != key]
+	history.insert(0, key)
+	conf['connections']['key_history'] = history[:MAX_KEY_HISTORY]
+	conf.write()
+	return True
 
 def record_activity():
 	"""Record that a real remote control action was just performed or received

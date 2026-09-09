@@ -337,6 +337,75 @@ Upon receiving a `screenshot` message, the controlling machine writes the
 decoded image to a temporary file and opens it with the system's default image
 viewer.
 
+#### Remote keyboard passthrough
+
+TeleNVDA clients may announce the optional capability
+`remote_keyboard_passthrough`. It is available only when the controlled NVDA
+version exposes a safe way to ignore an injected keyboard event. This feature
+does not stop or uninstall NVDA's global keyboard hook. It only changes how
+keys injected by TeleNVDA are handled while they are being injected:
+
+* with `enabled` set to `false`, remote keys follow the normal path and may
+  trigger NVDA gestures on the controlled computer;
+* with `enabled` set to `true`, remote keys are passed to Windows without being
+  interpreted as NVDA gestures, so shortcuts for JAWS, Narrator, Windows, or
+  the foreground application can be used;
+* the physical keyboard, the mouse, and all other NVDA input paths are
+  unchanged.
+
+The controlling computer may use this feature only when exactly one controlled
+computer is known and that peer announced the capability. The first version
+also requires exactly one controlling computer on the controlled side. The
+state is temporary, starts disabled for every new connection, and is reset when
+the connection or the last controlling peer ends. It is never written to an
+NVDA or TeleNVDA configuration file. These ordinary messages are broadcast by
+historical relays; the clients therefore validate `origin` and never rely on a
+payload role or on a `target` field. They are not excluded from application
+encryption.
+
+The controlling computer sends the following request:
+
+```json
+{
+  "type": "remote_keyboard_passthrough_request",
+  "request_id": "UUID",
+  "enabled": true
+}
+```
+
+`request_id` is an opaque non-empty string of at most 128 characters. The
+controlled computer accepts only an exact JSON boolean for `enabled`; numeric
+values, strings, and null are invalid. After checking that `origin` identifies
+one of its current masters, it applies the request idempotently and answers
+with its actual state:
+
+```json
+{
+  "type": "remote_keyboard_passthrough_state",
+  "request_id": "UUID",
+  "success": true,
+  "enabled": true,
+  "reason": ""
+}
+```
+
+The controlling computer accepts a response only when `origin` is the unique
+slave expected for its pending request and when `request_id` matches exactly.
+Responses from an old, duplicated, malformed, or other peer are ignored. A
+request expires after five seconds. Stable refusal codes are:
+
+* `invalid_origin` — the sender is not a known master;
+* `multiple_masters` — more than one master is present on the controlled side;
+* `invalid_request` — `request_id` or `enabled` failed validation;
+* `unsupported_nvda_version` — the capability was not announced;
+* `internal_error` — the state could not be applied or a response was invalid;
+* `no_slave`, `multiple_slaves`, `request_pending`, and `timeout` — local
+  controlling-side refusal or expiration codes.
+
+The request and response are excluded from the secure-desktop bridge. The
+secure desktop therefore does not offer this feature rather than applying it
+in two NVDA contexts.
+
 #### Remote mouse
 
 The `mouse` message lets the controlling machine drive the pointer of the

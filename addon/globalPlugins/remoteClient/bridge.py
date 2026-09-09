@@ -1,6 +1,7 @@
 import enum
 
 from . import screen_share
+from . import remote_keyboard
 
 
 class BridgeTransport:
@@ -18,6 +19,8 @@ class BridgeTransport:
 		"set_braille_info",
 		"telenvda_capabilities",
 		"capabilities",
+		remote_keyboard.MESSAGE_REQUEST,
+		remote_keyboard.MESSAGE_STATE,
 		screen_share.MSG_TURN_CREDENTIALS,
 		screen_share.MSG_REQUEST,
 		screen_share.MSG_RESPONSE,

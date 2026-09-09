@@ -135,6 +135,7 @@ else:
 from . import keep_awake
 from . import local_machine
 from . import mouse_hook
+from . import remote_keyboard
 from . import serializer
 from . import server
 from . import updater
@@ -209,6 +210,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.script_toggle_screen_share,
 			self.script_toggle_remote_audio,
 			self.script_toggle_remote_mouse,
+			self.script_toggle_remote_keyboard_passthrough,
 		)
 		self.is_connect_dialog_open = False
 		self._connect_dialog = None
@@ -1028,6 +1030,61 @@ class GlobalPlugin(_GlobalPlugin):
 		self.screen_share_took_control = True
 
 	@script(
+		# Translators: toggle remote keyboard passthrough gesture description
+		_("Toggles whether remote keyboard input is interpreted by NVDA on the controlled computer"),
+		gesture="kb:control+shift+f1",
+		**speakOnDemand)
+	def script_toggle_remote_keyboard_passthrough(self, gesture):
+		"""Ask the controlled computer to interpret or bypass remote key input."""
+		if not self._is_master_connected() or self.master_session is None:
+			ui.message(_("No remote computer is connected."))
+			return
+		if self.sending_keys:
+			ui.message(_("Return to local control before changing the remote keyboard mode."))
+			return
+		if not self._remote_slave_available():
+			ui.message(_("No controlled computer is connected."))
+			return
+		state = self.master_session.remote_keyboard_state
+		enabled = not state if state is not None else True
+		reason = self.master_session.request_remote_keyboard_passthrough(
+			enabled,
+			on_result=self._announce_remote_keyboard_result,
+		)
+		if reason is not None:
+			ui.message(self._remote_keyboard_error_message(reason))
+
+	def _announce_remote_keyboard_result(self, success, enabled, reason):
+		if success:
+			if enabled:
+				ui.message(_("NVDA keyboard interpretation is disabled for remote keys."))
+			else:
+				ui.message(_("NVDA keyboard interpretation is enabled for remote keys."))
+			return
+		ui.message(self._remote_keyboard_error_message(reason))
+
+	def _remote_keyboard_error_message(self, reason):
+		messages = {
+			remote_keyboard.ERROR_NO_SLAVE: _("No controlled computer is connected."),
+			remote_keyboard.ERROR_MULTIPLE_SLAVES: _(
+				"Several controlled computers are connected; the remote keyboard mode was cancelled."
+			),
+			remote_keyboard.ERROR_UNSUPPORTED_NVDA_VERSION: _(
+				"The controlled computer does not support remote keyboard passthrough."
+			),
+			remote_keyboard.ERROR_REQUEST_PENDING: _(
+				"A remote keyboard mode change is already in progress."
+			),
+			remote_keyboard.ERROR_TIMEOUT: _(
+				"The controlled computer did not confirm the remote keyboard mode change."
+			),
+		}
+		return messages.get(
+			reason,
+			_("The controlled computer refused the remote keyboard mode change."),
+		)
+
+	@script(
 		# Translators: toggle remote audio gesture description
 		_("Starts or stops hearing the sound of the controlled computer, or lists the applications heard when pressed twice"),
 		gesture="kb:control+shift+NVDA+k",
@@ -1251,12 +1308,14 @@ class GlobalPlugin(_GlobalPlugin):
 		return self.master_session.has_slaves()
 
 	def _abort_remote_control(self):
-		"""Give keyboard control back to the local machine because the controlled computer is gone."""
+		"""Pause key forwarding while keeping the user's remote-control choice."""
 		if not self.sending_keys:
 			return
-		self._return_to_local_control()
-		# Translators: Presented when the controlled computer left the session while keyboard control was remote.
-		ui.message(_("The remote computer is no longer connected. Control returned to local machine."))
+		# The remote computer can come back without the master connection being
+		# re-established. Keep ``sending_keys`` enabled so forwarding resumes as soon
+		# as the slave joins the channel again; local input is passed through while it
+		# is unavailable.
+		self._clear_remote_key_state()
 
 	def on_master_client_left(self, client=None, **kwargs):
 		if self._remote_slave_available():
@@ -1295,6 +1354,12 @@ class GlobalPlugin(_GlobalPlugin):
 			self.master_transport.send(type="key", vk_code=k[0], extended=k[1], pressed=False)
 		self.key_modifiers = set()
 
+	def _clear_remote_key_state(self):
+		"""Forget keys which cannot be released after the remote endpoint disappeared."""
+		self.hostPendingModifiers = set()
+		self.hostPendingNonmodifier = None
+		self.key_modifiers = set()
+
 	def _return_to_local_control(self, release_keys=False, stop_hook=False):
 		was_sending_keys = self.sending_keys
 		if release_keys:
@@ -1308,9 +1373,7 @@ class GlobalPlugin(_GlobalPlugin):
 				security.postSessionLockStateChanged.unregister(self.onSessionLockStateChange)
 			elif buildVersion.version_year>=2023:
 				security.post_sessionLockStateChanged.unregister(self.onSessionLockStateChange)
-		self.hostPendingModifiers = set()
-		self.hostPendingNonmodifier = None
-		self.key_modifiers = set()
+		self._clear_remote_key_state()
 		if stop_hook and buildVersion.version_year < 2025:
 			if self.hook_thread is not None:
 				ctypes.windll.user32.PostThreadMessageW(self.hook_thread.ident, WM_QUIT, 0, 0)
@@ -1486,6 +1549,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.master_transport.address,
 			'websocket' if isinstance(self.master_transport, WebSocketRelayTransport) else 'tcp',
 		)
+		configuration.write_key_to_config(self.master_transport.channel)
 		if not self.menu.FindItemById(self.disconnect_item.Id):
 			self.menu.Insert(0, self.disconnect_item)
 		if self.menu.FindItemById(self.connect_item.Id):
@@ -1509,7 +1573,7 @@ class GlobalPlugin(_GlobalPlugin):
 				self.hook_thread.start()
 		# Translators: Presented when connected to the remote computer.
 		ui.message(_("Connected!"))
-		if was_interrupted:
+		if was_interrupted and not self.sending_keys:
 			# Translators: Presented when an interrupted remote connection becomes available again. Keyboard control remains local until the user toggles it.
 			ui.message(_("The remote computer is available again. Control remains local."))
 		cues.connected()
@@ -1519,14 +1583,13 @@ class GlobalPlugin(_GlobalPlugin):
 	def on_disconnected_as_master(self):
 		if self.master_disconnect_requested:
 			return
-		was_sending_keys = self._return_to_local_control(stop_hook=True)
+		# A lost relay connection must not cancel the user's remote-control choice.
+		# The hook remains alive for older NVDA versions and simply passes local
+		# input through until the connection and the slave are available again.
+		self._clear_remote_key_state()
 		self.master_connection_interrupted = True
-		if was_sending_keys:
-			# Translators: Presented when the remote connection is interrupted while keyboard control is remote.
-			ui.message(_("Connection interrupted. Control returned to local machine."))
-		else:
-			# Translators: Presented when connection to a remote computer was interrupted.
-			ui.message(_("Connection interrupted"))
+		# Translators: Presented when connection to a remote computer was interrupted.
+		ui.message(_("Connection interrupted"))
 
 	def _create_relay_transport(self, address, key, encryption_key, connection_type, insecure=False, transport_type="tcp", ws_path="/"):
 		transport_class = WebSocketRelayTransport if transport_type == "websocket" else RelayTransport
@@ -1643,11 +1706,10 @@ class GlobalPlugin(_GlobalPlugin):
 		if not self.sending_keys:
 			return False
 		if not self._is_master_connected():
-			# Never join the hook thread from the hook thread itself.
-			wx.CallAfter(self._return_to_local_control, False, True)
+			self._clear_remote_key_state()
 			return False
 		if not self._remote_slave_available():
-			wx.CallAfter(self._abort_remote_control)
+			self._abort_remote_control()
 			return False
 		keyCode = (kwargs['vk_code'], kwargs['extended'])
 		if not kwargs['pressed'] and keyCode in self.hostPendingModifiers:
@@ -1881,7 +1943,10 @@ class GlobalPlugin(_GlobalPlugin):
 				self.slave_transport.send(type="request_local_control")
 				return
 			if self.sending_keys:
-				self._return_to_local_control()
+				# The gesture remains the explicit way to leave the remote mode even
+				# while the relay or the slave is temporarily unavailable.
+				self._switch_to_local_control()
+				return
 			# Translators: Presented when Insert+Alt+Tab is pressed without an active remote connection.
 			ui.message(_("No remote computer is connected."))
 			return
@@ -1928,10 +1993,10 @@ class GlobalPlugin(_GlobalPlugin):
 		if not self.sending_keys:
 			return True
 		if not self._is_master_connected():
-			wx.CallAfter(self._return_to_local_control)
+			self._clear_remote_key_state()
 			return True
 		if not self._remote_slave_available():
-			wx.CallAfter(self._abort_remote_control)
+			self._abort_remote_control()
 			return True
 		keyCode = (vkCode, extended)
 		if not pressed and keyCode in self.hostPendingModifiers:
