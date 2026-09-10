@@ -60,6 +60,22 @@ jobs:
         else
           scons
         fi
+        package="$(find . -maxdepth 1 -type f -name '*.nvda-addon' -print -quit)"
+        test -n "$package"
+        for entry in \
+          globalPlugins/remoteClient/native/opus-LICENSE.txt \
+          globalPlugins/remoteClient/native/x86/opus.dll \
+          globalPlugins/remoteClient/native/x64/opus.dll; do
+          unzip -Z1 "$package" | grep -Fx "$entry"
+        done
+        if x86_64-w64-mingw32-objdump -p addon/globalPlugins/remoteClient/native/x64/opus.dll | grep -qi 'DLL Name: libssp-0.dll'; then
+          echo 'x64 Opus DLL still depends on libssp-0.dll' >&2
+          exit 1
+        fi
+        if i686-w64-mingw32-objdump -p addon/globalPlugins/remoteClient/native/x86/opus.dll | grep -qi 'DLL Name: libssp-0.dll'; then
+          echo 'x86 Opus DLL still depends on libssp-0.dll' >&2
+          exit 1
+        fi
         scons pot
 
     - uses: actions/upload-artifact@v7.0.1
