@@ -65,17 +65,22 @@ jobs:
         for entry in \
           globalPlugins/remoteClient/native/opus-LICENSE.txt \
           globalPlugins/remoteClient/native/x86/opus.dll \
-          globalPlugins/remoteClient/native/x64/opus.dll; do
+          globalPlugins/remoteClient/native/x86/libssp-0.dll \
+          globalPlugins/remoteClient/native/x64/opus.dll \
+          globalPlugins/remoteClient/native/x64/libssp-0.dll; do
           unzip -Z1 "$package" | grep -Fx "$entry"
         done
-        if x86_64-w64-mingw32-objdump -p addon/globalPlugins/remoteClient/native/x64/opus.dll | grep -qi 'DLL Name: libssp-0.dll'; then
-          echo 'x64 Opus DLL still depends on libssp-0.dll' >&2
-          exit 1
-        fi
-        if i686-w64-mingw32-objdump -p addon/globalPlugins/remoteClient/native/x86/opus.dll | grep -qi 'DLL Name: libssp-0.dll'; then
-          echo 'x86 Opus DLL still depends on libssp-0.dll' >&2
-          exit 1
-        fi
+        for architecture in x86 x64; do
+          if [[ "$architecture" == x86 ]]; then
+            objdump=i686-w64-mingw32-objdump
+          else
+            objdump=x86_64-w64-mingw32-objdump
+          fi
+          if ! "$objdump" -p "addon/globalPlugins/remoteClient/native/$architecture/opus.dll" | grep -qi 'DLL Name: libssp-0.dll'; then
+            echo "$architecture Opus DLL does not declare libssp-0.dll" >&2
+            exit 1
+          fi
+        done
         scons pot
 
     - uses: actions/upload-artifact@v7.0.1

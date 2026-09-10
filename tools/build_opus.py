@@ -81,6 +81,19 @@ def _find_dll(directory: Path) -> Path:
 	return candidates[0]
 
 
+def _find_compiler_runtime(compiler: str, filename: str) -> Path:
+	result = subprocess.run(
+		[compiler, f"-print-file-name={filename}"],
+		check=True,
+		capture_output=True,
+		text=True,
+	).stdout.strip()
+	path = Path(result)
+	if not path.is_file():
+		raise RuntimeError(f"The MinGW compiler did not provide {filename}: {result}")
+	return path
+
+
 def _build_one(source: Path, workspace: Path, destination: Path, architecture: str) -> None:
 	build = workspace / f"build-{architecture}"
 	install = workspace / f"install-{architecture}"
@@ -90,6 +103,9 @@ def _build_one(source: Path, workspace: Path, destination: Path, architecture: s
 	_run(["cmake", "--install", str(build), "--config", "Release", "--prefix", str(install)])
 	destination.mkdir(parents=True, exist_ok=True)
 	shutil.copy2(_find_dll(install), destination / "opus.dll")
+	if os.name != "nt":
+		compiler = "i686-w64-mingw32-gcc" if architecture == "x86" else "x86_64-w64-mingw32-gcc"
+		shutil.copy2(_find_compiler_runtime(compiler, "libssp-0.dll"), destination / "libssp-0.dll")
 
 
 def main() -> int:
@@ -98,7 +114,7 @@ def main() -> int:
 		"--output",
 		type=Path,
 		default=Path(__file__).resolve().parents[1] / "addon/globalPlugins/remoteClient/native",
-		help="native directory receiving x86/opus.dll and x64/opus.dll",
+		help="native directory receiving the architecture-specific Opus DLLs",
 	)
 	args = parser.parse_args()
 	if shutil.which("cmake") is None:
