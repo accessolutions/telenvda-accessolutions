@@ -8,6 +8,12 @@ import types
 import pytest
 
 
+pytestmark = pytest.mark.skipif(
+	sys.platform != "win32",
+	reason="audio_capture uses the Windows audio API",
+)
+
+
 MODULE_PATH = Path(__file__).parents[1] / "addon/globalPlugins/remoteClient/audio_capture.py"
 
 
