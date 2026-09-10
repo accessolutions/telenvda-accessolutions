@@ -36,6 +36,9 @@ FEATURE_SCREEN_SHARE = "screen_share"
 #: messages of the protocol itself.
 FEATURE_REMOTE_AUDIO = "remote_audio"
 
+#: Negotiated Opus audio, with 48 kHz stereo PCM at both ends.
+FEATURE_REMOTE_AUDIO_OPUS = "remote_audio_opus_v1"
+
 #: Remote key injection which is deliberately ignored by NVDA's gesture handler.
 FEATURE_REMOTE_KEYBOARD_PASSTHROUGH = "remote_keyboard_passthrough"
 
@@ -66,6 +69,8 @@ def available_features():
 		from . import audio_share
 		if audio_share.is_available():
 			features.append(FEATURE_REMOTE_AUDIO)
+			if audio_share.is_opus_available():
+				features.append(FEATURE_REMOTE_AUDIO_OPUS)
 	except Exception:
 		logger.exception("Unable to tell whether remote audio is available")
 	return features

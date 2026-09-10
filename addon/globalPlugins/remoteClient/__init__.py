@@ -1032,7 +1032,7 @@ class GlobalPlugin(_GlobalPlugin):
 	@script(
 		# Translators: toggle remote keyboard passthrough gesture description
 		_("Toggles whether remote keyboard input is interpreted by NVDA on the controlled computer"),
-		gesture="kb:control+shift+f1",
+		gesture="kb:shift+insert+escape",
 		**speakOnDemand)
 	def script_toggle_remote_keyboard_passthrough(self, gesture):
 		"""Ask the controlled computer to interpret or bypass remote key input."""
@@ -1488,19 +1488,9 @@ class GlobalPlugin(_GlobalPlugin):
 	def _show_connect_dialog(self):
 		# Set the flag to True, indicating that the connect dialog is open
 		self.is_connect_dialog_open = True
-		last_cons = configuration.get_config()['connections']['last_connected']
 		# Translators: Title of the connect dialog.
 		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("TeleNVDA - Connect"))
 		self._connect_dialog = dlg
-		host_items = [
-			address for address in reversed(last_cons)
-			if not configuration.is_hidden_server_address(address)
-		]
-		for default_host in configuration.DEFAULT_SERVER_HOSTS:
-			if default_host not in host_items:
-				host_items.append(default_host)
-		dlg.panel.host.SetItems(host_items)
-		dlg.panel.host.SetSelection(0)
 		def handle_dlg_complete(dlg_result):
 			if self._connect_dialog is dlg:
 				self._connect_dialog = None

@@ -1,4 +1,6 @@
 This release brings the following changes:
+* Keep the last-used relay and the built-in relay list when switching from Client to Server and back in the connection dialog.
+* Remember the last 10 successful connection keys by default, with a per-user setting in the TeleNVDA options to choose how many keys are retained.
 * Open the list of the applications heard by pressing the remote audio gesture twice, from either computer, and act on the session in progress rather than only on a preference. Silencing an application while it is being heard used to mean going into the options and starting the session again for the choice to be applied.
 * Write in the log of NVDA what remote audio is doing: which applications hold a sound session on the computer being heard, which of them are captured, what is announced to the listening computer and what the Audio sources dialog was given. Those modules wrote to a log of their own which NVDA never reads, so nothing they had to say was recorded anywhere.
 * Fix an application added by hand in the Audio sources dialog always being announced as not running, even when it was playing at that very moment.

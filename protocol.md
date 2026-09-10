@@ -721,6 +721,80 @@ The pictures themselves are carried on a WebRTC data channel rather than a media
 track, as still frames compressed to JPEG and split into chunks. That format is
 private to the two helper programs and is not part of this protocol.
 
+### Remote audio
+
+Remote audio over Opus is announced with the optional client capability
+`remote_audio_opus_v1`. It is advertised only when the local capture path is
+enabled and the architecture-specific `libopus` DLL can create both an encoder
+and a decoder. A client must not start an Opus session when either endpoint has
+not announced this capability.
+
+The controlling computer sends a unicast request. The `target` and `origin`
+fields are handled by the relay and are not trusted as application state:
+
+```json
+{
+  "type": "remote_audio_request",
+  "target": 12,
+  "codecs": ["opus"],
+  "sample_rate": 48000,
+  "channels": 2,
+  "frame_ms": 20,
+  "excluded": ["example.exe"]
+}
+```
+
+The controlled computer refuses the request before asking for consent when Opus
+was not offered, cannot be loaded, or the requested format is invalid. Refusal
+reasons are `unsupported_codec`, `opus_unavailable`, `invalid_parameters`,
+`busy`, `declined`, and `unavailable`.
+
+After consent, the controlled computer confirms the exact format and creates a
+new positive integer stream identifier:
+
+```json
+{
+  "type": "remote_audio_response",
+  "target": 12,
+  "accepted": true,
+  "codec": "opus",
+  "sample_rate": 48000,
+  "channels": 2,
+  "frame_ms": 20,
+  "stream": 1
+}
+```
+
+The controlling computer starts the session only after validating every format
+field and the stream identifier. An accepted response without these fields is
+invalid and does not start playback.
+
+The audio data message carries one or two 20 ms Opus packets:
+
+```json
+{
+  "type": "remote_audio_opus_data",
+  "target": 12,
+  "stream": 1,
+  "sequence": 2048,
+  "frame_ms": 20,
+  "sample_rate": 48000,
+  "channels": 2,
+  "packets": ["...base64..."]
+}
+```
+
+`stream` and `sequence` are unsigned 32-bit integers; `stream` must be greater
+than zero. Each message contains at most two non-empty Base64 packets, and each
+decoded packet is at most 4,000 bytes. Invalid Base64, oversized packets, an
+unexpected stream, an unsupported format, duplicate data, and old data are
+ignored before any native decoder call. A short forward sequence gap is concealed
+with Opus packet-loss concealment; a longer gap resets the decoder and waits for
+the playback prebuffer again. The sender groups two frames, abandons frames when
+the transport queue is persistently congested, and adapts the Opus bitrate between
+48, 64, 96 and 128 kbit/s with hysteresis. Audio messages are ordinary encrypted
+protocol messages and require no relay change.
+
 ### Braille Support
 
 ```json

@@ -38,6 +38,11 @@ dependencies = [
 	"pre-commit==4.2.0",
 	"pyright[nodejs]==1.1.407",
 ]
+
+[project.optional-dependencies]
+dev = [
+	"pytest==8.4.2",
+]
 [project.urls]
 Repository = "https://github.com/Accessolutions/telenvda-accessolutions"
 

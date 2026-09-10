@@ -25,6 +25,7 @@ of what screen sharing at its lowest quality asks for.
 """
 
 import base64
+import secrets
 import threading
 
 import wx
@@ -36,7 +37,7 @@ import ui
 # would write nothing at all below the warning level.
 from logHandler import log as logger
 
-from . import capabilities, configuration
+from . import audio_protocol, capabilities, configuration
 from .screen_share import ROLE_PUBLISHER, ROLE_VIEWER, STATE_ACTIVE, STATE_IDLE, STATE_REQUESTING
 from .transport import TransportEvents
 
@@ -52,6 +53,12 @@ except Exception:
 	logger.exception("Remote audio cannot be used on this computer")
 
 try:
+	from . import audio_opus
+except Exception:
+	audio_opus = None
+	logger.exception("Remote audio Opus cannot be used on this computer")
+
+try:
 	addonHandler.initTranslation()
 except addonHandler.AddonError:
 	logger.warning("Unable to initialise translations. This may be because the addon is running from NVDA scratchpad.")
@@ -63,6 +70,7 @@ MSG_REQUEST = "remote_audio_request"
 MSG_RESPONSE = "remote_audio_response"
 MSG_STOP = "remote_audio_stop"
 MSG_DATA = "remote_audio_data"
+MSG_OPUS_DATA = "remote_audio_opus_data"
 MSG_SOURCES = "remote_audio_sources"
 MSG_EXCLUDE = "remote_audio_exclude"
 
@@ -70,6 +78,7 @@ MSG_EXCLUDE = "remote_audio_exclude"
 #: time would mean fifty messages a second, each carrying less than it costs to
 #: describe; two hundred brings that down to five, which the session hardly feels.
 BLOCKS_PER_MESSAGE = 10
+OPUS_BLOCKS_PER_MESSAGE = 2
 
 #: Longest piece of sound accepted in one message, before it is decoded. Anything
 #: larger than a second of sound is not something this feature ever sends.
@@ -90,6 +99,7 @@ _REFRESH_INTERVAL = 2.0
 
 #: Longest list of application names accepted from a peer.
 _MAX_EXCLUSIONS = 200
+_MAX_PLC_FRAMES = 3
 
 
 def is_enabled():
@@ -109,6 +119,17 @@ def is_available():
 	whether the capture could be loaded at all on this computer.
 	"""
 	return audio_capture is not None and is_enabled()
+
+
+def is_opus_available():
+	"""Whether this installation can negotiate the Opus audio format."""
+	if audio_opus is None:
+		return False
+	try:
+		return bool(audio_opus.is_available())
+	except Exception:
+		logger.exception("Unable to check Opus availability")
+		return False
 
 
 def excluded_applications():
@@ -159,6 +180,12 @@ class AudioShareManager:
 		self._mixer = None
 		self._player = None
 		self._decode = None
+		self._opus_encoder = None
+		self._bitrate_controller = None
+		self.codec = None
+		self._stream_id = None
+		self._send_sequence = 0
+		self._opus_sequences = audio_protocol.SequenceTracker()
 		self._excluded = set()
 		self._refresh = None
 		self._stop_refresh = threading.Event()
@@ -173,6 +200,7 @@ class AudioShareManager:
 		callbacks.register_callback("msg_" + MSG_RESPONSE, self.handle_response)
 		callbacks.register_callback("msg_" + MSG_STOP, self.handle_stop)
 		callbacks.register_callback("msg_" + MSG_DATA, self.handle_data)
+		callbacks.register_callback("msg_" + MSG_OPUS_DATA, self.handle_opus_data)
 		callbacks.register_callback("msg_" + MSG_SOURCES, self.handle_sources)
 		callbacks.register_callback("msg_" + MSG_EXCLUDE, self.handle_exclude)
 		callbacks.register_callback(TransportEvents.DISCONNECTED, self.terminate)
@@ -233,15 +261,25 @@ class AudioShareManager:
 		if not is_available():
 			# Translators: message spoken when remote audio cannot run on this computer
 			return _("Remote audio is not available on this computer")
-		peers = self.negotiator.peers_supporting(capabilities.FEATURE_REMOTE_AUDIO)
+		if not is_opus_available():
+			# Translators: message spoken when Opus is unavailable locally
+			return _("Remote audio Opus is not available on this computer")
+		peers = self.negotiator.peers_supporting(capabilities.FEATURE_REMOTE_AUDIO_OPUS)
 		if not peers:
-			# Translators: message spoken when the other computer cannot share its sound
-			return _("The other computer does not support remote audio")
+			# Translators: message spoken when the other computer cannot share Opus audio
+			return _("The other computer does not support Opus remote audio")
 		self.peer_id = peers[0]
 		self.state = STATE_REQUESTING
 		# Which applications are wanted is decided here, on the computer that listens,
 		# and travels with the request. The assisted computer keeps nothing of it.
-		self._send(MSG_REQUEST, excluded=excluded_applications())
+		self._send(
+			MSG_REQUEST,
+			excluded=excluded_applications(),
+			codecs=[audio_protocol.CODEC_OPUS],
+			sample_rate=audio_protocol.SAMPLE_RATE,
+			channels=audio_protocol.CHANNELS,
+			frame_ms=audio_protocol.FRAME_MS,
+		)
 		# Translators: message spoken when remote audio has been requested
 		return _("Remote audio requested")
 
@@ -254,6 +292,10 @@ class AudioShareManager:
 		self.state = STATE_IDLE
 		self.peer_id = None
 		self.whole_device = False
+		self.codec = None
+		self._stream_id = None
+		self._send_sequence = 0
+		self._opus_sequences.reset()
 		self._stop_capture()
 		self._stop_playback()
 
@@ -266,7 +308,17 @@ class AudioShareManager:
 		self._excluded = set(excluded)
 		self._sounding = {}
 		self._pending = []
-		self._mixer = audio_capture.Mixer(self._on_mixed_block)
+		self._send_sequence = 0
+		if self.codec == audio_protocol.CODEC_OPUS:
+			self._opus_encoder = audio_opus.OpusEncoder(bitrate=audio_protocol.INITIAL_BITRATE)
+			self._bitrate_controller = audio_protocol.BitrateController()
+			mixer_arguments = {
+				"output_rate": audio_protocol.SAMPLE_RATE,
+				"output_channels": audio_protocol.CHANNELS,
+			}
+		else:
+			mixer_arguments = {}
+		self._mixer = audio_capture.Mixer(self._on_mixed_block, **mixer_arguments)
 		self.whole_device = not audio_capture.is_process_capture_available()
 		if self.whole_device:
 			# Before Windows 10 version 2004 there is no way to capture one program on
@@ -285,6 +337,10 @@ class AudioShareManager:
 		self._stop_refresh.set()
 		self._refresh = None
 		self._pending = []
+		encoder, self._opus_encoder = self._opus_encoder, None
+		self._bitrate_controller = None
+		if encoder is not None:
+			encoder.close()
 		mixer, self._mixer = self._mixer, None
 		if mixer is not None:
 			mixer.stop()
@@ -301,6 +357,9 @@ class AudioShareManager:
 		would cost the line as much as sending music, and the other end has nothing
 		to do with it.
 		"""
+		if self.codec == audio_protocol.CODEC_OPUS:
+			self._on_opus_block(block)
+			return
 		self._pending.append(block)
 		if len(self._pending) < BLOCKS_PER_MESSAGE:
 			return
@@ -318,11 +377,77 @@ class AudioShareManager:
 			return
 		self._send(MSG_DATA, sound=sound)
 
-	def _sending_is_behind(self):
+	def _on_opus_block(self, block):
+		self._pending.append(block)
+		if len(self._pending) < OPUS_BLOCKS_PER_MESSAGE:
+			return
+		blocks, self._pending = self._pending, []
+		sequence = self._send_sequence
+		self._send_sequence = (
+			self._send_sequence + len(blocks)
+		) % (audio_protocol.MAX_SEQUENCE + 1)
+		if self.state == STATE_IDLE:
+			return
+		queue_depth = self._transport_queue_depth()
+		if all(not block or not any(block) for block in blocks):
+			self._observe_bitrate(queue_depth)
+			return
+		if queue_depth > _MAX_QUEUED_MESSAGES:
+			self._observe_bitrate(queue_depth, dropped=True)
+			logger.info(
+				"Remote audio abandoned Opus frames: sequence=%d count=%d depth=%d",
+				sequence,
+				len(blocks),
+				queue_depth,
+			)
+			return
+		encoder = self._opus_encoder
+		if encoder is None:
+			return
 		try:
-			return self.transport.queue.qsize() > _MAX_QUEUED_MESSAGES
+			packets = [base64.b64encode(encoder.encode(block)).decode("ascii") for block in blocks]
 		except Exception:
-			return False
+			logger.exception("Unable to encode the sound of this computer with Opus")
+			return
+		self._observe_bitrate(queue_depth)
+		self._send(
+			MSG_OPUS_DATA,
+			stream=self._stream_id,
+			sequence=sequence,
+			frame_ms=audio_protocol.FRAME_MS,
+			sample_rate=audio_protocol.SAMPLE_RATE,
+			channels=audio_protocol.CHANNELS,
+			packets=packets,
+		)
+
+	def _observe_bitrate(self, queue_depth, dropped=False):
+		controller = self._bitrate_controller
+		encoder = self._opus_encoder
+		if controller is None or encoder is None:
+			return
+		bitrate = controller.observe(queue_depth, dropped=dropped)
+		if bitrate is None:
+			return
+		try:
+			encoder.set_bitrate(bitrate)
+		except Exception:
+			logger.exception("Unable to change the remote Opus bitrate to %d", bitrate)
+			return
+		logger.info(
+			"Remote audio Opus bitrate changed: bitrate=%d depth=%d dropped=%s",
+			bitrate,
+			queue_depth,
+			dropped,
+		)
+
+	def _sending_is_behind(self):
+		return self._transport_queue_depth() > _MAX_QUEUED_MESSAGES
+
+	def _transport_queue_depth(self):
+		try:
+			return self.transport.queue.qsize()
+		except Exception:
+			return 0
 
 	def _follow_sources(self):
 		"""Keep one capture running per application that is allowed and playing.
@@ -402,11 +527,19 @@ class AudioShareManager:
 
 	def _start_playback(self):
 		volume = playback_volume()
-		# The volume is folded into the table the sound is decoded with, so turning it
-		# down costs nothing at all once the session has started.
-		self._decode = audio_capture.decode_table(volume)
-		self._player = audio_playback.Player()
-		self._player.start()
+		if self.codec == audio_protocol.CODEC_OPUS:
+			self._decode = None
+			self._player = audio_playback.OpusPlayer(volume)
+			logger.info(
+				"Remote audio started: codec=opus bitrate=%d buffer_target=%d ms buffer_max=%d ms",
+				audio_protocol.INITIAL_BITRATE,
+				self._player.target_ms,
+				self._player.max_buffer_ms,
+			)
+		else:
+			self._decode = audio_capture.decode_table(volume)
+			self._player = audio_playback.Player()
+			self._player.start()
 
 	def _stop_playback(self):
 		player, self._player = self._player, None
@@ -416,12 +549,33 @@ class AudioShareManager:
 
 	# Messages received from the peer.
 
-	def handle_request(self, origin=None, excluded=None, **kwargs):
+	def handle_request(
+		self,
+		origin=None,
+		excluded=None,
+		codecs=None,
+		sample_rate=None,
+		channels=None,
+		frame_ms=None,
+		**kwargs,
+	):
 		"""The assisting computer asks to hear this one."""
 		if not self._accept_from(origin):
 			return
 		if self.role != ROLE_PUBLISHER or not is_available():
 			self._refuse(origin, "unavailable")
+			return
+		try:
+			parameters = audio_protocol.negotiate_opus(
+				codecs,
+				is_opus_available(),
+				sample_rate=sample_rate,
+				channels=channels,
+				frame_ms=frame_ms,
+			)
+		except audio_protocol.AudioProtocolError as error:
+			logger.info("Rejecting remote audio request: %s", error.reason)
+			self._refuse(origin, error.reason)
 			return
 		if self.active:
 			self._refuse(origin, "busy")
@@ -431,9 +585,9 @@ class AudioShareManager:
 			for name in excluded[:_MAX_EXCLUSIONS]:
 				if isinstance(name, str) and name.strip():
 					names.append(name.strip().lower())
-		wx.CallAfter(self._ask_permission, origin, names)
+		wx.CallAfter(self._ask_permission, origin, names, parameters)
 
-	def _ask_permission(self, origin, excluded):
+	def _ask_permission(self, origin, excluded, parameters):
 		if audio_capture.is_process_capture_available():
 			# Translators: question asked before the sound of this computer is shared
 			message = _("Do you want to share the sound of this computer? The controlling computer will hear the applications playing here.")
@@ -450,16 +604,25 @@ class AudioShareManager:
 			style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
 		)
 		if answer == wx.YES:
-			self._accept_request(origin, excluded)
+			self._accept_request(origin, excluded, parameters)
 		else:
 			self._refuse(origin, "declined")
 
-	def _accept_request(self, origin, excluded):
+	def _accept_request(self, origin, excluded, parameters):
 		if self.active:
 			self._refuse(origin, "busy")
 			return
+		try:
+			parameters = audio_protocol.negotiate_opus([parameters.codec], is_opus_available())
+		except audio_protocol.AudioProtocolError as error:
+			logger.info("Rejecting remote audio request after consent: %s", error.reason)
+			self._refuse(origin, error.reason)
+			return
 		self.peer_id = origin
 		self.state = STATE_ACTIVE
+		self.codec = parameters.codec
+		self._stream_id = secrets.randbelow(audio_protocol.MAX_STREAM_ID) + 1
+		self._opus_sequences.reset()
 		try:
 			self._start_capture(excluded)
 		except Exception:
@@ -467,7 +630,16 @@ class AudioShareManager:
 			self.stop(notify_peer=False)
 			self._refuse(origin, "unavailable")
 			return
-		self._send(MSG_RESPONSE, accepted=True, whole_device=self.whole_device)
+		self._send(
+			MSG_RESPONSE,
+			accepted=True,
+			whole_device=self.whole_device,
+			codec=parameters.codec,
+			sample_rate=parameters.sample_rate,
+			channels=parameters.channels,
+			frame_ms=parameters.frame_ms,
+			stream=self._stream_id,
+		)
 		if self.whole_device:
 			# Translators: message spoken when the sound of the whole computer is shared
 			ui.message(_("Sharing all the sound of this computer, including this speech"))
@@ -478,7 +650,19 @@ class AudioShareManager:
 	def _refuse(self, origin, reason):
 		self._send(MSG_RESPONSE, target=origin, accepted=False, reason=reason)
 
-	def handle_response(self, origin=None, accepted=False, whole_device=False, reason="", **kwargs):
+	def handle_response(
+		self,
+		origin=None,
+		accepted=False,
+		whole_device=False,
+		reason="",
+		codec=None,
+		sample_rate=None,
+		channels=None,
+		frame_ms=None,
+		stream=None,
+		**kwargs,
+	):
 		if not self._accept_from(origin) or origin != self.peer_id:
 			return
 		if self.state != STATE_REQUESTING:
@@ -488,6 +672,18 @@ class AudioShareManager:
 			self.peer_id = None
 			wx.CallAfter(ui.message, _refusal_message(reason))
 			return
+		try:
+			parameters = audio_protocol.validate_response(codec, sample_rate, channels, frame_ms, stream)
+		except audio_protocol.AudioProtocolError as error:
+			logger.warning("Ignoring invalid remote audio negotiation: %s", error.reason)
+			self._send(MSG_STOP)
+			self.stop(notify_peer=False)
+			# Translators: message spoken when the peer confirms invalid audio parameters
+			wx.CallAfter(ui.message, _("The other computer sent invalid Opus audio parameters"))
+			return
+		self.codec = parameters.codec
+		self._stream_id = parameters.stream
+		self._opus_sequences.reset()
 		try:
 			self._start_playback()
 		except Exception:
@@ -520,6 +716,8 @@ class AudioShareManager:
 		"""
 		if self.state != STATE_ACTIVE or origin != self.peer_id:
 			return
+		if self.codec == audio_protocol.CODEC_OPUS:
+			return
 		player = self._player
 		if player is None or not isinstance(sound, str) or len(sound) > _MAX_SOUND_PAYLOAD:
 			return
@@ -527,6 +725,77 @@ class AudioShareManager:
 			player.feed(audio_capture.expand(base64.b64decode(sound, validate=True), self._decode))
 		except Exception:
 			logger.exception("Unable to decode the sound of the other computer")
+
+	def handle_opus_data(
+		self,
+		origin=None,
+		stream=None,
+		sequence=None,
+		frame_ms=None,
+		packets=None,
+		sample_rate=None,
+		channels=None,
+		**kwargs,
+	):
+		"""Validate an Opus message without decoding it before the Opus data phase."""
+		if (
+			self.role != ROLE_VIEWER
+			or self.state != STATE_ACTIVE
+			or origin != self.peer_id
+			or self.codec != audio_protocol.CODEC_OPUS
+		):
+			return
+		try:
+			data = audio_protocol.validate_opus_data(
+				stream,
+				sequence,
+				frame_ms,
+				packets,
+				expected_stream=self._stream_id,
+				sample_rate=sample_rate,
+				channels=channels,
+			)
+			disposition = self._opus_sequences.accept(data.sequence, len(data.packets))
+		except audio_protocol.AudioProtocolError as error:
+			logger.warning("Ignoring invalid remote Opus data: %s", error.reason)
+			return
+		if disposition in ("duplicate", "old"):
+			logger.debug("Ignoring %s remote Opus data", disposition)
+			return
+		player = self._player
+		if player is None or not isinstance(player, audio_playback.OpusPlayer):
+			return
+		try:
+			missing = self._opus_sequences.missing_count
+			if missing:
+				if missing > _MAX_PLC_FRAMES:
+					player.reset_stream()
+					logger.info(
+						"Remote audio Opus resynchronized after a long gap: missing=%d buffer=%d ms",
+						missing,
+						player.buffered_ms,
+					)
+				else:
+					for _ in range(missing):
+						player.feed_lost()
+					logger.info(
+						"Remote audio Opus concealed missing frames: missing=%d buffer=%d ms",
+						missing,
+						player.buffered_ms,
+					)
+			for packet in data.packets:
+				player.feed_packet(packet)
+			logger.debug(
+				"Remote audio Opus playback: sequence=%d packets=%d disposition=%s buffer=%d ms dropped=%d underruns=%d",
+				data.sequence,
+				len(data.packets),
+				disposition,
+				player.buffered_ms,
+				player.dropped_blocks,
+				player.underruns,
+			)
+		except Exception:
+			logger.exception("Unable to decode remote Opus audio")
 
 	def handle_sources(self, applications=None, **kwargs):
 		if self.role != ROLE_VIEWER or not isinstance(applications, list):
@@ -580,5 +849,11 @@ def _refusal_message(reason):
 	if reason == "busy":
 		# Translators: message spoken when the other computer is already sharing its sound
 		return _("The other computer is already sharing its sound")
+	if reason == "unsupported_codec":
+		# Translators: message spoken when the other computer does not offer Opus
+		return _("The other computer does not support Opus remote audio")
+	if reason == "opus_unavailable":
+		# Translators: message spoken when Opus cannot be loaded on the other computer
+		return _("Opus is not available on the other computer")
 	# Translators: message spoken when the other computer cannot share its sound
 	return _("The other computer is unable to share its sound")

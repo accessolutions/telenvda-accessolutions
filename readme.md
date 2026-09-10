@@ -251,16 +251,16 @@ applications its own user does not want to hear from others.
 Before anything is heard, the controlled computer asks its user to agree, and
 that answer only lasts for the session. Nothing is recorded at either end.
 
-Unlike the picture, the sound is carried by the session itself: it is folded down
-to what a telephone carries and sent as ordinary messages of the protocol. It is
-therefore encrypted along with everything else when an encryption password is
-set, it needs no browser, no TURN server and no relay built for screen sharing,
-and it goes wherever the session already goes. It does pass through the relay,
-which the picture does not, and it arrives about half a second late; neither
-matters when one is listening to a computer rather than talking to a person. The
-cost on the line is about a hundred and seventy kilobits a second, roughly half
-of what screen sharing at its lowest quality asks for, and nothing at all during
-the stretches when no application is playing anything.
+Unlike the picture, the sound is carried by the session itself: the controlled
+computer keeps 48 kHz stereo PCM until it is encoded with Opus and sent as
+ordinary messages of the protocol. The normal target is 96 kbit/s, adjusted
+between 48 and 128 kbit/s when the transport queue changes. It is therefore
+encrypted along with everything else when an encryption password is set, it
+needs no browser, no TURN server and no relay built for screen sharing, and it
+goes wherever the session already goes. A bounded 100 to 500 ms playback buffer
+absorbs short bursts without growing forever; a local stable connection targets
+less than 300 ms of capture-to-playback delay. Nothing is sent while no chosen
+application is playing.
 
 Two more settings are available in the add-on options:
 
@@ -285,7 +285,7 @@ computer, the same gesture requests that the controller return control to the
 local machine. For best results, use matching keyboard layouts on both
 computers.
 
-When the keyboard is under local control, press **Control+Shift+F1** to switch
+When the keyboard is under local control, press **Insert+Shift+Escape** to switch
 the interpretation of remotely injected keys on the controlled computer. The
 controlled NVDA confirms each change before it is announced. In the normal
 state, remote keys may activate NVDA gestures there. In remote keyboard

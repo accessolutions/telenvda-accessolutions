@@ -21,7 +21,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7.0.1
 
-    - run: echo -e "uv\npre-commit\nscons\nmarkdown">requirements.txt
+    - run: echo -e "uv\npre-commit\nscons\nmarkdown\npytest==8.4.2">requirements.txt
 
     - name: Set up Python
       uses: actions/setup-python@v7.0.0
@@ -34,7 +34,18 @@ jobs:
         python -m pip install --upgrade pip wheel
         pip install -r requirements.txt
         sudo apt-get update  -y
-        sudo apt-get install -y gettext
+        sudo apt-get install -y gettext cmake ninja-build gcc-mingw-w64-i686 gcc-mingw-w64-x86-64
+
+    - name: Build libopus x86 and x64
+      run: python tools/build_opus.py
+
+    - name: Test libopus wrapper
+      run: python -m pytest tests/test_audio_opus.py -q
+
+    - name: Test audio integration
+      run: |
+        python -m pytest tests -q
+        python -m compileall -q addon tests
 
     # - name: Code checks
       # run: export SKIP=no-commit-to-branch; pre-commit run --all
@@ -101,3 +112,27 @@ jobs:
         body_path: changelog.md
         fail_on_unmatched_files: true
         prerelease: false
+
+  test_opus_windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v7.0.1
+
+    - name: Set up Python
+      uses: actions/setup-python@v7.0.0
+      with:
+        python-version: 3.13
+
+    - name: Install test dependency
+      run: python -m pip install pytest==8.4.2
+
+    - name: Build libopus x86 and x64
+      run: python tools/build_opus.py
+
+    - name: Test libopus round-trip
+      run: python -m pytest tests/test_audio_opus.py -q
+
+    - name: Test audio integration on Windows
+      run: |
+        python -m pytest tests -q
+        python -m compileall -q addon tests

@@ -19,7 +19,8 @@ LEGACY_CONFIG_FILE_NAME = 'remote.ini'
 # but can still be entered manually when starting a connection.
 DEFAULT_SERVER_HOSTS = ("nvda.fr", "nvdaremote.com")
 
-MAX_KEY_HISTORY = 5
+DEFAULT_KEY_HISTORY_LIMIT = 10
+MAX_KEY_HISTORY_LIMIT = 50
 
 # Addresses which may already exist in the connection history but should no
 # longer be suggested by the connection dialog.
@@ -40,6 +41,7 @@ configspec = StringIO("""
 [connections]
 	last_connected = list(default=list("nvdaremote.accessolutions.fr"))
 	key_history = list(default=list())
+	key_history_limit = integer(default=10)
 [controlserver]
 	autoconnect = boolean(default=False)
 	self_hosted = boolean(default=False)
@@ -502,12 +504,31 @@ def write_connection_to_config(address, transport_type='tcp'):
 	if not readonly:
 		conf.write()
 
+def get_server_history():
+	"""Return relay addresses offered by the connection dialog, newest first."""
+	host_items = [
+		address for address in reversed(get_config()['connections']['last_connected'])
+		if not is_hidden_server_address(address)
+	]
+	for default_host in DEFAULT_SERVER_HOSTS:
+		if default_host not in host_items:
+			host_items.append(default_host)
+	return host_items
+
+def get_key_history_limit():
+	"""Return the configured number of successful connection keys to retain."""
+	try:
+		limit = int(get_config()['connections'].get('key_history_limit', DEFAULT_KEY_HISTORY_LIMIT))
+	except (TypeError, ValueError):
+		limit = DEFAULT_KEY_HISTORY_LIMIT
+	return max(0, min(limit, MAX_KEY_HISTORY_LIMIT))
+
 def get_key_history():
 	"""Return the most recent distinct keys used to control another machine."""
 	history = get_config()['connections'].get('key_history', [])
 	if isinstance(history, str):
 		history = [history] if history else []
-	return [str(key) for key in history if str(key)][:MAX_KEY_HISTORY]
+	return [str(key) for key in history if str(key)][:get_key_history_limit()]
 
 def write_key_to_config(key):
 	"""Remember a key after a successful controller connection."""
@@ -519,7 +540,7 @@ def write_key_to_config(key):
 	conf = get_config()
 	history = [item for item in get_key_history() if item != key]
 	history.insert(0, key)
-	conf['connections']['key_history'] = history[:MAX_KEY_HISTORY]
+	conf['connections']['key_history'] = history[:get_key_history_limit()]
 	conf.write()
 	return True
 

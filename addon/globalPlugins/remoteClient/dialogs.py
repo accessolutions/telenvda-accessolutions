@@ -79,6 +79,9 @@ class ClientPanel(wx.Panel):
 		# Translators: The label of an edit field in connect dialog to enter name or address of the remote computer.
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Host:")))
 		self.host = wx.ComboBox(self, wx.ID_ANY)
+		self.host.SetItems(configuration.get_server_history())
+		if self.host.GetCount():
+			self.host.SetSelection(0)
 		sizer.Add(self.host)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Port:")))
 		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535, value="6837")
@@ -597,6 +600,15 @@ class OptionsDialog(SettingsPanel):
 		# Translators: A checkbox in add-on options dialog to set whether server welcome messages are displayed only once
 		self.motd_once = wx.CheckBox(self, wx.ID_ANY, label=_("Show server welcome messages only once"))
 		sizer.Add(self.motd_once)
+		# Translators: Label for the number of successful connection keys remembered in the connection dialog.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Number of successful connection keys to remember:")))
+		self.key_history_limit = wx.SpinCtrl(
+			self,
+			wx.ID_ANY,
+			min=0,
+			max=configuration.MAX_KEY_HISTORY_LIMIT,
+		)
+		sizer.Add(self.key_history_limit)
 		# Translators: A checkbox in add-on options dialog to prevent the computer from going to sleep when it is left unattended.
 		self.keep_awake = wx.CheckBox(self, wx.ID_ANY, label=_("Prevent this computer from going to sleep when it is not used"))
 		self.keep_awake.Bind(wx.EVT_CHECKBOX, self.on_keep_awake)
@@ -804,6 +816,7 @@ class OptionsDialog(SettingsPanel):
 		self.mute_when_controlling_local_machine.SetValue(config['ui']['mute_when_controlling_local_machine'])
 		self.speech_commands.SetValue(config['ui']['allow_speech_commands'])
 		self.motd_once.SetValue(config['ui']['display_motd_once'])
+		self.key_history_limit.SetValue(configuration.get_key_history_limit())
 		self.keep_awake.SetValue(config['keep_awake']['enabled'])
 		self.keep_awake_delay.SetValue(int(config['keep_awake']['delay_seconds']))
 		max_duration_minutes = int(config['keep_awake'].get('max_duration_minutes', 0) or 0)
@@ -872,7 +885,7 @@ class OptionsDialog(SettingsPanel):
 		NVDAConfig.conf.profiles[-1].name = self.originalProfileName
 
 	def onSave(self):
-		if not "{port}" in self.portcheck.GetValue():
+		if "{port}" not in self.portcheck.GetValue():
 			# Translators: error message for invalid format on Portcheck service URL
 			gui.messageBox(_("Invalid format for portcheck service URL. You must include {port} somewhere."), _("Error"), wx.OK | wx.ICON_ERROR)
 			raise
@@ -941,6 +954,8 @@ class OptionsDialog(SettingsPanel):
 		config['ui']['mute_when_controlling_local_machine'] = self.mute_when_controlling_local_machine.GetValue()
 		config['ui']['allow_speech_commands'] = self.speech_commands.GetValue()
 		config['ui']['display_motd_once'] = self.motd_once.GetValue()
+		config['connections']['key_history_limit'] = int(self.key_history_limit.GetValue())
+		config['connections']['key_history'] = configuration.get_key_history()
 		config['ui']['portcheck'] = self.portcheck.GetValue()
 		config['keep_awake']['enabled'] = self.keep_awake.GetValue()
 		config['keep_awake']['delay_seconds'] = int(self.keep_awake_delay.GetValue())
@@ -1030,6 +1045,7 @@ class AudioSourcesDialog(wx.Dialog):
 		)
 		self._names = []
 		self._heard = set()
+		self._application_checks = []
 		main_sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer.Add(wx.StaticText(
@@ -1037,7 +1053,11 @@ class AudioSourcesDialog(wx.Dialog):
 			# Translators: instructions in the dialog listing the applications whose sound is heard
 			label=_("Uncheck the applications whose sound you do not want to hear:"),
 		))
-		self.applications = wx.CheckListBox(self, wx.ID_ANY, choices=[])
+		self.applications = wx.ScrolledWindow(self, wx.ID_ANY)
+		self.applications.SetScrollRate(0, 10)
+		self._applications_sizer = wx.BoxSizer(wx.VERTICAL)
+		self.applications.SetSizer(self._applications_sizer)
+		self.applications.SetMinSize((300, 160))
 		sizer.Add(self.applications, 1, wx.EXPAND | wx.TOP, 5)
 		# Translators: a button to name an application which has not been heard yet
 		self.add = wx.Button(self, wx.ID_ANY, label=_("&Add an application..."))
@@ -1049,7 +1069,10 @@ class AudioSourcesDialog(wx.Dialog):
 			main_sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 10)
 		self.SetSizerAndFit(main_sizer)
 		self._fill(excluded)
-		self.applications.SetFocus()
+		if self._application_checks:
+			self._application_checks[0].SetFocus()
+		else:
+			self.add.SetFocus()
 
 	def _fill(self, excluded):
 		excluded = {name.lower() for name in excluded}
@@ -1059,8 +1082,12 @@ class AudioSourcesDialog(wx.Dialog):
 			# An application that is not running can still be excluded in advance, and an
 			# exclusion decided earlier must stay visible so that it can be undone.
 			self._names.append(name)
-			index = self.applications.Append(self._label(name))
-			self.applications.Check(index, name not in excluded)
+			check = wx.CheckBox(self.applications, wx.ID_ANY, label=self._label(name))
+			check.SetValue(name not in excluded)
+			self._application_checks.append(check)
+			self._applications_sizer.Add(check, 0, wx.EXPAND | wx.BOTTOM, 5)
+		self.applications.Layout()
+		self.applications.FitInside()
 
 	def _label(self, name):
 		"""Return how an application is presented, saying so when it is not playing."""
@@ -1095,8 +1122,12 @@ class AudioSourcesDialog(wx.Dialog):
 				self._names.append(name)
 				# The name is presented like any other, so that an application which is
 				# playing right now is not wrongly said to be stopped.
-				index = self.applications.Append(self._label(name))
-				self.applications.Check(index, False)
+				check = wx.CheckBox(self.applications, wx.ID_ANY, label=self._label(name))
+				check.SetValue(False)
+				self._application_checks.append(check)
+				self._applications_sizer.Add(check, 0, wx.EXPAND | wx.BOTTOM, 5)
+				self.applications.Layout()
+				self.applications.FitInside()
 		entry.Destroy()
 		evt.Skip()
 
@@ -1104,7 +1135,7 @@ class AudioSourcesDialog(wx.Dialog):
 		"""Return the applications the user does not want to hear."""
 		return [
 			name for index, name in enumerate(self._names)
-			if not self.applications.IsChecked(index)
+			if not self._application_checks[index].GetValue()
 		]
 
 

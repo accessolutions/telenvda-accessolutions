@@ -236,17 +236,17 @@ Avant toute écoute, l'ordinateur contrôlé demande son accord à son utilisate
 et cette réponse ne vaut que pour la session. Rien n'est enregistré d'un côté ni
 de l'autre.
 
-Contrairement à l'image, le son est porté par la session elle-même : il est
-ramené à ce que transporte le téléphone puis envoyé comme un message ordinaire du
-protocole. Il est donc chiffré avec tout le reste lorsqu'un mot de passe de
-chiffrement est défini, il n'a besoin d'aucun navigateur, d'aucun serveur TURN et
-d'aucun relais prévu pour le partage d'écran, et il passe partout où la session
-passe déjà. Il traverse en revanche le relais, ce que l'image ne fait pas, et il
-arrive avec environ une demi-seconde de retard ; ni l'un ni l'autre n'importe
-lorsqu'on écoute un ordinateur plutôt qu'on ne parle à une personne. Le coût sur
-la ligne est d'environ cent soixante-dix kilobits par seconde, à peu près la
-moitié de ce que demande le partage d'écran à sa qualité la plus basse, et rien
-du tout pendant les périodes où aucune application ne joue quoi que ce soit.
+Contrairement à l'image, le son est porté par la session elle-même : l'ordinateur
+contrôlé conserve le PCM stéréo à 48 kHz jusqu'à son encodage Opus, puis l'envoie
+comme un message ordinaire du protocole. Le débit cible est de 96 kbit/s et
+s'adapte entre 48 et 128 kbit/s lorsque la file de transport varie. Il est donc
+chiffré avec tout le reste lorsqu'un mot de passe de chiffrement est défini, il
+n'a besoin d'aucun navigateur, d'aucun serveur TURN ni d'aucun relais prévu pour
+le partage d'écran, et il passe partout où la session passe déjà. Un tampon de
+lecture borné entre 100 et 500 ms absorbe les rafales courtes sans croissance
+infinie ; sur une liaison locale stable, l'objectif est de rester sous 300 ms
+entre la capture et la lecture. Rien n'est envoyé lorsqu'aucune application
+sélectionnée ne joue.
 
 Deux réglages supplémentaires sont disponibles dans les options :
 

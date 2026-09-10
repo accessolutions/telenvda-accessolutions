@@ -14,9 +14,9 @@ the user first: the voice of the remote NVDA is in it, and the person listening 
 hear it twice.
 
 Nothing here is specific to the remote sound feature. A capture produces sixteen bit
-stereo frames at forty-eight kilohertz, and what leaves this module is the sum of
-those captures reduced to a single channel at sixteen kilohertz, which is what a
-person needs to recognise what a computer is doing and costs six times less to send.
+stereo frames at forty-eight kilohertz. The legacy mixer output remains a single
+channel at sixteen kilohertz, while the local Opus path can request the native
+stereo format without reducing it first.
 
 The interfaces are called through raw vtable pointers rather than a COM library. The
 completion handler that :func:`ActivateAudioInterfaceAsync` demands has to be an
@@ -58,6 +58,12 @@ OUTPUT_RATE = 16000
 OUTPUT_CHANNELS = 1
 OUTPUT_BLOCK_FRAMES = OUTPUT_RATE * BLOCK_MS // 1000
 OUTPUT_BLOCK_BYTES = OUTPUT_BLOCK_FRAMES * 2
+
+#: Native PCM format used by the local Opus path.
+STEREO_OUTPUT_RATE = SAMPLE_RATE
+STEREO_OUTPUT_CHANNELS = CHANNELS
+STEREO_OUTPUT_BLOCK_FRAMES = BLOCK_FRAMES
+STEREO_OUTPUT_BLOCK_BYTES = BLOCK_BYTES
 
 #: Whole number of captured frames that make one output frame.
 _DECIMATION = SAMPLE_RATE // OUTPUT_RATE
@@ -519,17 +525,23 @@ class SystemCapture(_Capture):
 class _Source:
 	"""One capture and the sound it has produced but that was not mixed in yet.
 
-	What is kept here is already reduced to the output format, so that the reduction
-	is done once per capture rather than once per capture and again on the sum, and
-	so that the mixing itself has six times fewer samples to add up.
+	What is kept here is already converted to the selected output format, so the
+	legacy reduction is done once per capture rather than once per capture and again
+	on the sum.
 	"""
 
 	#: Beyond this, the reader is too slow and the oldest sound is dropped rather than
 	#: kept, because sound that arrives late is worse than sound that never arrives.
-	MAX_PENDING = OUTPUT_BLOCK_BYTES * 25  # Half a second.
+	MAX_PENDING = OUTPUT_BLOCK_BYTES * 25  # Half a second in the legacy format.
 
-	def __init__(self, capture):
+	def __init__(self, capture, output_rate=OUTPUT_RATE, output_channels=OUTPUT_CHANNELS):
 		self.capture = capture
+		self.output_rate = output_rate
+		self.output_channels = output_channels
+		self.output_bytes_per_frame = output_channels * BITS_PER_SAMPLE // 8
+		self.output_block_bytes = output_rate * BLOCK_MS // 1000 * self.output_bytes_per_frame
+		self.native_stereo = (output_rate, output_channels) == (SAMPLE_RATE, CHANNELS)
+		self.MAX_PENDING = self.output_block_bytes * 25
 		self.buffer = bytearray()
 		self.lock = threading.Lock()
 		#: Frames of the previous block that did not fill a whole output frame.
@@ -538,11 +550,15 @@ class _Source:
 	def feed(self, block):
 		if self._rest:
 			block = self._rest + block
-		usable = len(block) - (len(block) % (BYTES_PER_FRAME * _DECIMATION))
+		input_frame_bytes = BYTES_PER_FRAME if self.native_stereo else BYTES_PER_FRAME * _DECIMATION
+		usable = len(block) - (len(block) % input_frame_bytes)
 		self._rest = block[usable:]
 		if not usable:
 			return
-		reduced = downmix(block[:usable])
+		if self.native_stereo:
+			reduced = block[:usable]
+		else:
+			reduced = downmix(block[:usable])
 		with self.lock:
 			self.buffer += reduced
 			excess = len(self.buffer) - self.MAX_PENDING
@@ -569,8 +585,18 @@ class Mixer:
 	to offer, treats what is missing as silence, and sums.
 	"""
 
-	def __init__(self, on_block):
+	def __init__(self, on_block, output_rate=OUTPUT_RATE, output_channels=OUTPUT_CHANNELS):
+		if (output_rate, output_channels) not in (
+			(OUTPUT_RATE, OUTPUT_CHANNELS),
+			(SAMPLE_RATE, CHANNELS),
+		):
+			raise ValueError("unsupported audio mixer output format")
 		self._on_block = on_block
+		self.output_rate = output_rate
+		self.output_channels = output_channels
+		self.output_block_frames = output_rate * BLOCK_MS // 1000
+		self.output_block_bytes = self.output_block_frames * output_channels * BITS_PER_SAMPLE // 8
+		self._silence = b"\0" * self.output_block_bytes
 		self._sources = {}
 		self._lock = threading.Lock()
 		self._stop = threading.Event()
@@ -586,7 +612,7 @@ class Mixer:
 		with self._lock:
 			if key in self._sources:
 				return False
-		source = _Source(None)
+		source = _Source(None, self.output_rate, self.output_channels)
 		source.capture = capture_factory(source.feed)
 		with self._lock:
 			if key in self._sources:
@@ -640,13 +666,16 @@ class Mixer:
 	def _mix(self):
 		with self._lock:
 			sources = list(self._sources.values())
-		blocks = [block for block in (source.take(OUTPUT_BLOCK_BYTES) for source in sources) if block]
+		blocks = [
+			block for block in (source.take(self.output_block_bytes) for source in sources) if block
+		]
 		if not blocks:
-			return SILENCE
+			return self._silence
 		if len(blocks) == 1:
 			return blocks[0]
-		unpack = struct.Struct("<%dh" % OUTPUT_BLOCK_FRAMES).unpack
-		total = [0] * OUTPUT_BLOCK_FRAMES
+		sample_count = self.output_block_frames * self.output_channels
+		unpack = struct.Struct("<%dh" % sample_count).unpack
+		total = [0] * sample_count
 		for block in blocks:
 			for index, sample in enumerate(unpack(block)):
 				total[index] += sample
@@ -658,7 +687,7 @@ class Mixer:
 				total[index] = 32767
 			elif sample < -32768:
 				total[index] = -32768
-		return struct.Struct("<%dh" % OUTPUT_BLOCK_FRAMES).pack(*total)
+		return struct.Struct("<%dh" % sample_count).pack(*total)
 
 
 def own_process_tree_root():

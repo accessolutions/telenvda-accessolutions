@@ -11,7 +11,7 @@ Cette commande doit permettre de basculer entre deux états sur l’unique poste
 
 Le même raccourci doit rétablir le mode normal. Le master doit annoncer vocalement le résultat réellement confirmé par le slave.
 
-Exemple de raccourci envisagé : `Ctrl+Maj+F1`. Il devra rester réaffectable dans la boîte de dialogue **Gestes de commandes** de NVDA.
+Exemple de raccourci : `Insert+Maj+Échap`. Il devra rester réaffectable dans la boîte de dialogue **Gestes de commandes** de NVDA.
 
 ## 2. Point technique essentiel : ne pas arrêter réellement le hook global de NVDA
 
@@ -67,7 +67,7 @@ Préconditions :
 
 Séquence :
 
-1. L’utilisateur appuie sur `Ctrl+Maj+F1`.
+1. L’utilisateur appuie sur `Insert+Maj+Échap`.
 2. Le master envoie une requête au slave, sans changer immédiatement son état affiché.
 3. Le slave valide la requête, active le mode clavier brut distant et renvoie son état réel.
 4. Après réception de la confirmation, le master annonce : « L’interprétation clavier de NVDA est désactivée pour les touches distantes. »
@@ -259,7 +259,7 @@ Le script doit :
 
 Ajouter ce script à `guestScripts`. Cette précaution évite que son geste soit injecté par erreur sur le slave lorsque le contrôle distant est actif. Le script doit néanmoins refuser le changement et demander un retour au contrôle local lorsque `sending_keys` vaut vrai.
 
-Déclarer le script avec une description traduisible et lui affecter par défaut le geste NVDA `kb:control+shift+f1`, correspondant à `Ctrl+Maj+F1`. Le geste devra rester réaffectable dans **Gestes de commandes**.
+Déclarer le script avec une description traduisible et lui affecter par défaut le geste NVDA `kb:shift+insert+escape`, correspondant à `Insert+Maj+Échap`. Le geste devra rester réaffectable dans **Gestes de commandes**.
 
 Éviter d’utiliser `getLastScriptRepeatCount()` : les scripts présents dans `guestScripts` peuvent être appelés directement et court-circuiter le mécanisme normal de comptage des répétitions.
 
@@ -599,7 +599,7 @@ Tests particuliers :
 1. Ajouter le script global.
 2. L’ajouter à `guestScripts`.
 3. Faire respecter le contrôle local.
-4. Tester `Ctrl+Maj+F1` sur AZERTY.
+4. Tester `Insert+Maj+Échap` sur AZERTY.
 5. Ajouter les annonces traduisibles.
 6. Vérifier la visibilité dans Gestes de commandes.
 
@@ -666,7 +666,7 @@ La fonctionnalité est terminée uniquement si tous les points suivants sont vra
 
 Ces choix peuvent être ajustés sans remettre en cause l’architecture proposée :
 
-1. conserver `Ctrl+Maj+F1` comme geste par défaut après le test sur AZERTY, ou publier la commande sans geste par défaut ;
+1. conserver `Insert+Maj+Échap` comme geste par défaut après le test sur AZERTY, ou publier la commande sans geste par défaut ;
 2. maintenir la restriction à un seul slave et un seul master pour la première version ;
 3. nom utilisateur final : « mode clavier brut distant », « ignorer les commandes NVDA distantes » ou autre formulation ;
 4. versions NVDA réellement supportées et donc incluses dans la matrice de compatibilité ;
