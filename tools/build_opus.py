@@ -66,7 +66,7 @@ def _configure_command(source: Path, build: Path, architecture: str) -> list[str
 		"-DCMAKE_SYSTEM_NAME=Windows",
 		f"-DCMAKE_C_COMPILER={compiler}",
 		f"-DCMAKE_RC_COMPILER={windres}",
-		"-DCMAKE_C_FLAGS=-static-libgcc",
+		"-DCMAKE_C_FLAGS=-static-libgcc -fno-stack-protector",
 	])
 	return command
 
