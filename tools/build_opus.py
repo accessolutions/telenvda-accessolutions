@@ -55,7 +55,7 @@ def _configure_command(source: Path, build: Path, architecture: str) -> list[str
 		"-DOPUS_BUILD_PROGRAMS=OFF",
 		"-DOPUS_BUILD_TESTING=OFF",
 		"-DOPUS_ENABLE_FLOAT_API=ON",
-		"-DOPUS_HARDENING=ON",
+		"-DOPUS_HARDENING=OFF",
 	]
 	if os.name == "nt":
 		command.extend(["-A", "Win32" if architecture == "x86" else "x64"])
@@ -67,7 +67,6 @@ def _configure_command(source: Path, build: Path, architecture: str) -> list[str
 		f"-DCMAKE_C_COMPILER={compiler}",
 		f"-DCMAKE_RC_COMPILER={windres}",
 		"-DCMAKE_C_FLAGS=-static-libgcc",
-		"-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libssp",
 	])
 	return command
 
