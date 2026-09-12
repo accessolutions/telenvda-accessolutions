@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: 'remote' '1.0'\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-09-10 21:20+0200\n"
+"POT-Creation-Date: 2026-09-12 22:22+0200\n"
 "PO-Revision-Date: 2025-05-29 11:27+0330\n"
 "Last-Translator: Mohammadreza Rashad <mohammadreza5712@gmail.com>\n"
 "Language-Team: hosein heidari and mohamadjavad jamshidian "
@@ -1791,17 +1791,17 @@ msgid "Controlling remote machine."
 msgstr "دارید رایانه‌ی راهِ دور را کنترل میکنید."
 
 #. Translators: gesture description for the toggle remote mute script
-#: addon\globalPlugins\remoteClient\__init__.py:2021
+#: addon\globalPlugins\remoteClient\__init__.py:2023
 msgid "Mute or unmute the speech coming from the remote computer"
 msgstr "گفتارِ رایانه‌ی راهِ دور را قطع یا وصل میکند"
 
 #. Translators: send Ctrl+Alt+Delete gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:2030
+#: addon\globalPlugins\remoteClient\__init__.py:2032
 msgid "Sends Ctrl+Alt+Delete to the remote machine"
 msgstr "Ctrl+Alt+Delete را به رایانه‌ی راهِ دور ارسال می‌کند"
 
 #. Translators: open addon settings gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:2038
+#: addon\globalPlugins\remoteClient\__init__.py:2040
 msgid "Opens the addon settings panel inside NVDA settings dialog"
 msgstr "صفحه‌ی تنظیماتِ افزونه را داخلِ تنظیماتِ NVDA باز می‌کند"
 

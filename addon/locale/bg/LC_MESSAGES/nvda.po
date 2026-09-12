@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TeleNVDA 2023.3.28\n"
 "Report-Msgid-Bugs-To: nvda-translations@groups.io\n"
-"POT-Creation-Date: 2026-09-10 21:20+0200\n"
+"POT-Creation-Date: 2026-09-12 22:22+0200\n"
 "PO-Revision-Date: 2025-03-08 07:52+0200\n"
 "Last-Translator: Kostadin Kolev <k.kolev1985@gmail.com>\n"
 "Language-Team: \n"
@@ -1810,19 +1810,19 @@ msgid "Controlling remote machine."
 msgstr "Управлява се отдалечената машина."
 
 #. Translators: gesture description for the toggle remote mute script
-#: addon\globalPlugins\remoteClient\__init__.py:2021
+#: addon\globalPlugins\remoteClient\__init__.py:2023
 msgid "Mute or unmute the speech coming from the remote computer"
 msgstr ""
 "Заглушаване или премахване на заглушаването на речта, идваща от отдалечената "
 "машина"
 
 #. Translators: send Ctrl+Alt+Delete gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:2030
+#: addon\globalPlugins\remoteClient\__init__.py:2032
 msgid "Sends Ctrl+Alt+Delete to the remote machine"
 msgstr "Изпраща Control+Alt+Delete до отдалечената машина"
 
 #. Translators: open addon settings gesture description
-#: addon\globalPlugins\remoteClient\__init__.py:2038
+#: addon\globalPlugins\remoteClient\__init__.py:2040
 msgid "Opens the addon settings panel inside NVDA settings dialog"
 msgstr "Отваря панела с настройки на добавката в диалога за настройки на NVDA"
 

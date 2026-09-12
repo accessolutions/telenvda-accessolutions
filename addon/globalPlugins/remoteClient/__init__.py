@@ -1980,6 +1980,8 @@ class GlobalPlugin(_GlobalPlugin):
 		ui.message(_("Controlling local machine."))
 
 	def handleRawKeys(self, vkCode, scanCode, extended, pressed):
+		if self.keep_awake.consume_injected_key(vkCode):
+			return False
 		if not self.sending_keys:
 			return True
 		if not self._is_master_connected():
