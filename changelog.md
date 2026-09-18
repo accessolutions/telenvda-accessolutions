@@ -31,7 +31,6 @@ This release brings the following changes:
 * Fix the proxy settings of the connection dialog, which were forgotten as soon as the dialog was validated and had to be entered again after each restart of NVDA. The one-off conversion of manual configurations without an address no longer discards the chosen mode at every start.
 * Remember the transport and the WebSocket path chosen in the connection dialog, which were only ever saved from the add-on settings until now.
 * Fix screen sharing over the WebSocket transport, which never obtained the addresses of the relay servers and therefore failed to establish the picture between two computers on different networks, while the same session worked over the direct transport.
-
-Important: some anti-virus software may flag parts of this add-on as malicious. Specifically, `url_handler.exe`, which opens `remote://` and `tele://` links. If you don't use this feature, you can safely quarantine or delete the file. Otherwise, you must add it as an exception.
+* Remove `url_handler.exe` from the add-on: `nvdaremote://` and `telenvda://` links are now opened through the URL handling NVDA already provides, so no executable is shipped any more and anti-virus software has nothing left to flag. This part of the feature requires NVDA 2025.1 or later; on older versions the links are simply not registered.
 
 SHA256:

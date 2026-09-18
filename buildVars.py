@@ -57,7 +57,7 @@ i18nSources = pythonSources + ["buildVars.py"]
 
 # Files that will be ignored when building the nvda-addon file
 # Paths are relative to the addon directory, not to the root directory of your addon sources.
-excludedFiles = ['globalPlugins\\remoteClient\\url_handler.obj']
+excludedFiles = []
 
 # Base language for the NVDA add-on
 # If your add-on is written in a language other than english, modify this variable.

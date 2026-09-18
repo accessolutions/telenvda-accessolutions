@@ -180,7 +180,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.connecting = False
 		self.muted = False # Used to know if mute remote was activated manually
 		self.url_handler_window = url_handler.URLHandlerWindow(callback=self.verify_connect)
-		url_handler.register_url_handler()
+		url_handler.register_url_handler(self.verify_connect)
 		self.master_transport = None
 		self.slave_transport = None
 		self.server = None
