@@ -12,10 +12,12 @@ import base64
 import json
 from collections import defaultdict
 from typing import Tuple
+from urllib.parse import urlencode
 from logging import getLogger
 log = getLogger('transport')
 from . import callback_manager
 from . import configuration
+from . import https_connection, https_protocol, https_stream, https_version
 from . import proxy_utils, sspi_proxy, ws_protocol
 from .socket_utils import SERVER_PORT, address_to_hostport, hostport_to_address
 from enum import Enum
@@ -532,6 +534,539 @@ class WebSocketTransport(TCPTransport):
 		self.reconnector_thread = ConnectorThread(self)
 
 
+class _HTTPSRequestError(Exception):
+	def __init__(self, status, message):
+		super().__init__(message)
+		self.status = status
+
+
+class _HTTPSVersionUnavailable(Exception):
+	"""The requested HTTPS relay version cannot be used on this server or network."""
+
+
+class HTTPSTransport(TCPTransport):
+	"""Transport TeleNVDA over an HTTPS long-polling session."""
+
+	PROTOCOL = https_protocol.PROTOCOL
+	BASE_PATH = https_protocol.DEFAULT_PATH
+	TRANSPORT_HEADER = "https-long-poll/1"
+
+	def __init__(self, serializer, address, https_path=None, timeout=0,
+				 channel=None, connection_type=None, protocol_version=PROTOCOL_VERSION,
+				 insecure=False, encryption_key=None, poll_wait=25):
+		super().__init__(
+			serializer=serializer,
+			address=address,
+			timeout=timeout,
+			insecure=insecure,
+			encryption_key=encryption_key,
+		)
+		self.https_path = https_protocol.normalize_https_path(
+			https_path if https_path is not None else self.BASE_PATH
+		)
+		self.channel = channel
+		self.connection_type = connection_type
+		self.protocol_version = protocol_version
+		self.poll_wait = max(1, int(poll_wait))
+		self.session_id = None
+		self.session_token = None
+		self.next_send_sequence = 1
+		self.last_received_sequence = 0
+		self.max_batch_messages = https_protocol.MAX_BATCH_MESSAGES
+		self.max_message_bytes = 1 << 20
+		self.stream_keepalive = https_protocol.DEFAULT_STREAM_KEEPALIVE
+		self.acknowledged_sequence = 0
+		self.ack_interval = 10
+		self.send_connection = None
+		self.poll_connection = None
+		self._send_thread = None
+		self._stop_event = threading.Event()
+		self._state_lock = threading.Lock()
+		self._connections_lock = threading.Lock()
+		self._send_request_lock = threading.Lock()
+		self._poll_request_lock = threading.Lock()
+		self.queue = queue.Queue(maxsize=256)
+		self._proxy_settings = None
+		self._certificate_authentication_failed = False
+		self.last_fail_fingerprint = None
+
+	def _reset_http_state(self):
+		self._stop_event.clear()
+		self.connected = False
+		self.connected_event.clear()
+		self._certificate_authentication_failed = False
+		self.last_fail_fingerprint = None
+		self.session_id = None
+		self.session_token = None
+		self.next_send_sequence = 1
+		self.last_received_sequence = 0
+		self.max_batch_messages = https_protocol.MAX_BATCH_MESSAGES
+		self.max_message_bytes = 1 << 20
+		self.stream_keepalive = https_protocol.DEFAULT_STREAM_KEEPALIVE
+		self.acknowledged_sequence = 0
+		self._proxy_settings = None
+		clear_queue(self.queue)
+
+	def _relay_url(self):
+		host, port = self.address
+		return https_protocol.https_url(host, port, self.https_path)
+
+	def _resolve_proxy(self):
+		config = configuration.get_config()
+		proxy_settings = proxy_utils.from_config(config)
+		return proxy_utils.resolve_for_url(proxy_settings, self._relay_url())
+
+	def _open_http_connection(self):
+		return https_connection.open_https_connection(
+			self.address,
+			self._proxy_settings,
+			self.timeout,
+			insecure=self.insecure,
+		)
+
+	def _open_http_connection_with_certificate_policy(self):
+		self._certificate_authentication_failed = False
+		try:
+			return self._open_http_connection()
+		except Exception as error:
+			if self.insecure or not https_connection.is_certificate_verification_error(error):
+				raise
+			fingerprint = None
+			try:
+				probe = https_connection.open_https_connection(
+					self.address,
+					self._proxy_settings,
+					self.timeout,
+					insecure=True,
+				)
+				try:
+					fingerprint = https_connection.peer_certificate_fingerprint(probe)
+				finally:
+					probe.close()
+			except Exception:
+				log.exception("Unable to read the HTTPS certificate fingerprint")
+			trusted = configuration.get_config().get("trusted_certs", {}).get(
+				hostport_to_address(self.address)
+			)
+			if fingerprint and trusted == fingerprint:
+				self.insecure = True
+				return self._open_http_connection()
+			self.last_fail_fingerprint = fingerprint
+			self._certificate_authentication_failed = True
+			self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
+			raise
+
+	def _set_connection(self, name, connection):
+		with self._connections_lock:
+			setattr(self, name, connection)
+
+	def _get_connection(self, name):
+		with self._connections_lock:
+			return getattr(self, name)
+
+	def _close_http_connections(self):
+		with self._connections_lock:
+			connections = (self.send_connection, self.poll_connection)
+			self.send_connection = None
+			self.poll_connection = None
+		for connection in connections:
+			if connection is not None:
+				try:
+					connection.close()
+				except Exception:
+					pass
+
+	def _request(self, connection_name, method, path, body=None, timeout=None):
+		connection = self._get_connection(connection_name)
+		if connection is None:
+			raise OSError("HTTPS connection is not available")
+		request_lock = self._send_request_lock if connection_name == "send_connection" else self._poll_request_lock
+		headers = {
+			"Accept": "application/json",
+			"User-Agent": "TeleNVDA/%s" % getattr(buildVersion, "version_year", "unknown"),
+			"X-TeleNVDA-Transport": self.TRANSPORT_HEADER,
+		}
+		if body is not None:
+			headers["Content-Type"] = "application/json"
+		if self.session_token is not None:
+			headers["Authorization"] = "Bearer %s" % self.session_token
+		old_timeout = None
+		with request_lock:
+			try:
+				if timeout is not None and getattr(connection, "sock", None) is not None:
+					old_timeout = connection.sock.gettimeout()
+					connection.sock.settimeout(timeout)
+				connection.request(method, path, body=body, headers=headers)
+				response = connection.getresponse()
+				data = response.read()
+				response_headers = {key.lower(): value for key, value in response.getheaders()}
+				return response.status, response_headers, data
+			finally:
+				if old_timeout is not None and getattr(connection, "sock", None) is not None:
+					try:
+						connection.sock.settimeout(old_timeout)
+					except Exception:
+						pass
+
+	def _create_session(self):
+		status, _, body = self._request(
+			"send_connection",
+			"POST",
+			https_protocol.sessions_path(self.https_path),
+			https_protocol.encode_session_request(self.PROTOCOL),
+		)
+		if status == 404 and self.PROTOCOL == https_protocol.PROTOCOL_V2:
+			raise _HTTPSVersionUnavailable("The server does not expose the HTTPS v2 relay")
+		if status != 201:
+			raise _HTTPSRequestError(status, "HTTPS session creation failed with status %s" % status)
+		response = https_protocol.decode_session_response(body)
+		if response.protocol != self.PROTOCOL:
+			raise https_protocol.HTTPSProtocolError(
+				"HTTPS relay returned an unexpected protocol",
+				reason="unsupported_protocol",
+			)
+		self.session_id = response.session_id
+		self.session_token = response.token
+		self.poll_wait = response.poll_wait_seconds
+		self.max_batch_messages = min(response.max_batch_messages, https_protocol.MAX_BATCH_MESSAGES)
+		self.max_message_bytes = response.max_message_bytes
+		self.stream_keepalive = response.stream_keepalive_seconds
+
+	def _message_payload(self, serialized):
+		try:
+			payload = json.loads(serialized)
+		except (TypeError, ValueError) as error:
+			raise https_protocol.HTTPSProtocolError("Serialized message is not valid JSON") from error
+		if not isinstance(payload, dict):
+			raise https_protocol.HTTPSProtocolError("Serialized message must be a JSON object")
+		return payload
+
+	def _take_batch(self):
+		try:
+			serialized = self.queue.get(timeout=0.2)
+		except queue.Empty:
+			return []
+		items = []
+		while serialized is not None and len(items) < self.max_batch_messages:
+			try:
+				payload = self._message_payload(serialized)
+			except https_protocol.HTTPSProtocolError:
+				log.warning("Dropping an invalid serialized HTTPS message")
+			else:
+				payload_size = len(json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8"))
+				if payload_size > self.max_message_bytes:
+					log.warning("Dropping an oversized HTTPS message")
+				else:
+					with self._state_lock:
+						sequence = self.next_send_sequence
+						self.next_send_sequence += 1
+					items.append(https_protocol.MessageEnvelope(sequence, payload))
+			try:
+				serialized = self.queue.get_nowait()
+			except queue.Empty:
+				break
+		return items
+
+	def _reopen_send_connection(self):
+		old_connection = self._get_connection("send_connection")
+		if old_connection is not None:
+			try:
+				old_connection.close()
+			except Exception:
+				pass
+		self._set_connection("send_connection", self._open_http_connection())
+
+	def _send_batch(self, batch):
+		failures = 0
+		while batch and not self._stop_event.is_set():
+			try:
+				received_through = self.last_received_sequence
+				body = https_protocol.encode_message_batch(batch, received_through)
+				status, headers, response_body = self._request(
+					"send_connection",
+					"POST",
+					https_protocol.messages_path(self.https_path, self.session_id),
+					body,
+				)
+			except (OSError, ValueError, https_protocol.HTTPSProtocolError) as error:
+				failures += 1
+				if failures >= 3:
+					log.warning("HTTPS message delivery failed: %s", type(error).__name__)
+					self._stop_event.set()
+					return
+				try:
+					self._reopen_send_connection()
+				except Exception:
+					pass
+				if self._stop_event.wait(min(failures, 3)):
+					return
+				continue
+			if status in (429, 503):
+				failures += 1
+				if failures >= 3:
+					log.warning("HTTPS message delivery returned temporary status %s", status)
+					self._stop_event.set()
+					return
+				if self._stop_event.wait(self._retry_delay(headers, failures)):
+					return
+				continue
+			if status in (401, 404, 410):
+				log.info("HTTPS session is no longer available (status %s)", status)
+				self._stop_event.set()
+				return
+			if status != 200:
+				log.warning("HTTPS message delivery returned status %s", status)
+				self._stop_event.set()
+				return
+			self.acknowledged_sequence = max(self.acknowledged_sequence, received_through)
+			try:
+				accepted_through = https_protocol.decode_ack_response(response_body)
+			except https_protocol.HTTPSProtocolError:
+				self._stop_event.set()
+				return
+			if accepted_through < batch[0].sequence - 1 or accepted_through > batch[-1].sequence:
+				self._stop_event.set()
+				return
+			batch = [message for message in batch if message.sequence > accepted_through]
+
+	def _send_acknowledgement(self):
+		received = self.last_received_sequence
+		try:
+			status, _, _ = self._request(
+				"send_connection",
+				"POST",
+				https_protocol.messages_path(self.https_path, self.session_id),
+				https_protocol.encode_message_batch([], received),
+			)
+		except (OSError, ValueError, https_protocol.HTTPSProtocolError):
+			return
+		if status == 200:
+			self.acknowledged_sequence = max(self.acknowledged_sequence, received)
+
+	def _poll_messages(self):
+		path = https_protocol.messages_path(self.https_path, self.session_id)
+		query = urlencode({"after": self.last_received_sequence, "wait": self.poll_wait})
+		return self._request("poll_connection", "GET", "%s?%s" % (path, query))
+
+	def _retry_delay(self, headers, failure_count):
+		value = headers.get("retry-after", "")
+		try:
+			return min(30, max(0, int(value)))
+		except (TypeError, ValueError):
+			return min(5, max(1, failure_count))
+
+	def _send_loop(self):
+		last_ack = 0.0
+		while not self._stop_event.is_set():
+			batch = self._take_batch()
+			if batch:
+				self._send_batch(batch)
+				last_ack = time.monotonic()
+				continue
+			now = time.monotonic()
+			if self.last_received_sequence > self.acknowledged_sequence and now - last_ack >= self.ack_interval:
+				self._send_acknowledgement()
+				last_ack = now
+
+	def run(self):
+		self.closed = False
+		self._reset_http_state()
+		was_connected = False
+		try:
+			self._proxy_settings = self._resolve_proxy()
+			self._set_connection("send_connection", self._open_http_connection_with_certificate_policy())
+			self._create_session()
+			self._set_connection("poll_connection", self._open_http_connection_with_certificate_policy())
+			self.transport_connected()
+			was_connected = True
+			self._send_thread = threading.Thread(target=self._send_loop, name="TeleNVDA HTTPS sender", daemon=True)
+			self._send_thread.start()
+			tracker = https_protocol.SequenceTracker()
+			while not self._stop_event.is_set() and not self.closed:
+				status, headers, body = self._poll_messages()
+				if status in (429, 503):
+					if self._stop_event.wait(self._retry_delay(headers, 1)):
+						break
+					continue
+				if status in (401, 404, 410):
+					raise _HTTPSRequestError(status, "HTTPS session is no longer available")
+				if status != 200:
+					raise _HTTPSRequestError(status, "HTTPS polling failed with status %s" % status)
+				poll = https_protocol.decode_poll_response(body)
+				for message in poll.messages:
+					if tracker.accept(message.sequence):
+						serialized = json.dumps(message.payload, ensure_ascii=True).encode("utf-8")
+						self.parse(serialized)
+				self.last_received_sequence = tracker.last_sequence
+		except Exception:
+			if not was_connected and not self._certificate_authentication_failed:
+				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+			raise
+		finally:
+			if was_connected:
+				self.connected = False
+				self.connected_event.clear()
+				self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
+			self._disconnect()
+
+	def write(self, obj):
+		if not self.connected or self._stop_event.is_set():
+			return
+		try:
+			self.queue.put_nowait(obj)
+		except queue.Full:
+			log.warning("HTTPS outgoing message queue is full")
+
+	def _disconnect(self):
+		self._stop_event.set()
+		session_id = self.session_id
+		if session_id is not None and self._get_connection("send_connection") is not None:
+			try:
+				self._request(
+					"send_connection",
+					"DELETE",
+					https_protocol.session_path(self.https_path, session_id),
+					timeout=2,
+				)
+			except Exception:
+				pass
+		self._close_http_connections()
+		if self._send_thread is not None and self._send_thread is not threading.current_thread():
+			self._send_thread.join(timeout=2)
+		self._send_thread = None
+		clear_queue(self.queue)
+		with self._state_lock:
+			self.session_id = None
+			self.session_token = None
+			self.next_send_sequence = 1
+			self.last_received_sequence = 0
+		self.connected = False
+
+	def close(self):
+		self.callback_manager.call_callbacks(TransportEvents.CLOSING)
+		self.reconnector_thread.running = False
+		self.closed = True
+		self._disconnect()
+		self.reconnector_thread = ConnectorThread(self)
+
+
+class HTTPSStreamTransport(HTTPSTransport):
+	"""Transport TeleNVDA over a single streaming HTTPS response."""
+
+	PROTOCOL = https_protocol.PROTOCOL_V2
+	BASE_PATH = https_protocol.DEFAULT_PATH_V2
+	TRANSPORT_HEADER = "https-stream/2"
+	READY_TIMEOUT = 3
+
+	def _open_stream(self):
+		connection = self._get_connection("poll_connection")
+		if connection is None:
+			raise OSError("HTTPS stream connection is not available")
+		path = https_protocol.stream_path(self.https_path, self.session_id)
+		query = urlencode({"after": self.last_received_sequence})
+		headers = {
+			"Accept": "text/event-stream",
+			"User-Agent": "TeleNVDA/%s" % getattr(buildVersion, "version_year", "unknown"),
+			"X-TeleNVDA-Transport": self.TRANSPORT_HEADER,
+			"Authorization": "Bearer %s" % self.session_token,
+		}
+		if connection.sock is not None:
+			connection.sock.settimeout(self.READY_TIMEOUT)
+		connection.request("GET", "%s?%s" % (path, query), headers=headers)
+		response = connection.getresponse()
+		if response.status == 404:
+			raise _HTTPSVersionUnavailable("The server does not expose the HTTPS stream")
+		if response.status != 200:
+			raise _HTTPSRequestError(response.status, "HTTPS stream failed with status %s" % response.status)
+		content_type = response.getheader("Content-Type", "")
+		if "text/event-stream" not in content_type.lower():
+			raise _HTTPSVersionUnavailable("The stream response is not an event stream")
+		return response
+
+	def _await_ready(self, response):
+		"""Consume blocks until ready proves that the stream is not buffered."""
+		while True:
+			event = https_stream.read_event(response, self.max_message_bytes)
+			if event is None:
+				continue
+			if event.event == "ready":
+				return
+			raise _HTTPSVersionUnavailable("The stream did not start with a ready event")
+
+	def fall_back_to_v1(self):
+		"""Switch an automatic streaming connection to long polling."""
+		if not getattr(self, "_https_fallback_enabled", False):
+			return False
+		key = https_version.network_key(self.address, self._proxy_settings)
+		https_version.remember_failure(key)
+		self.__class__ = HTTPSRelayTransport
+		self.PROTOCOL = https_protocol.PROTOCOL
+		self.BASE_PATH = https_protocol.DEFAULT_PATH
+		self.TRANSPORT_HEADER = HTTPSRelayTransport.TRANSPORT_HEADER
+		self.https_path = getattr(self, "_https_fallback_path", https_protocol.DEFAULT_PATH)
+		return True
+
+	def run(self):
+		self.closed = False
+		self._reset_http_state()
+		was_connected = False
+		response = None
+		try:
+			self._proxy_settings = self._resolve_proxy()
+			self._set_connection("send_connection", self._open_http_connection_with_certificate_policy())
+			self._create_session()
+			self._set_connection("poll_connection", self._open_http_connection_with_certificate_policy())
+			response = self._open_stream()
+			try:
+				self._await_ready(response)
+			except socket.timeout as error:
+				raise _HTTPSVersionUnavailable("The stream is buffered by an intermediary") from error
+			connection = self._get_connection("poll_connection")
+			if connection is not None and connection.sock is not None:
+				connection.sock.settimeout(self.stream_keepalive * 2 + 5)
+			https_version.remember_success(
+				https_version.network_key(self.address, self._proxy_settings)
+			)
+			self.transport_connected()
+			was_connected = True
+			self._send_thread = threading.Thread(target=self._send_loop, name="TeleNVDA HTTPS sender", daemon=True)
+			self._send_thread.start()
+			tracker = https_protocol.SequenceTracker()
+			while not self._stop_event.is_set() and not self.closed:
+				event = https_stream.read_event(response, self.max_message_bytes)
+				if event is None:
+					continue
+				if event.event == "ready":
+					continue
+				if event.sequence is None:
+					raise https_protocol.HTTPSProtocolError(
+						"Stream event has no sequence",
+						reason="invalid_sequence",
+					)
+				payload = https_stream.decode_event_payload(event)
+				if tracker.accept(event.sequence):
+					serialized = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+					self.parse(serialized)
+				self.last_received_sequence = tracker.last_sequence
+		except _HTTPSVersionUnavailable:
+			raise
+		except Exception:
+			if not was_connected and not self._certificate_authentication_failed:
+				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+			raise
+		finally:
+			if response is not None:
+				try:
+					response.close()
+				except Exception:
+					pass
+			if was_connected:
+				self.connected = False
+				self.connected_event.clear()
+				self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
+			self._disconnect()
+
+
 class RelayMixin:
 	def on_connected(self):
 		self.send("protocol_version", version=self.protocol_version)
@@ -545,6 +1080,45 @@ class WebSocketRelayTransport(WebSocketTransport, RelayMixin):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected)
+
+
+class HTTPSRelayTransport(HTTPSTransport, RelayMixin):
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected)
+
+
+class HTTPSStreamRelayTransport(HTTPSStreamTransport, RelayMixin):
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected)
+
+
+def create_https_relay_transport(address, preference=https_version.AUTO, **kwargs):
+	"""Create the HTTPS relay transport selected for this server and proxy route."""
+	v1_path = kwargs.pop("https_path", https_protocol.DEFAULT_PATH)
+	v2_path = kwargs.pop("https_path_v2", https_protocol.DEFAULT_PATH_V2)
+	proxy_settings = proxy_utils.resolve_for_url(
+		proxy_utils.from_config(configuration.get_config()),
+		https_protocol.https_url(address[0], address[1], v2_path),
+	)
+	key = https_version.network_key(address, proxy_settings)
+	versions = https_version.versions_to_try(preference, key)
+	if versions[0] == https_version.V2:
+		transport = HTTPSStreamRelayTransport(address=address, https_path=v2_path, **kwargs)
+		transport._https_version_key = key
+		transport._https_version_preference = preference
+		transport._https_path_v1 = v1_path
+		transport._https_path_v2 = v2_path
+		transport._https_fallback_path = v1_path
+		transport._https_fallback_enabled = preference == https_version.AUTO
+		return transport
+	transport = HTTPSRelayTransport(address=address, https_path=v1_path, **kwargs)
+	transport._https_version_preference = preference
+	transport._https_path_v1 = v1_path
+	transport._https_path_v2 = v2_path
+	return transport
+
 
 class ConnectorThread(threading.Thread):
 
@@ -560,6 +1134,13 @@ class ConnectorThread(threading.Thread):
 		while self.running:
 			try:
 				self.connector.run()
+			except _HTTPSVersionUnavailable:
+				if not self.running:
+					break
+				if self.connector.fall_back_to_v1():
+					continue
+				time.sleep(self.connect_delay)
+				continue
 			except Exception:
 				if not self.running:
 					break

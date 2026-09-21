@@ -41,6 +41,51 @@ SCREEN_SHARE_DEFAULT_WIDTH = 1600
 SCREEN_SHARE_QUALITIES = ("low", "balanced", "high")
 SCREEN_SHARE_DEFAULT_QUALITY = "balanced"
 
+TRANSPORT_OPTIONS = (
+	(_("Standard (TCP)"), "tcp"),
+	(_("WebSocket over HTTPS"), "websocket"),
+	(_("HTTPS classique (compatible proxy)"), "https"),
+)
+SECURE_TRANSPORT_TYPES = frozenset(("websocket", "https"))
+HTTPS_VERSION_OPTIONS = (
+	(_("Automatic (recommended)"), "auto"),
+	(_("Version 1, long polling"), "v1"),
+	(_("Version 2, streaming"), "v2"),
+)
+
+
+def _transport_choices():
+	return [label for label, transport_type in TRANSPORT_OPTIONS]
+
+
+def _transport_type_from_selection(choice):
+	selection = choice.GetSelection()
+	if 0 <= selection < len(TRANSPORT_OPTIONS):
+		return TRANSPORT_OPTIONS[selection][1]
+	return "tcp"
+
+
+def _set_transport_selection(choice, transport_type):
+	transport_types = [value for label, value in TRANSPORT_OPTIONS]
+	choice.SetSelection(transport_types.index(transport_type) if transport_type in transport_types else 0)
+
+
+def _https_version_choices():
+	return [label for label, version in HTTPS_VERSION_OPTIONS]
+
+
+def _https_version_from_selection(choice):
+	selection = choice.GetSelection()
+	if 0 <= selection < len(HTTPS_VERSION_OPTIONS):
+		return HTTPS_VERSION_OPTIONS[selection][1]
+	return "auto"
+
+
+def _set_https_version_selection(choice, version):
+	versions = [value for label, value in HTTPS_VERSION_OPTIONS]
+	choice.SetSelection(versions.index(version) if version in versions else 0)
+
+
 # Labels of the proxy modes, in the same order as proxy_utils.PROXY_MODES.
 def _proxy_mode_choices():
 	return (
@@ -72,7 +117,7 @@ class ClientPanel(wx.Panel):
 		super().__init__(parent, id)
 		sizer = wx.BoxSizer(wx.HORIZONTAL)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
-		self.transport_choice = wx.Choice(self, wx.ID_ANY, choices=(_("Standard (TCP)"), _("WebSocket over HTTPS")))
+		self.transport_choice = wx.Choice(self, wx.ID_ANY, choices=_transport_choices())
 		self.transport_choice.SetSelection(0)
 		self.transport_choice.Bind(wx.EVT_CHOICE, self.on_transport_changed)
 		sizer.Add(self.transport_choice)
@@ -100,10 +145,16 @@ class ClientPanel(wx.Panel):
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("En&cryption password (optional):")))
 		self.encryption_key = wx.TextCtrl(self, wx.ID_ANY)
 		sizer.Add(self.encryption_key)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
+		self.ws_path_label = wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:"))
+		sizer.Add(self.ws_path_label)
 		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
 		sizer.Add(self.ws_path)
+		self.https_path_label = wx.StaticText(self, wx.ID_ANY, label=_("HTTPS relay &path:"))
+		sizer.Add(self.https_path_label)
+		self.https_path = wx.TextCtrl(self, wx.ID_ANY, value=configuration.DEFAULT_HTTPS_PATH)
+		sizer.Add(self.https_path)
 		self.main_sizer = sizer
+		self._selected_transport_type = "tcp"
 		self._build_proxy_controls(sizer)
 		self.SetSizer(sizer)
 		self.load_settings()
@@ -142,9 +193,12 @@ class ClientPanel(wx.Panel):
 	def load_settings(self):
 		"""Preload the transport and proxy fields from the saved configuration."""
 		cs = configuration.get_config()['controlserver']
-		self.transport_choice.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
+		transport_type = str(cs.get('transport', 'tcp')).lower()
+		_set_transport_selection(self.transport_choice, transport_type)
+		self._selected_transport_type = self.get_transport_type()
 		self.ws_path.SetValue(cs.get('ws_path', '/') or '/')
-		if self.transport_choice.GetSelection() == 1:
+		self.https_path.SetValue(cs.get('https_path', configuration.DEFAULT_HTTPS_PATH) or configuration.DEFAULT_HTTPS_PATH)
+		if self.get_transport_type() in SECURE_TRANSPORT_TYPES and self.port.GetValue() == socket_utils.SERVER_PORT:
 			self.port.SetValue(443)
 		configured_mode = str(cs.get('proxy_mode', 'auto')).lower()
 		self.proxy_mode.SetSelection(PROXY_MODES.index(configured_mode) if configured_mode in PROXY_MODES else PROXY_MODES.index("auto"))
@@ -166,6 +220,7 @@ class ClientPanel(wx.Panel):
 		cs = config['controlserver']
 		cs['transport'] = self.get_transport_type()
 		cs['ws_path'] = self.ws_path.GetValue() or '/'
+		cs['https_path'] = self.https_path.GetValue() or configuration.DEFAULT_HTTPS_PATH
 		cs['proxy_mode'] = PROXY_MODES[self.proxy_mode.GetSelection()]
 		cs['proxy_host'] = self.proxy_host.GetValue().strip()
 		cs['proxy_port'] = int(self.proxy_port.GetValue())
@@ -179,8 +234,13 @@ class ClientPanel(wx.Panel):
 				log.exception("Unable to save the connection settings")
 
 	def update_proxy_controls(self):
-		show_proxy = self.transport_choice.GetSelection() == 1
+		transport_type = self.get_transport_type()
+		show_proxy = transport_type in SECURE_TRANSPORT_TYPES
 		self.main_sizer.Show(self.proxy_box, show_proxy, recursive=True)
+		self.main_sizer.Show(self.ws_path_label, transport_type == "websocket")
+		self.main_sizer.Show(self.ws_path, transport_type == "websocket")
+		self.main_sizer.Show(self.https_path_label, transport_type == "https")
+		self.main_sizer.Show(self.https_path, transport_type == "https")
 		manual = self.proxy_mode.GetSelection() == PROXY_MODES.index("manual")
 		for control in (self.proxy_host, self.proxy_port, self.proxy_type, self.proxy_username, self.proxy_password):
 			control.Enable(manual)
@@ -199,16 +259,19 @@ class ClientPanel(wx.Panel):
 		self.update_proxy_controls()
 
 	def on_transport_changed(self, evt):
-		if self.transport_choice.GetSelection() == 1 and self.port.GetValue() == socket_utils.SERVER_PORT:
+		previous_transport_type = self._selected_transport_type
+		transport_type = self.get_transport_type()
+		if previous_transport_type == "tcp" and transport_type in SECURE_TRANSPORT_TYPES and self.port.GetValue() == socket_utils.SERVER_PORT:
 			self.port.SetValue(443)
-		elif self.transport_choice.GetSelection() == 0 and self.port.GetValue() == 443:
+		elif previous_transport_type in SECURE_TRANSPORT_TYPES and transport_type == "tcp" and self.port.GetValue() == 443:
 			self.port.SetValue(socket_utils.SERVER_PORT)
+		self._selected_transport_type = transport_type
 		self.update_proxy_controls()
 		self._relayout()
 		evt.Skip()
 
 	def get_transport_type(self):
-		return "websocket" if self.transport_choice.GetSelection() == 1 else "tcp"
+		return _transport_type_from_selection(self.transport_choice)
 
 	def get_address(self):
 		host, parsed_port = socket_utils.address_to_hostport(self.host.GetValue())
@@ -229,15 +292,29 @@ class ClientPanel(wx.Panel):
 		# settings must already be persisted for the WebSocket transport to pick them up.
 		self.save_settings()
 		address = self.get_address()
-		transport_class = transport.WebSocketRelayTransport if self.get_transport_type() == "websocket" else transport.RelayTransport
+		transport_type = self.get_transport_type()
 		transport_kwargs = {"address": address, "serializer": serializer.JSONSerializer(), "insecure": insecure}
-		if self.get_transport_type() == "websocket":
+		if transport_type == "https":
+			cs = configuration.get_config()['controlserver']
+			self.key_connector = transport.create_https_relay_transport(
+				https_path=self.https_path.GetValue() or configuration.DEFAULT_HTTPS_PATH,
+				preference=cs.get('https_version', 'auto'),
+				https_path_v2=cs.get('https_path_v2', configuration.DEFAULT_HTTPS_PATH_V2),
+				**transport_kwargs,
+			)
+		elif transport_type == "websocket":
+			transport_class = transport.WebSocketRelayTransport
 			transport_kwargs["ws_path"] = self.ws_path.GetValue() or "/"
-		self.key_connector = transport_class(**transport_kwargs)
+			self.key_connector = transport_class(**transport_kwargs)
+		else:
+			self.key_connector = transport.RelayTransport(**transport_kwargs)
 		self.key_connector.callback_manager.register_callback('msg_generate_key', self.handle_key_generated)
 		self.key_connector.callback_manager.register_callback(transport.TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.handle_certificate_failed)
-		t = threading.Thread(target=self.key_connector.run)
-		t.start()
+		if transport_type == "https":
+			self.key_connector.reconnector_thread.start()
+		else:
+			t = threading.Thread(target=self.key_connector.run)
+			t.start()
 
 	def handle_key_generated(self, key=None):
 		self.key.SetValue(key)
@@ -266,6 +343,7 @@ class ConnectivityDialog(wx.Dialog):
 	def __init__(self, parent):
 		super().__init__(parent, wx.ID_ANY, title=_("Connectivity test"))
 		config = configuration.get_config()['controlserver']
+		configured_transport_type = str(config.get('transport', 'tcp')).lower()
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Test a relay endpoint without joining a channel.")))
 		row = wx.BoxSizer(wx.HORIZONTAL)
@@ -273,17 +351,24 @@ class ConnectivityDialog(wx.Dialog):
 		self.host = wx.TextCtrl(self, wx.ID_ANY, value=config.get('host', ''))
 		row.Add(self.host, 1, wx.EXPAND)
 		row.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Port:")))
-		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535, value=str(config.get('port', 443 if config.get('transport') == 'websocket' else socket_utils.SERVER_PORT)))
+		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535, value=str(config.get('port', 443 if configured_transport_type in SECURE_TRANSPORT_TYPES else socket_utils.SERVER_PORT)))
 		row.Add(self.port)
 		sizer.Add(row, 0, wx.EXPAND)
 		row = wx.BoxSizer(wx.HORIZONTAL)
 		row.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
-		self.transport = wx.Choice(self, wx.ID_ANY, choices=(_("Standard (TCP)"), _("WebSocket over HTTPS")))
-		self.transport.SetSelection(1 if config.get('transport', 'tcp') == 'websocket' else 0)
+		self.transport = wx.Choice(self, wx.ID_ANY, choices=_transport_choices())
+		_set_transport_selection(self.transport, configured_transport_type)
+		self._selected_transport_type = self.get_transport_type()
+		self.transport.Bind(wx.EVT_CHOICE, self.on_transport_changed)
 		row.Add(self.transport)
-		row.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
+		self.ws_path_label = wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:"))
+		row.Add(self.ws_path_label)
 		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value=config.get('ws_path', '/'))
 		row.Add(self.ws_path, 1, wx.EXPAND)
+		self.https_path_label = wx.StaticText(self, wx.ID_ANY, label=_("HTTPS relay &path:"))
+		row.Add(self.https_path_label)
+		self.https_path = wx.TextCtrl(self, wx.ID_ANY, value=config.get('https_path', configuration.DEFAULT_HTTPS_PATH))
+		row.Add(self.https_path, 1, wx.EXPAND)
 		sizer.Add(row, 0, wx.EXPAND)
 		buttons = wx.BoxSizer(wx.HORIZONTAL)
 		self.test_button = wx.Button(self, wx.ID_ANY, label=_("&Test"))
@@ -292,8 +377,35 @@ class ConnectivityDialog(wx.Dialog):
 		close_button = wx.Button(self, wx.ID_CANCEL, label=_("Close"))
 		buttons.Add(close_button)
 		sizer.Add(buttons, 0, wx.ALIGN_RIGHT | wx.TOP, 10)
+		self.update_transport_controls()
 		self.SetSizerAndFit(sizer)
 		self.Center()
+
+	def update_transport_controls(self):
+		transport_type = self.get_transport_type()
+		self.ws_path_label.Show(transport_type == "websocket")
+		self.ws_path.Show(transport_type == "websocket")
+		self.https_path_label.Show(transport_type == "https")
+		self.https_path.Show(transport_type == "https")
+
+	def on_transport_changed(self, evt):
+		previous_transport_type = self._selected_transport_type
+		transport_type = self.get_transport_type()
+		if previous_transport_type == "tcp" and transport_type in SECURE_TRANSPORT_TYPES and self.port.GetValue() == socket_utils.SERVER_PORT:
+			self.port.SetValue(443)
+		elif previous_transport_type in SECURE_TRANSPORT_TYPES and transport_type == "tcp" and self.port.GetValue() == 443:
+			self.port.SetValue(socket_utils.SERVER_PORT)
+		self._selected_transport_type = transport_type
+		self.update_transport_controls()
+		self.Layout()
+		self.Fit()
+		evt.Skip()
+
+	def get_transport_type(self):
+		return _transport_type_from_selection(self.transport)
+
+	def get_path(self):
+		return self.https_path.GetValue() if self.get_transport_type() == "https" else self.ws_path.GetValue()
 
 	def on_test(self, evt):
 		if not self.host.GetValue().strip():
@@ -301,12 +413,11 @@ class ConnectivityDialog(wx.Dialog):
 			return
 		self.test_button.Enable(False)
 		from . import connectivity_test
-		transport_type = 'websocket' if self.transport.GetSelection() == 1 else 'tcp'
 		connectivity_test.run_async(
 			self.host.GetValue().strip(),
 			self.port.GetValue(),
-			transport_type,
-			self.ws_path.GetValue() or '/',
+			self.get_transport_type(),
+			self.get_path() or '/',
 			callback=self.on_result,
 		)
 
@@ -523,8 +634,9 @@ class OptionsDialog(SettingsPanel):
 		self.inactivity_duration.Enable(False)
 		sizer.Add(self.inactivity_duration)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
-		self.transport = wx.Choice(self, wx.ID_ANY, choices=(_("Standard (TCP)"), _("WebSocket over HTTPS")))
+		self.transport = wx.Choice(self, wx.ID_ANY, choices=_transport_choices())
 		self.transport.SetSelection(0)
+		self._selected_transport_type = "tcp"
 		self.transport.Enable(False)
 		self.transport.Bind(wx.EVT_CHOICE, self.on_transport_changed)
 		sizer.Add(self.transport)
@@ -537,7 +649,7 @@ class OptionsDialog(SettingsPanel):
 		self.port = wx.SpinCtrl(self, wx.ID_ANY, min=1, max=65535)
 		self.port.Enable(False)
 		# Translators: tooltip clarifying that this port is used to reach the relay/server, not the proxy below.
-		self.port.SetToolTip(_("Port used to reach the relay or server (default 6837, or 443 for WebSocket over HTTPS). Unrelated to the proxy port below."))
+		self.port.SetToolTip(_("Port used to reach the relay or server (default 6837, or 443 for WebSocket over HTTPS or HTTPS classic). Unrelated to the proxy port below."))
 		sizer.Add(self.port)
 		# Translators: label of a checkbox which allows forwarding a port using UPNP
 		self.useUPNP = wx.CheckBox(self, wx.ID_ANY, label=_("Use &UPNP to forward this port if possible"))
@@ -552,10 +664,27 @@ class OptionsDialog(SettingsPanel):
 		self.encryption_key = wx.TextCtrl(self, wx.ID_ANY)
 		self.encryption_key.Enable(False)
 		sizer.Add(self.encryption_key)
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:")))
+		self.ws_path_label = wx.StaticText(self, wx.ID_ANY, label=_("WebSocket &path:"))
+		sizer.Add(self.ws_path_label)
 		self.ws_path = wx.TextCtrl(self, wx.ID_ANY, value="/")
 		self.ws_path.Enable(False)
 		sizer.Add(self.ws_path)
+		self.https_path_label = wx.StaticText(self, wx.ID_ANY, label=_("HTTPS relay &path:"))
+		sizer.Add(self.https_path_label)
+		self.https_path = wx.TextCtrl(self, wx.ID_ANY, value=configuration.DEFAULT_HTTPS_PATH)
+		self.https_path.Enable(False)
+		sizer.Add(self.https_path)
+		self.https_version_label = wx.StaticText(self, wx.ID_ANY, label=_("HTTPS relay version:"))
+		sizer.Add(self.https_version_label)
+		self.https_version = wx.Choice(self, wx.ID_ANY, choices=_https_version_choices())
+		self.https_version.SetSelection(0)
+		self.https_version.Enable(False)
+		sizer.Add(self.https_version)
+		self.https_path_v2_label = wx.StaticText(self, wx.ID_ANY, label=_("HTTPS v2 relay path:"))
+		sizer.Add(self.https_path_v2_label)
+		self.https_path_v2 = wx.TextCtrl(self, wx.ID_ANY, value=configuration.DEFAULT_HTTPS_PATH_V2)
+		self.https_path_v2.Enable(False)
+		sizer.Add(self.https_path_v2)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Proxy &mode:")))
 		self.proxy_mode = wx.Choice(self, wx.ID_ANY, choices=_proxy_mode_choices())
 		self.proxy_mode.SetSelection(PROXY_MODES.index("auto"))
@@ -734,10 +863,22 @@ class OptionsDialog(SettingsPanel):
 		self.encryption_key.Enable(state)
 		self.host.Enable(not bool(self.client_or_server.GetSelection()) and state)
 		self.transport.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		self.ws_path.Enable(not bool(self.client_or_server.GetSelection()) and state)
-		# The proxy is used by the relay transport itself, so it stays configurable even when
-		# auto-connect is off: manual connections read the very same settings.
-		proxy_state = not bool(self.client_or_server.GetSelection())
+		transport_type = self.get_transport_type()
+		client_state = not bool(self.client_or_server.GetSelection()) and state
+		self.ws_path_label.Show(client_state and transport_type == "websocket")
+		self.ws_path.Show(client_state and transport_type == "websocket")
+		self.ws_path.Enable(client_state and transport_type == "websocket")
+		self.https_path_label.Show(client_state and transport_type == "https")
+		self.https_path.Show(client_state and transport_type == "https")
+		self.https_path.Enable(client_state and transport_type == "https")
+		self.https_version_label.Show(client_state and transport_type == "https")
+		self.https_version.Show(client_state and transport_type == "https")
+		self.https_version.Enable(client_state and transport_type == "https")
+		self.https_path_v2_label.Show(client_state and transport_type == "https")
+		self.https_path_v2.Show(client_state and transport_type == "https")
+		self.https_path_v2.Enable(client_state and transport_type == "https")
+		# Proxy settings are relevant only to the secure relay transports.
+		proxy_state = client_state and transport_type in SECURE_TRANSPORT_TYPES
 		self.proxy_mode.Enable(proxy_state)
 		manual_proxy = self.proxy_mode.GetSelection() == PROXY_MODES.index("manual")
 		self.proxy_host.Enable(proxy_state and manual_proxy)
@@ -761,11 +902,18 @@ class OptionsDialog(SettingsPanel):
 		self.set_controls()
 
 	def on_transport_changed(self, evt):
-		if self.transport.GetSelection() == 1 and self.port.GetValue() == socket_utils.SERVER_PORT:
+		previous_transport_type = self._selected_transport_type
+		transport_type = self.get_transport_type()
+		if previous_transport_type == "tcp" and transport_type in SECURE_TRANSPORT_TYPES and self.port.GetValue() == socket_utils.SERVER_PORT:
 			self.port.SetValue(443)
-		elif self.transport.GetSelection() == 0 and self.port.GetValue() == 443:
+		elif previous_transport_type in SECURE_TRANSPORT_TYPES and transport_type == "tcp" and self.port.GetValue() == 443:
 			self.port.SetValue(socket_utils.SERVER_PORT)
+		self._selected_transport_type = transport_type
+		self.set_controls()
 		evt.Skip()
+
+	def get_transport_type(self):
+		return _transport_type_from_selection(self.transport)
 
 	def onPanelActivated(self):
 		config = configuration.get_config()
@@ -795,8 +943,12 @@ class OptionsDialog(SettingsPanel):
 			except (TypeError, ValueError):
 				host, port = cs['host'], default_port
 			self.host.SetValue(host or cs['host'])
-		self.transport.SetSelection(1 if cs.get('transport', 'tcp') == 'websocket' else 0)
+		_set_transport_selection(self.transport, str(cs.get('transport', 'tcp')).lower())
+		self._selected_transport_type = self.get_transport_type()
 		self.ws_path.SetValue(cs.get('ws_path', '/'))
+		self.https_path.SetValue(cs.get('https_path', configuration.DEFAULT_HTTPS_PATH) or configuration.DEFAULT_HTTPS_PATH)
+		_set_https_version_selection(self.https_version, str(cs.get('https_version', 'auto')).lower())
+		self.https_path_v2.SetValue(cs.get('https_path_v2', configuration.DEFAULT_HTTPS_PATH_V2) or configuration.DEFAULT_HTTPS_PATH_V2)
 		proxy_modes = PROXY_MODES
 		configured_proxy_mode = cs.get('proxy_mode', 'auto')
 		self.proxy_mode.SetSelection(proxy_modes.index(configured_proxy_mode) if configured_proxy_mode in proxy_modes else proxy_modes.index("auto"))
@@ -941,8 +1093,11 @@ class OptionsDialog(SettingsPanel):
 		cs['port'] = int(self.port.GetValue())
 		cs['key'] = self.key.GetValue()
 		cs['encryption_key'] = self.encryption_key.GetValue()
-		cs['transport'] = 'websocket' if self.transport.GetSelection() == 1 else 'tcp'
+		cs['transport'] = self.get_transport_type()
 		cs['ws_path'] = self.ws_path.GetValue() or '/'
+		cs['https_path'] = self.https_path.GetValue() or configuration.DEFAULT_HTTPS_PATH
+		cs['https_version'] = _https_version_from_selection(self.https_version)
+		cs['https_path_v2'] = self.https_path_v2.GetValue() or configuration.DEFAULT_HTTPS_PATH_V2
 		cs['proxy_mode'] = PROXY_MODES[self.proxy_mode.GetSelection()]
 		cs['proxy_host'] = self.proxy_host.GetValue()
 		cs['proxy_port'] = int(self.proxy_port.GetValue())

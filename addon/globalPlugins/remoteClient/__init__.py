@@ -128,6 +128,7 @@ from . import bridge
 from . import configuration
 from . import cues
 from . import dialogs
+from . import https_version
 if buildVersion.version_year < 2025:
 	from . import keyboard_hook
 else:
@@ -140,8 +141,16 @@ from . import serializer
 from . import server
 from . import updater
 from . import url_handler
+from .https_protocol import DEFAULT_PATH as DEFAULT_HTTPS_PATH, DEFAULT_PATH_V2 as DEFAULT_HTTPS_PATH_V2
 from .socket_utils import SERVER_PORT, address_to_hostport, wrap_socket
-from .transport import RelayTransport, WebSocketRelayTransport, TransportEvents
+from .transport import (
+	HTTPSRelayTransport,
+	HTTPSStreamRelayTransport,
+	RelayTransport,
+	TransportEvents,
+	WebSocketRelayTransport,
+	create_https_relay_transport,
+)
 
 from .session import MasterSession, SlaveSession
 try:
@@ -647,6 +656,9 @@ class GlobalPlugin(_GlobalPlugin):
 		cs = configuration.get_config()['controlserver']
 		channel = cs['key']
 		encryption_key = cs['encryption_key']
+		https_path = DEFAULT_HTTPS_PATH
+		https_preference = https_version.AUTO
+		https_path_v2 = DEFAULT_HTTPS_PATH_V2
 		if cs['self_hosted']:
 			port = cs['port']
 			address = ('localhost',port)
@@ -659,10 +671,31 @@ class GlobalPlugin(_GlobalPlugin):
 				default_port=int(cs.get('port', SERVER_PORT) or SERVER_PORT),
 			)
 			transport_type = cs.get('transport', 'tcp')
+			https_path = cs.get('https_path', DEFAULT_HTTPS_PATH)
+			https_preference = cs.get('https_version', https_version.AUTO)
+			https_path_v2 = cs.get('https_path_v2', DEFAULT_HTTPS_PATH_V2)
 		if cs['connection_type']==0:
-			self.connect_as_slave(address, channel, encryption_key, transport_type=transport_type, ws_path=cs.get('ws_path', '/'))
+			self.connect_as_slave(
+				address,
+				channel,
+				encryption_key,
+				transport_type=transport_type,
+				ws_path=cs.get('ws_path', '/'),
+				https_path=https_path,
+				https_preference=https_preference,
+				https_path_v2=https_path_v2,
+			)
 		else:
-			self.connect_as_master(address, channel, encryption_key, transport_type=transport_type, ws_path=cs.get('ws_path', '/'))
+			self.connect_as_master(
+				address,
+				channel,
+				encryption_key,
+				transport_type=transport_type,
+				ws_path=cs.get('ws_path', '/'),
+				https_path=https_path,
+				https_preference=https_preference,
+				https_path_v2=https_path_v2,
+			)
 
 	def create_menu(self):
 		if getattr(self, "_terminated", False) or getattr(self, "remote_item", None) is not None:
@@ -1508,10 +1541,32 @@ class GlobalPlugin(_GlobalPlugin):
 				encryption_key = dlg.panel.encryption_key.GetValue()
 				transport_type = dlg.panel.get_transport_type()
 				ws_path = dlg.panel.ws_path.GetValue() or "/"
+				cs = configuration.get_config()['controlserver']
+				https_path = cs.get('https_path', DEFAULT_HTTPS_PATH)
+				https_preference = cs.get('https_version', https_version.AUTO)
+				https_path_v2 = cs.get('https_path_v2', DEFAULT_HTTPS_PATH_V2)
 				if dlg.connection_type.GetSelection() == 0:
-					self.connect_as_slave((server_addr, port), channel, encryption_key, transport_type=transport_type, ws_path=ws_path)
+					self.connect_as_slave(
+						(server_addr, port),
+						channel,
+						encryption_key,
+						transport_type=transport_type,
+						ws_path=ws_path,
+						https_path=https_path,
+						https_preference=https_preference,
+						https_path_v2=https_path_v2,
+					)
 				else:
-					self.connect_as_master((server_addr, port), channel, encryption_key, transport_type=transport_type, ws_path=ws_path)
+					self.connect_as_master(
+						(server_addr, port),
+						channel,
+						encryption_key,
+						transport_type=transport_type,
+						ws_path=ws_path,
+						https_path=https_path,
+						https_preference=https_preference,
+						https_path_v2=https_path_v2,
+					)
 			else: #We want a server
 				channel = dlg.panel.key.GetValue()
 				encryption_key = dlg.panel.encryption_key.GetValue()
@@ -1537,6 +1592,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.master_connection_interrupted = False
 		configuration.write_connection_to_config(
 			self.master_transport.address,
+			'https' if isinstance(self.master_transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)) else
 			'websocket' if isinstance(self.master_transport, WebSocketRelayTransport) else 'tcp',
 		)
 		configuration.write_key_to_config(self.master_transport.channel)
@@ -1581,8 +1637,25 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: Presented when connection to a remote computer was interrupted.
 		ui.message(_("Connection interrupted"))
 
-	def _create_relay_transport(self, address, key, encryption_key, connection_type, insecure=False, transport_type="tcp", ws_path="/"):
-		transport_class = WebSocketRelayTransport if transport_type == "websocket" else RelayTransport
+	def _create_relay_transport(
+		self,
+		address,
+		key,
+		encryption_key,
+		connection_type,
+		insecure=False,
+		transport_type="tcp",
+		ws_path="/",
+		https_path=DEFAULT_HTTPS_PATH,
+		https_preference=https_version.AUTO,
+		https_path_v2=DEFAULT_HTTPS_PATH_V2,
+	):
+		transport_classes = {
+			"tcp": RelayTransport,
+			"websocket": WebSocketRelayTransport,
+		}
+		if transport_type not in transport_classes and transport_type != "https":
+			raise ValueError("Unknown transport type: %s" % transport_type)
 		kwargs = {
 			"address": address,
 			"serializer": serializer.JSONSerializer(),
@@ -1591,13 +1664,43 @@ class GlobalPlugin(_GlobalPlugin):
 			"insecure": insecure,
 			"encryption_key": encryption_key,
 		}
+		if transport_type == "https":
+			return create_https_relay_transport(
+				https_path=https_path,
+				preference=https_preference,
+				https_path_v2=https_path_v2,
+				**kwargs,
+			)
+		transport_class = transport_classes[transport_type]
 		if transport_type == "websocket":
 			kwargs["ws_path"] = ws_path
 		return transport_class(**kwargs)
 
-	def connect_as_master(self, address, key, encryption_key, insecure=False, transport_type="tcp", ws_path="/"):
+	def connect_as_master(
+		self,
+		address,
+		key,
+		encryption_key,
+		insecure=False,
+		transport_type="tcp",
+		ws_path="/",
+		https_path=DEFAULT_HTTPS_PATH,
+		https_preference=https_version.AUTO,
+		https_path_v2=DEFAULT_HTTPS_PATH_V2,
+	):
 		self.master_disconnect_requested = False
-		transport = self._create_relay_transport(address, key, encryption_key, 'master', insecure, transport_type, ws_path)
+		transport = self._create_relay_transport(
+			address,
+			key,
+			encryption_key,
+			'master',
+			insecure=insecure,
+			transport_type=transport_type,
+			ws_path=ws_path,
+			https_path=https_path,
+			https_preference=https_preference,
+			https_path_v2=https_path_v2,
+		)
 		self.master_session = MasterSession(transport=transport, local_machine=self.local_machine)
 		transport.callback_manager.register_callback(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.on_certificate_as_master_failed)
 		transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected_as_master)
@@ -1610,14 +1713,36 @@ class GlobalPlugin(_GlobalPlugin):
 		self.master_transport = transport
 		self.master_transport.reconnector_thread.start()
 
-	def connect_as_slave(self, address, key, encryption_key, insecure=False, transport_type="tcp", ws_path="/"):
+	def connect_as_slave(
+		self,
+		address,
+		key,
+		encryption_key,
+		insecure=False,
+		transport_type="tcp",
+		ws_path="/",
+		https_path=DEFAULT_HTTPS_PATH,
+		https_preference=https_version.AUTO,
+		https_path_v2=DEFAULT_HTTPS_PATH_V2,
+	):
 		if not nvda_conf['keyboard']['handleInjectedKeys'] and gui.messageBox(
 		# Translators: A message to warn the user that handle keys from other applications should be on.
 		message=_("The option to handle keys from other applications is disabled in your NVDA keyboard settings. In order to allow the keyboard of this machine to be controlled, this option should be enabled. Would you like to do this now?"),
 		# Translators: The title of the warning dialog displayed when handle keys from other applications is disabled.
 		caption=_("Warning"),style=wx.YES|wx.NO|wx.ICON_WARNING)==wx.YES:
 			nvda_conf['keyboard']['handleInjectedKeys']=True
-		transport = self._create_relay_transport(address, key, encryption_key, 'slave', insecure, transport_type, ws_path)
+		transport = self._create_relay_transport(
+			address,
+			key,
+			encryption_key,
+			'slave',
+			insecure=insecure,
+			transport_type=transport_type,
+			ws_path=ws_path,
+			https_path=https_path,
+			https_preference=https_preference,
+			https_path_v2=https_path_v2,
+		)
 		self.slave_session = SlaveSession(transport=transport, local_machine=self.local_machine)
 		self.slave_transport = transport
 		transport.callback_manager.register_callback(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.on_certificate_as_slave_failed)
@@ -1633,8 +1758,24 @@ class GlobalPlugin(_GlobalPlugin):
 		self.last_fail_address = transport.address
 		self.last_fail_key = transport.channel
 		self.last_fail_encryption_key = transport.encryption_key
-		self.last_fail_transport_type = 'websocket' if isinstance(transport, WebSocketRelayTransport) else 'tcp'
-		self.last_fail_ws_path = getattr(transport, 'ws_path', '/')
+		if isinstance(transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)):
+			self.last_fail_transport_type = 'https'
+			self.last_fail_https_path = getattr(transport, '_https_path_v1', DEFAULT_HTTPS_PATH)
+			self.last_fail_https_preference = getattr(transport, '_https_version_preference', https_version.AUTO)
+			self.last_fail_https_path_v2 = getattr(transport, '_https_path_v2', DEFAULT_HTTPS_PATH_V2)
+			self.last_fail_ws_path = '/'
+		elif isinstance(transport, WebSocketRelayTransport):
+			self.last_fail_transport_type = 'websocket'
+			self.last_fail_ws_path = getattr(transport, 'ws_path', '/')
+			self.last_fail_https_path = DEFAULT_HTTPS_PATH
+			self.last_fail_https_preference = https_version.AUTO
+			self.last_fail_https_path_v2 = DEFAULT_HTTPS_PATH_V2
+		else:
+			self.last_fail_transport_type = 'tcp'
+			self.last_fail_ws_path = '/'
+			self.last_fail_https_path = DEFAULT_HTTPS_PATH
+			self.last_fail_https_preference = https_version.AUTO
+			self.last_fail_https_path_v2 = DEFAULT_HTTPS_PATH_V2
 		self.disconnect()
 		try:
 			cert_hash = transport.last_fail_fingerprint
@@ -1647,11 +1788,31 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def on_certificate_as_master_failed(self):
 		if self.handle_certificate_failed(self.master_transport):
-			self.connect_as_master(self.last_fail_address, self.last_fail_key, self.last_fail_encryption_key, insecure=True, transport_type=self.last_fail_transport_type, ws_path=self.last_fail_ws_path)
+			self.connect_as_master(
+				self.last_fail_address,
+				self.last_fail_key,
+				self.last_fail_encryption_key,
+				insecure=True,
+				transport_type=self.last_fail_transport_type,
+				ws_path=self.last_fail_ws_path,
+				https_path=self.last_fail_https_path,
+				https_preference=self.last_fail_https_preference,
+				https_path_v2=self.last_fail_https_path_v2,
+			)
 
 	def on_certificate_as_slave_failed(self):
 		if self.handle_certificate_failed(self.slave_transport):
-			self.connect_as_slave(self.last_fail_address, self.last_fail_key, self.last_fail_encryption_key, insecure=True, transport_type=self.last_fail_transport_type, ws_path=self.last_fail_ws_path)
+			self.connect_as_slave(
+				self.last_fail_address,
+				self.last_fail_key,
+				self.last_fail_encryption_key,
+				insecure=True,
+				transport_type=self.last_fail_transport_type,
+				ws_path=self.last_fail_ws_path,
+				https_path=self.last_fail_https_path,
+				https_preference=self.last_fail_https_preference,
+				https_path_v2=self.last_fail_https_path_v2,
+			)
 
 	def on_connected_as_slave(self):
 		log.info("Control connector connected")
@@ -1667,6 +1828,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.copy_link_tele_item.Enable(True)
 		configuration.write_connection_to_config(
 			self.slave_transport.address,
+			'https' if isinstance(self.slave_transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)) else
 			'websocket' if isinstance(self.slave_transport, WebSocketRelayTransport) else 'tcp',
 		)
 		wx.CallAfter(self.keep_awake.reload)

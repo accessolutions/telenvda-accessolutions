@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" type="text/css" href="../style.css" media="screen">
+<title>Tele NVDA remote assistance 2026.09.10.2049</title>
+</head>
+<body>
+<h1>Telenvda by Accessolutions</h1>
+<h1>Telenvda by Accessolutions</h1>
+<p>TeleNVDA is an NVDA add-on for remote assistance. It allows a trusted person
+to control an NVDA computer, or to provide access to another computer running
+NVDA. This project is maintained by Accessolutions and remains compatible with
+the NVDA Remote protocol where the relay server supports it.</p>
+<p>The project includes work from the NVDA Spanish community and other
+contributors. Original work includes contributions by Tyler Spivey and
+Christopher Toth. It is distributed under the GNU General Public License,
+version 2 or later.</p>
+<h2>Main features</h2>
+<ul>
+<li>TCP/TLS connections through the traditional NVDA Remote protocol.</li>
+<li>Secure WebSocket connections (<code>wss://</code>) through HTTPS-compatible relays.</li>
+<li>WebSocket subprotocol <code>nvdaremote/2.0</code>, with port 443 as the usual choice.</li>
+<li>Manual proxy settings, automatic Windows proxy detection (WinHTTP, PAC/WPAD
+  and bypass rules), or an explicit no-proxy mode.</li>
+<li>Optional AES-GCM application-layer encryption for compatible TeleNVDA peers.</li>
+<li>Direct server mode for connections that do not use a relay.</li>
+<li>File transfer, clipboard sharing, remote speech, braille, and secure-desktop support.</li>
+<li>A connectivity test that can check a controller using TCP or WebSocket.</li>
+<li>Two remote screenshot workflows described below.</li>
+<li>Optional peer to peer screen sharing of the controlled computer, with mouse
+  control when its user allows it.</li>
+<li>Optional remote audio, application by application, usable without any screen
+  sharing and without any program other than NVDA.</li>
+</ul>
+<h2>Installation</h2>
+<p>Install the <code>.nvda-addon</code> package through NVDA's Add-ons Manager. NVDA must
+be installed on every participating computer. Restart NVDA if it requests a
+restart after installation or an update.</p>
+<p>For secure-desktop access, install the add-on on the secure desktop through
+NVDA's General Settings, using <strong>Use currently saved settings on the logon and
+other secure screens</strong>. This requires administrator privileges.</p>
+<h2>Updates</h2>
+<p>TeleNVDA can check the public GitHub Releases repository when NVDA starts.
+Open <strong>NVDA menu &gt; Tools &gt; Remote &gt; Options</strong> to enable or disable this check.
+A manual check is also available through <strong>NVDA menu &gt; Tools &gt; Remote &gt; Check
+for updates</strong>. Only stable releases are offered.</p>
+<p>An update is never installed silently. TeleNVDA asks for confirmation, downloads
+the <code>.nvda-addon</code> package over HTTPS, verifies its published SHA-256 hash, and
+then asks whether NVDA should be restarted. The update check uses the proxy
+configured for TeleNVDA, including HTTP, SOCKS, <code>negotiate</code>, and <code>ntlm</code> proxy
+types. Automatic network errors are only written to the log; manual errors are
+shown to the user.</p>
+<h2>Relay connections</h2>
+<p>A relay connection is the recommended choice when the computers are behind
+routers or restrictive firewalls.</p>
+<h3>Computer to be controlled</h3>
+<ol>
+<li>Open <strong>NVDA menu &gt; Tools &gt; Remote &gt; Connect</strong>.</li>
+<li>Select <strong>Client</strong> and <strong>Allow this machine to be controlled</strong>.</li>
+<li>Enter the relay host and access key. The controlled computer and controller
+   must use the same key.</li>
+<li>Optionally enter an AES-GCM encryption password. Every TeleNVDA participant
+   must use the same password; this option is not compatible with all NVDA
+   Remote clients.</li>
+<li>Select <strong>WebSocket over HTTPS</strong> when the relay provides WebSocket support.
+   Use port <strong>443</strong> unless the relay administrator specifies another port.
+   The WebSocket path is normally <code>/</code> and can be changed in the add-on options.</li>
+<li>Press <strong>OK</strong>.</li>
+</ol>
+<h3>Controlling computer</h3>
+<p>Use the same connection dialog, select <strong>Client</strong>, and choose <strong>Control another
+machine</strong>. Enter the same relay host, protocol, port, WebSocket path, access
+key, and optional encryption password.</p>
+<p>For a WebSocket connection, TeleNVDA uses <code>wss://</code> and the
+<code>nvdaremote/2.0</code> subprotocol. This makes the traffic resemble ordinary HTTPS
+traffic while retaining the NVDA Remote session protocol.</p>
+<h3>Proxies and certificate warnings</h3>
+<p>Open <strong>NVDA menu &gt; Tools &gt; Remote &gt; Options</strong> to configure the proxy mode and,
+when using manual configuration, an HTTP or SOCKS proxy. Manual configuration
+is the default and preserves the historical behavior: if no proxy host is
+entered, the network libraries may use proxy environment variables. Automatic
+Windows proxy detection follows the current user's WinHTTP configuration,
+including PAC/WPAD scripts and destination bypass rules, without extracting or
+storing the Windows password. No proxy ignores proxy environment variables.
+HTTP, SOCKS4/4a, and SOCKS5/5h are supported. For WebSocket relay
+connections, <strong>negotiate</strong> uses the Windows SSPI provider and can select
+Kerberos or NTLM, while <strong>ntlm</strong> forces NTLM authentication. Leaving the
+proxy username empty uses the current Windows session; explicit credentials
+can be entered as <code>DOMAIN\\user</code> and a password. These two SSPI modes apply to
+the HTTP proxy CONNECT handshake, not to the NVDA Remote relay itself.</p>
+<p>The direct TCP/TLS server connection does not use the WebSocket proxy path.
+Use WebSocket over HTTPS when an enterprise HTTP proxy must be traversed.</p>
+<p>TLS certificates are verified. If a relay uses a certificate that Windows does
+not recognize, TeleNVDA automatically accepts the certificate and saves its
+fingerprint so that manual and automatic connections are not blocked by a
+dialog. Verify the expected fingerprint with the relay administrator before
+the first connection. Saved fingerprints can be removed with <strong>Delete all
+trusted fingerprints</strong> in the options.</p>
+<h2>Direct server mode</h2>
+<p>The <strong>Server</strong> option in the connection dialog starts a local direct server.
+The other participant connects to the external address and port shown by the
+server. Port 6837 is the default; Windows Firewall and router port forwarding
+may be required. UPnP forwarding is available when the router supports it.</p>
+<p>The direct server uses TLS and creates a unique self-signed certificate in the
+NVDA user configuration directory on first use. The private key is not part of
+the add-on source or package. Never copy a generated <code>teleNVDA-server.pem</code>
+file into this repository or share it publicly.</p>
+<p>Direct Server mode intentionally listens on the classic TCP/TLS protocol.
+WebSocket is a relay transport; selecting WebSocket does not turn the local
+direct server into a WebSocket server.</p>
+<p>Use a long, randomly generated access key. The access key is an authentication
+secret and must not be put in source code, issue reports, screenshots, or logs.</p>
+<h2>Remote screenshots</h2>
+<p>The Remote menu contains two distinct commands:</p>
+<ul>
+<li><strong>Remote screenshot</strong> uses the native TeleNVDA screenshot messages. It is
+  the preferred method when TeleNVDA is installed on the controlled computer.
+  Default gesture: <strong>NVDA+Control+Shift+P</strong>.</li>
+<li><strong>Request screenshot (PowerShell)</strong> also works when the controlled computer
+  runs a standard NVDA Remote or the original TeleNVDA, which know nothing about
+  screenshots. Default gesture: <strong>Windows+Alt+P</strong>.</li>
+</ul>
+<p><strong>Known issue:</strong> the compatible capture described below does not work yet. The
+Run dialog is never opened on the controlled computer, so no image comes back.
+Use the native capture until this is fixed.</p>
+<p>Both gestures work from either end of the session. On the controlling computer
+they request a capture from the controlled computer; on the controlled computer
+they capture the local screen and push it to the controller.</p>
+<p>The PowerShell method first asks the controlled computer for a capture. When
+nothing answers after a few seconds, the controlling computer drives the capture
+with the messages the standard protocol does implement: the capture script is
+placed on the controlled computer's clipboard, the Run dialog starts a hidden
+Windows PowerShell which writes the encoded image back to that clipboard, and
+the controlled computer's own clipboard push command brings it back.</p>
+<p>This compatible workflow has known limitations:</p>
+<ul>
+<li>an interactive session must be open on the controlled computer, and the
+  capture cannot run on the secure desktop or the lock screen;</li>
+<li>the clipboard of the controlled computer is replaced, and a few messages are
+  announced there while the capture runs;</li>
+<li>the NVDA key of the controlled computer must include insert, since its
+  clipboard push command is triggered remotely;</li>
+<li>PowerShell and the Run dialog must not be blocked by a security policy.</li>
+</ul>
+<p>The beta workflow does not install or require the separate Python screenshot
+helper. PowerShell must be available on the controlled Windows computer.</p>
+<p>A screenshot is received as image data and opened on the controlling computer.
+The capture is converted to JPEG before being Base64 encoded, so that it
+transfers quickly. It is saved in the folder configured in the add-on options,
+or in the user's temporary folder when no folder is configured.
+Treat screenshots as potentially sensitive information and share them only
+with authorized people.</p>
+<h2>Screen sharing</h2>
+<p>The controlling computer can display the screen of the controlled one and, when
+its user agrees, move its mouse. Press <strong>NVDA+Control+Shift+V</strong> to start or stop
+sharing. The gesture works from either end: the controlling computer starts the
+session, and either computer can end it.</p>
+<p>The picture travels directly between the two computers whenever the network
+allows it, so it does not go through the relay server and does not consume its
+bandwidth. When no direct route exists, a TURN server declared by the relay is
+used as a last resort. Nothing is recorded at either end.</p>
+<p>Before anything is shared, the controlled computer asks its user to agree.
+Agreeing also lets the controlling computer use the mouse of this computer, and
+that single answer is forgotten when the session ends. No keyboard input travels
+over this link.</p>
+<p>Screen sharing needs a Chromium browser installed on both computers, a relay
+started with screen sharing enabled, and both computers running a version of
+TeleNVDA that supports it. Microsoft Edge is used when present, which is the
+case on every up to date Windows; Google Chrome and Brave are used as fallbacks.
+When any of these is missing, the command reports it and nothing else changes.</p>
+<p>The browser is used only as the video engine. On the computer being shared, it
+runs in a window kept off screen so that it never captures itself and never
+takes the focus away from NVDA. On the controlling computer, it shows the
+picture. No browsing profile of the user is touched: a temporary one is created
+for the session and removed afterwards.</p>
+<p>Three settings tune the picture in the add-on options: the maximum number of
+images per second, the maximum width the picture is scaled down to before being
+encoded, and the quality, which sets the bandwidth ceiling. Lowering the width
+is by far the most effective way to smooth out a session on a large screen or a
+slow computer.</p>
+<p>The following option is available in the add-on settings:</p>
+<ul>
+<li><strong>Allow sharing the screen of this computer and the use of its mouse, after
+  confirmation</strong>, which turns the whole feature off when cleared, on this
+  computer only.</li>
+</ul>
+<p>There is a single permission for both: when the controlling computer asks, this
+computer is asked <em>Do you want to share your screen? The controlling computer
+will see this screen and will be able to use its mouse.</em> Nothing is shared and
+no mouse event is applied before that question has been answered, and the
+answer only lasts for the session. No keyboard input ever travels over this
+link.</p>
+<h2>Remote audio</h2>
+<p>The picture is not always what is missing. The controlling computer can also
+hear what the controlled one is playing: a video, an alert, a program which
+starts talking on its own. Press <strong>NVDA+Control+Shift+K</strong> to start or stop
+hearing it. The sound is a session of its own and needs no picture, so it can be
+used alone; starting it does not take the keyboard.</p>
+<p>What travels is not everything the sound card plays. Windows can tell one
+program's sound from another's, and that is what is used: each application is
+captured on its own and the results are mixed. The screen reader of the
+controlled computer is never among them, so its voice is not heard twice.</p>
+<p>The <strong>Audio sources</strong> button in the add-on options lists the applications heard
+during the current session, and lets any of them be silenced. Pressing
+<strong>NVDA+Control+Shift+K</strong> twice quickly opens that same list without going through
+the options, from either computer: the one which listens, when something it did
+not ask for starts playing, and the one which is heard, when it would rather keep
+a program to itself. A change made while the sound is running takes effect at
+once. Only the applications that are refused are remembered, by the name of their
+program, so a computer used to assist many others never builds a list of
+everything they ever ran. An application which is not running can be named in
+advance with <strong>Add an application</strong>, and an application refused earlier stays in
+the list so that the decision can be undone. What the listened computer decides
+for itself lasts only for the session, because the list it keeps says which
+applications its own user does not want to hear from others.</p>
+<p>Before anything is heard, the controlled computer asks its user to agree, and
+that answer only lasts for the session. Nothing is recorded at either end.</p>
+<p>Unlike the picture, the sound is carried by the session itself: the controlled
+computer keeps 48 kHz stereo PCM until it is encoded with Opus and sent as
+ordinary messages of the protocol. The normal target is 96 kbit/s, adjusted
+between 48 and 128 kbit/s when the transport queue changes. It is therefore
+encrypted along with everything else when an encryption password is set, it
+needs no browser, no TURN server and no relay built for screen sharing, and it
+goes wherever the session already goes. A bounded 100 to 500 ms playback buffer
+absorbs short bursts without growing forever; a local stable connection targets
+less than 300 ms of capture-to-playback delay. Nothing is sent while no chosen
+application is playing.</p>
+<p>Two more settings are available in the add-on options:</p>
+<ul>
+<li><strong>Allow sharing the sound of this computer, after confirmation</strong>, which turns
+  the feature off when cleared, on this computer only.</li>
+<li><strong>Volume of the sound coming from the other computer</strong>, which is worth
+  lowering, since that sound is played over the speech of the local screen
+  reader.</li>
+</ul>
+<p>Before Windows 10 version 2004, Windows cannot separate one program's sound from
+another's. On such a computer the whole sound card is shared instead, which
+includes the speech of the screen reader running there; both users are told when
+that happens.</p>
+<h2>Controlling the remote computer</h2>
+<p>Press <strong>NVDA+Alt+Tab</strong> (Insert+Alt+Tab with the default NVDA key) to switch
+between controlling the local and remote computer. When remote control is
+active, keyboard and braille input are sent to the controlled computer. The
+gesture can be changed in NVDA's Input Gestures dialog. On a controlled
+computer, the same gesture requests that the controller return control to the
+local machine. For best results, use matching keyboard layouts on both
+computers.</p>
+<p>When the keyboard is under local control, press <strong>Insert+Shift+Escape</strong> to switch
+the interpretation of remotely injected keys on the controlled computer. The
+controlled NVDA confirms each change before it is announced. In the normal
+state, remote keys may activate NVDA gestures there. In remote keyboard
+passthrough mode, only the keys injected by TeleNVDA bypass NVDA's gesture
+interpretation and reach Windows, the foreground application, JAWS, or
+Narrator. The physical keyboard, the mouse, and NVDA's global keyboard hook are
+not disabled. Press the gesture again to restore normal interpretation.</p>
+<p>This command is available only with exactly one compatible controlled computer
+and requires local keyboard control before it can be changed. It is not
+available on the secure desktop, with several controlled computers, or with an
+older peer that does not announce the capability. The state is temporary and
+returns to normal after the connection ends. The gesture can be reassigned in
+NVDA's Input Gestures dialog.</p>
+<p>The Remote menu also provides commands for sending Ctrl+Alt+Delete, muting
+remote speech, pushing clipboard text, and sending files. File transfers are
+available to session members and should only be used with trusted peers.</p>
+<h2>Connectivity testing</h2>
+<p>Open <strong>NVDA menu &gt; Tools &gt; Remote &gt; Connectivity test</strong>. Enter the relay
+address, protocol, port, and WebSocket path when applicable. The test records
+DNS, TLS, and WebSocket diagnostic information in the local connectivity log;
+it does not require or record a session access key.</p>
+<h2>Security recommendations</h2>
+<ul>
+<li>Use relay servers and hosts that you trust.</li>
+<li>Verify TLS fingerprints out of band before the first connection to a relay
+  whose certificate is not recognized by Windows.</li>
+<li>Use unique, high-entropy access and encryption keys and rotate them if they
+  may have been exposed.</li>
+<li>Do not commit private keys, passwords, access keys, screenshots, or generated
+  <code>.nvda-addon</code> files to source control.</li>
+<li>Keep the add-on and NVDA updated on every participating computer.</li>
+<li>Direct server mode is intended for trusted, controlled environments; expose
+  its port only when necessary.</li>
+</ul>
+<h2>Building from source</h2>
+<p>This repository targets Python 3.13 and uses SCons. Install the dependencies
+from <code>pyproject.toml</code>, then run <code>scons</code> from the repository root. The generated
+<code>.nvda-addon</code> file is written to the root directory and is intentionally
+ignored by Git.</p>
+<p>The build copies this file into the English documentation directory and
+converts the translated Markdown files to HTML. Keep the root <code>readme.md</code> as
+the English source instead of editing generated files under <code>addon/doc/en/</code>.</p>
+<p>Screen sharing needs no build step of its own. The video engine is a Chromium
+browser, Microsoft Edge, Google Chrome or Brave, which is expected to be already
+installed on the machine, and the page it loads lives in
+<code>addon/globalPlugins/remoteClient/web/</code> and is packaged like any other add-on
+file. When no such browser can be found, the add-on simply never offers screen
+sharing.</p>
+<h2>Repository</h2>
+<p>Source code and issue tracking are available at:</p>
+<p><a href="https://github.com/Accessolutions/telenvda-accessolutions">https://github.com/Accessolutions/telenvda-accessolutions</a></p>
+<p>[[!tag dev stable]]</p>
+</body>
+</html>

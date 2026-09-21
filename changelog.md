@@ -1,4 +1,13 @@
 This release brings the following changes:
+* Upgrade classic HTTPS relay connections to streaming v2 when available, with
+	automatic fallback to v1 long polling. The HTTPS relay version and v2 path
+	can be selected in the advanced TeleNVDA options; automatic mode is
+	recommended, while manual selection is intended mainly for diagnostics.
+* Add an optional classic HTTPS long-polling relay transport for enterprise
+	proxies that allow ordinary HTTPS but block WebSocket. The transport uses
+	the same TLS protection and relay authentication, with a default API path of
+	`/remote/http/v1`; it is selected explicitly and is not an automatic
+	WebSocket fallback.
 * Keep the last-used relay and the built-in relay list when switching from Client to Server and back in the connection dialog.
 * Remember the last 10 successful connection keys by default, with a per-user setting in the TeleNVDA options to choose how many keys are retained.
 * Open the list of the applications heard by pressing the remote audio gesture twice, from either computer, and act on the session in progress rather than only on a preference. Silencing an application while it is being heard used to mean going into the options and starting the session again for the choice to be applied.

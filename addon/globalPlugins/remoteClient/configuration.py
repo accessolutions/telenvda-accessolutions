@@ -12,6 +12,8 @@ CONFIG_FILE_NAME = 'teleNVDA.ini'
 DEFAULT_SERVER_HOST = "nvdaremote.accessolutions.fr"
 LEGACY_SERVER_HOSTS = frozenset(("remote.nvda.es",))
 LEGACY_CONFIG_FILE_NAME = 'remote.ini'
+DEFAULT_HTTPS_PATH = "/remote/http/v1"
+DEFAULT_HTTPS_PATH_V2 = "/remote/http/v2"
 
 # Default relay servers offered in every server list, in addition to any address
 # the user has already connected to. The Accessolutions relay is intentionally
@@ -51,8 +53,11 @@ configspec = StringIO("""
 	port = integer(default=6837)
 	key = string(default="")
 	encryption_key = string(default="")
-	transport = option("tcp", "websocket", default="tcp")
+	transport = option("tcp", "websocket", "https", default="tcp")
 	ws_path = string(default="/")
+	https_path = string(default="/remote/http/v1")
+	https_version = option("auto", "v1", "v2", default="auto")
+	https_path_v2 = string(default="/remote/http/v2")
 	proxy_mode = option("manual", "auto", "none", default="auto")
 	proxy_host = string(default="")
 	proxy_port = integer(default=0)
@@ -139,6 +144,24 @@ def _migrate_server_configuration(config):
 	"""Migrate old relay host names and embedded TCP ports."""
 	changed = False
 	section = config['controlserver']
+	https_path = str(section.get('https_path', DEFAULT_HTTPS_PATH) or '').strip()
+	if 'https_path' not in section or not https_path:
+		section['https_path'] = DEFAULT_HTTPS_PATH
+		changed = True
+	https_version = str(section.get('https_version', 'auto') or 'auto').strip().lower()
+	if 'https_version' not in section or https_version not in ('auto', 'v1', 'v2'):
+		new_https_version = 'auto'
+	elif section.get('https_version') != https_version:
+		new_https_version = https_version
+	else:
+		new_https_version = None
+	if new_https_version is not None:
+		section['https_version'] = new_https_version
+		changed = True
+	https_path_v2 = str(section.get('https_path_v2', DEFAULT_HTTPS_PATH_V2) or '').strip()
+	if 'https_path_v2' not in section or not https_path_v2:
+		section['https_path_v2'] = DEFAULT_HTTPS_PATH_V2
+		changed = True
 	if not section.get('self_hosted', False):
 		raw_host = str(section.get('host', '') or '').strip()
 		if raw_host:
@@ -161,7 +184,7 @@ def _migrate_server_configuration(config):
 				is_known_relay = canonical_host.casefold() == DEFAULT_SERVER_HOST.casefold()
 				should_use_tcp_default = (
 					port == 443
-					and transport != 'websocket'
+					and transport == 'tcp'
 					and is_known_relay
 				)
 				new_port = socket_utils.SERVER_PORT if should_use_tcp_default else port
@@ -215,6 +238,9 @@ def has_explicit_remote_settings(config=None):
 	if (
 		section.get('transport', 'tcp') != 'tcp'
 		or section.get('ws_path', '/') != '/'
+		or str(section.get('https_path', DEFAULT_HTTPS_PATH) or '').strip() not in ('', DEFAULT_HTTPS_PATH)
+		or str(section.get('https_version', 'auto') or 'auto').strip().lower() != 'auto'
+		or str(section.get('https_path_v2', DEFAULT_HTTPS_PATH_V2) or '').strip() not in ('', DEFAULT_HTTPS_PATH_V2)
 		or section.get('proxy_mode', 'auto') != 'auto'
 		or section.get('proxy_host')
 		or section.get('proxy_port')
@@ -273,6 +299,9 @@ def migrate_external_addon_settings():
 			'encryption_key': ('encryption_key', 'encryptionKey'),
 			'transport': ('transport',),
 			'ws_path': ('ws_path', 'wsPath'),
+			'https_path': ('https_path', 'httpsPath'),
+			'https_version': ('https_version', 'httpsVersion'),
+			'https_path_v2': ('https_path_v2', 'httpsPathV2'),
 			'proxy_mode': ('proxy_mode', 'proxyMode'),
 			'proxy_host': ('proxy_host', 'proxyHost'),
 			'proxy_port': ('proxy_port', 'proxyPort'),
@@ -492,7 +521,7 @@ def write_connection_to_config(address, transport_type='tcp'):
 	host, port = address
 	host = normalize_server_host(host)
 	if (
-		transport_type != 'websocket'
+		transport_type == 'tcp'
 		and port == 443
 		and host.casefold() == DEFAULT_SERVER_HOST.casefold()
 	):

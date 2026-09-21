@@ -16,6 +16,8 @@ version 2 or later.
 
 * TCP/TLS connections through the traditional NVDA Remote protocol.
 * Secure WebSocket connections (`wss://`) through HTTPS-compatible relays.
+* Classic HTTPS long-polling connections for proxies that block WebSocket.
+* Classic HTTPS streaming connections (v2), with automatic fallback to long polling.
 * WebSocket subprotocol `nvdaremote/2.0`, with port 443 as the usual choice.
 * Manual proxy settings, automatic Windows proxy detection (WinHTTP, PAC/WPAD
   and bypass rules), or an explicit no-proxy mode.
@@ -68,19 +70,31 @@ routers or restrictive firewalls.
    must use the same password; this option is not compatible with all NVDA
    Remote clients.
 5. Select **WebSocket over HTTPS** when the relay provides WebSocket support.
-   Use port **443** unless the relay administrator specifies another port.
-   The WebSocket path is normally `/` and can be changed in the add-on options.
+  If the enterprise proxy blocks WebSocket, select **Classic HTTPS
+  (proxy-compatible)** instead. Use port **443** unless the relay
+  administrator specifies another port. The WebSocket path is normally `/`;
+  the classic HTTPS paths are normally `/remote/http/v1` and
+  `/remote/http/v2`.
 6. Press **OK**.
 
 ### Controlling computer
 
 Use the same connection dialog, select **Client**, and choose **Control another
-machine**. Enter the same relay host, protocol, port, WebSocket path, access
-key, and optional encryption password.
+machine**. Enter the same relay host, protocol, port, path, access key, and
+optional encryption password.
 
 For a WebSocket connection, TeleNVDA uses `wss://` and the
 `nvdaremote/2.0` subprotocol. This makes the traffic resemble ordinary HTTPS
 traffic while retaining the NVDA Remote session protocol.
+
+For a classic HTTPS connection, TeleNVDA uses ordinary HTTPS/1.1 requests and
+chooses the streaming v2 transport when the relay and network support it. If
+the v2 stream is unavailable or buffered by a proxy, automatic mode falls back
+to the v1 long-polling transport. The **HTTPS relay version** setting in
+**NVDA menu > Tools > Remote > Options** is normally best left on
+**Automatic**; selecting v1 or v2 is mainly useful for diagnosis. The relay
+administrator must enable the API, and both participants must use the same
+relay and access key; the two participants may use different transports.
 
 ### Proxies and certificate warnings
 
@@ -91,15 +105,17 @@ entered, the network libraries may use proxy environment variables. Automatic
 Windows proxy detection follows the current user's WinHTTP configuration,
 including PAC/WPAD scripts and destination bypass rules, without extracting or
 storing the Windows password. No proxy ignores proxy environment variables.
-HTTP, SOCKS4/4a, and SOCKS5/5h are supported. For WebSocket relay
-connections, **negotiate** uses the Windows SSPI provider and can select
+HTTP, SOCKS4/4a, and SOCKS5/5h are supported. For WebSocket and classic HTTPS
+relay connections, **negotiate** uses the Windows SSPI provider and can select
 Kerberos or NTLM, while **ntlm** forces NTLM authentication. Leaving the
 proxy username empty uses the current Windows session; explicit credentials
 can be entered as `DOMAIN\\user` and a password. These two SSPI modes apply to
 the HTTP proxy CONNECT handshake, not to the NVDA Remote relay itself.
 
-The direct TCP/TLS server connection does not use the WebSocket proxy path.
-Use WebSocket over HTTPS when an enterprise HTTP proxy must be traversed.
+The direct TCP/TLS server connection does not use the HTTPS proxy path. Use
+WebSocket over HTTPS or classic HTTPS when an enterprise HTTP proxy must be
+traversed. Classic HTTPS is useful only when the proxy permits ordinary HTTPS
+requests but blocks WebSocket; it does not bypass an enterprise policy.
 
 TLS certificates are verified. If a relay uses a certificate that Windows does
 not recognize, TeleNVDA automatically accepts the certificate and saves its
