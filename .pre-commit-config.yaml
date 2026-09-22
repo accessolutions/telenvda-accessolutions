@@ -9,6 +9,20 @@ ci:
   autofix_commit_msg: "Pre-commit auto-fix"
   submodules: true
 
+# Same trees as [tool.ruff] exclude in pyproject.toml: bundled third-party
+# libraries and unpacked add-on releases are not maintained here.
+# See https://docs.python.org/3/library/re.html#re.VERBOSE
+exclude: |
+  (?x)^(
+    addon/globalPlugins/remoteClient/lib32/|
+    addon/globalPlugins/remoteClient/lib64/|
+    TeleNVDA\ Accessolutions-|
+    buildVars\.py$
+  )
+
+# NVDA 2026.1 ships CPython 3.13 (64-bit). The official add-on template pins
+# requires-python to ">=3.13,<3.14". Keep this interpreter even if a newer
+# Python is installed locally: the add-on runs inside NVDA, not the venv.
 default_language_version:
   python: python3.13
 
@@ -69,7 +83,7 @@ repos:
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
   # Matches Ruff version in pyproject.
-  rev: v0.12.7
+  rev: v0.14.5
   hooks:
     - id: ruff
       name: lint with ruff

@@ -47,6 +47,7 @@ dev = [
 Repository = "https://github.com/Accessolutions/telenvda-accessolutions"
 
 [tool.ruff]
+target-version = "py313"
 line-length = 110
 
 builtins = [
@@ -109,6 +110,7 @@ logger-objects = ["logHandler.log"]
 [tool.pyright]
 venvPath = ".venv"
 venv = "."
+pythonVersion = "3.13"
 pythonPlatform = "Windows"
 typeCheckingMode = "strict"
 
