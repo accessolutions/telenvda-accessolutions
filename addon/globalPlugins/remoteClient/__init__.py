@@ -187,6 +187,12 @@ class GlobalPlugin(_GlobalPlugin):
 	def __init__(self, *args, **kwargs):
 		global client
 		super().__init__(*args, **kwargs)
+		# Started before anything else, refusals to load included: an add-on which
+		# never reaches the end of this method is exactly what has to be recorded.
+		try:
+			traffic_log.initialize()
+		except Exception:
+			log.exception("Unable to start the TeleNVDA daily log")
 		if client is not None and not getattr(client, "_terminated", False):
 			raise RuntimeError("TeleNVDA is already running. Only one instance can be loaded at a time.")
 		for addon in addonHandler.getAvailableAddons():
@@ -194,11 +200,6 @@ class GlobalPlugin(_GlobalPlugin):
 				raise RuntimeError(
 					"TeleNVDA cannot be used while NVDA Remote is running. Please, disable NVDA Remote and restart NVDA.",
 				)
-		# Started before anything else so that a failure of the setup below is recorded.
-		try:
-			traffic_log.initialize()
-		except Exception:
-			log.exception("Unable to start the TeleNVDA daily log")
 		self.local_machine = local_machine.LocalMachine()
 		self.update_manager = updater.UpdateManager()
 		self._startup_update_checked = False

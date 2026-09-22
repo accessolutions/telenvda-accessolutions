@@ -1282,24 +1282,57 @@ class ConnectorThread(threading.Thread):
 		self.connector = connector
 		self.name = self.name + "_connector_loop"
 		self.daemon = True
+		self.failures = 0
+
+	def report_failure(self, error):
+		"""Say why a connection attempt failed, once in full and then briefly.
+
+		This loop retries every few seconds for as long as the user asks to be
+		connected. The first failure is worth a traceback, the following ones would
+		only fill the log with the same one.
+		"""
+		self.failures += 1
+		summary = "%s: %s" % (type(error).__name__, error)
+		address = getattr(self.connector, "address", None)
+		if self.failures == 1:
+			log.warning("Connection to %s failed: %s", address, summary, exc_info=True)
+		else:
+			log.warning(
+				"Connection to %s failed again (attempt %d): %s",
+				address,
+				self.failures,
+				summary,
+			)
+		traffic_log.log_connection(
+			"connect_failed",
+			transport=self.connector.__class__.__name__,
+			attempt=self.failures,
+			error=summary,
+		)
 
 	def run(self):
 		while self.running:
 			try:
+				log.debug("Connection attempt to %s", getattr(self.connector, "address", None))
 				self.connector.run()
-			except _HTTPSVersionUnavailable:
+			except _HTTPSVersionUnavailable as error:
 				if not self.running:
 					break
 				if self.connector.fall_back_to_v1():
+					log.info("Falling back to HTTPS long polling: %s", error)
+					traffic_log.log_connection("https_fallback_to_v1", reason=str(error))
 					continue
+				self.report_failure(error)
 				time.sleep(self.connect_delay)
 				continue
-			except Exception:
+			except Exception as error:
 				if not self.running:
 					break
+				self.report_failure(error)
 				time.sleep(self.connect_delay)
 				continue
 			else:
+				self.failures = 0
 				time.sleep(self.connect_delay)
 		log.info("Ending control connector thread %s" % self.name)
 

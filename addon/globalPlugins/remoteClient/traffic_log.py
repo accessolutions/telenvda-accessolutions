@@ -53,9 +53,26 @@ ADDON_LOGGER_NAMES = frozenset(
 	),
 )
 
+#: Loggers whose level is lowered while this log is open. NVDA never sets a level on
+#: the loggers of an add-on, so they inherit the one of the root logger, which throws
+#: away everything below a warning: a connection which kept failing said nothing at
+#: all. The traffic stays out of the NVDA log, only these few modules speak louder.
+VERBOSE_LOGGER_NAMES = frozenset(
+	(
+		"capabilities",
+		"file_transfer",
+		"local_bridge",
+		"serializer",
+		"session",
+		"transport",
+		"url_handler",
+	),
+)
+
 _lock = threading.RLock()
 _handler = None
 _traffic_enabled = False
+_restored_levels = {}
 
 
 class DailyFileHandler(logging.Handler):
@@ -134,10 +151,12 @@ class AddonAlertFilter(logging.Filter):
 	def filter(self, record):
 		if record.name == LOGGER_NAME:
 			return True
-		if record.levelno < logging.WARNING:
-			return False
 		if record.name in ADDON_LOGGER_NAMES:
+			# These loggers belong to the add-on alone, so everything they have to say
+			# is kept, down to the debug messages telling which address was dialled.
 			return True
+		if record.levelno < logging.INFO:
+			return False
 		# NVDA logs everything through a single logger and reports the real origin of a
 		# message in its own "codepath" attribute rather than in the standard one.
 		if "remoteclient" in str(getattr(record, "codepath", "")).casefold():
@@ -158,6 +177,16 @@ def addon_directory():
 		# Running from the scratchpad, or too early for the add-on to be known.
 		pass
 	return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
+
+def _addon_version():
+	"""Return the version of the add-on, which a log read months later needs."""
+	try:
+		import addonHandler
+
+		return addonHandler.getCodeAddon().manifest["version"]
+	except Exception:
+		return "unknown"
 
 
 def candidate_directories():
@@ -194,6 +223,34 @@ def resolve_directory():
 	return None
 
 
+def _report(message):
+	"""Say in the NVDA log what this log is doing, or why it is doing nothing.
+
+	Without this, an add-on whose directory cannot be written to simply had no log
+	and no way of telling why.
+	"""
+	try:
+		from logHandler import log as nvda_log
+
+		nvda_log.info(message)
+	except Exception:
+		logging.getLogger(LOGGER_NAME).info(message)
+
+
+def _set_verbose_levels():
+	"""Lower the level of the add-on loggers, remembering what it was."""
+	for name in VERBOSE_LOGGER_NAMES:
+		logger = logging.getLogger(name)
+		_restored_levels[name] = logger.level
+		logger.setLevel(logging.DEBUG)
+
+
+def _restore_levels():
+	for name, level in _restored_levels.items():
+		logging.getLogger(name).setLevel(level)
+	_restored_levels.clear()
+
+
 def _read_settings():
 	from . import configuration
 
@@ -218,14 +275,20 @@ def initialize(settings=None, directory=None):
 		if _handler is not None:
 			return True
 		if getattr(globalVars.appArgs, "secure", False):
+			_report("TeleNVDA writes no daily log on a secure screen")
 			return False
 		if settings is None:
 			settings = _read_settings()
 		if not settings.get("enabled", True):
+			_report("The TeleNVDA daily log is turned off in teleNVDA.ini")
 			return False
 		if directory is None:
 			directory = resolve_directory()
 		if directory is None:
+			_report(
+				"TeleNVDA cannot write its daily log: none of %s can be written to"
+				% ", ".join(candidate_directories()),
+			)
 			return False
 		handler = DailyFileHandler(directory, settings.get("retention_days", DEFAULT_RETENTION_DAYS))
 		handler.setFormatter(
@@ -239,9 +302,16 @@ def initialize(settings=None, directory=None):
 		logger.propagate = False
 		logger.addHandler(handler)
 		logging.getLogger().addHandler(handler)
+		_set_verbose_levels()
 		_handler = handler
 		_traffic_enabled = bool(settings.get("traffic", True))
-	log_connection("log_started", directory=directory, traffic="on" if _traffic_enabled else "off")
+	log_connection(
+		"log_started",
+		directory=directory,
+		traffic="on" if _traffic_enabled else "off",
+		version=_addon_version(),
+	)
+	_report("TeleNVDA writes its daily log in %s" % directory)
 	return True
 
 
@@ -255,6 +325,7 @@ def terminate():
 		log_connection("log_stopped")
 		_handler = None
 		_traffic_enabled = False
+		_restore_levels()
 		logging.getLogger().removeHandler(handler)
 		logging.getLogger(LOGGER_NAME).removeHandler(handler)
 		handler.close()

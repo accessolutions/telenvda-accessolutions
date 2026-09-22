@@ -149,6 +149,30 @@ def test_warnings_of_the_addon_are_captured_but_not_those_of_nvda(tmp_path):
 	assert "an unrelated component failed" not in content
 
 
+def test_the_addon_loggers_are_heard_down_to_their_debug_messages(tmp_path):
+	transport_logger = logging.getLogger("transport")
+	transport_logger.setLevel(logging.WARNING)
+
+	traffic_log.initialize(_settings(), str(tmp_path))
+	transport_logger.debug("Connection attempt to ('relay.example', 443)")
+	transport_logger.info("Connecting to relay.example channel 1234567")
+
+	content = _read(tmp_path)
+	assert "Connection attempt to ('relay.example', 443)" in content
+	assert "Connecting to relay.example channel 1234567" in content
+
+
+def test_the_level_of_the_addon_loggers_is_given_back(tmp_path):
+	transport_logger = logging.getLogger("transport")
+	transport_logger.setLevel(logging.WARNING)
+
+	traffic_log.initialize(_settings(), str(tmp_path))
+	assert transport_logger.level == logging.DEBUG
+
+	traffic_log.terminate()
+	assert transport_logger.level == logging.WARNING
+
+
 def test_nvda_records_are_recognised_by_their_codepath(tmp_path):
 	traffic_log.initialize(_settings(), str(tmp_path))
 
