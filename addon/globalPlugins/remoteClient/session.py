@@ -29,7 +29,6 @@ except Exception:
 	audio_share = None
 	log.exception("Remote audio could not be loaded; the rest of TeleNVDA is unaffected")
 from collections import defaultdict
-from . import connection_info
 from . import cues
 import hashlib
 import addonHandler
@@ -45,7 +44,9 @@ if not (
 ):
 	# NVDA versions newer than 2020.2 have a _CancellableSpeechCommand which should be ignored by TeleNVDA
 	# For older versions, we create a dummy command that won't cause existing commands to be ignored.
-	class _DummyCommand(speech.commands.SpeechCommand): pass
+	class _DummyCommand(speech.commands.SpeechCommand):
+		pass
+
 	speech.commands._CancellableSpeechCommand = _DummyCommand
 
 

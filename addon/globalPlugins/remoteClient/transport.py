@@ -3,6 +3,7 @@ import os
 import sys
 import buildVersion
 import time
+import http.client
 import queue
 import ssl
 import socket
@@ -10,21 +11,21 @@ import select
 import hashlib
 import base64
 import json
-from collections import defaultdict
 from typing import Tuple
 from urllib.parse import urlencode
 from logging import getLogger
-log = getLogger('transport')
 from . import callback_manager
 from . import configuration
 from . import https_connection, https_protocol, https_stream, https_version
 from . import proxy_utils, sspi_proxy, ws_protocol
-from .socket_utils import SERVER_PORT, address_to_hostport, hostport_to_address
+from .socket_utils import hostport_to_address
 from enum import Enum
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), "lib64" if buildVersion.version_year >= 2026 else "lib32"))
 from Cryptodome.Cipher import AES
 import websocket
 sys.path.remove(sys.path[-1])
+
+log = getLogger('transport')
 
 PROTOCOL_VERSION: int = 2
 EXCLUDED_FROM_ENCRYPTION: list[str] = ["join", "protocol_version", "encrypted", "channel_joined", "motd", "nvda_not_connected", "client_left", "ping", "error", "client_joined", "generate_key"]
@@ -112,7 +113,7 @@ class TCPTransport(Transport):
 		try:
 			self.server_sock = self.create_outbound_socket(*self.address, insecure=self.insecure)
 			self.server_sock.connect(self.address)
-		except ssl.SSLCertVerificationError as ex:
+		except ssl.SSLCertVerificationError:
 			fingerprint=None
 			try:
 				tmp_con = self.create_outbound_socket(*self.address, insecure = True)
@@ -120,7 +121,8 @@ class TCPTransport(Transport):
 				certBin = tmp_con.getpeercert(True)
 				tmp_con.close()
 				fingerprint = hashlib.sha256(certBin).hexdigest().lower()
-			except Exception: pass
+			except Exception:
+				pass
 			config = configuration.get_config()
 			if hostport_to_address(self.address) in config['trusted_certs'] and config['trusted_certs'][hostport_to_address(self.address)]==fingerprint:
 				self.insecure=True
@@ -184,7 +186,8 @@ class TCPTransport(Transport):
 		return server_sock
 
 	def getpeercert(self, binary_form=False):
-		if self.server_sock is None: return None
+		if self.server_sock is None:
+			return None
 		return self.server_sock.getpeercert(binary_form)
 
 	def handle_server_data(self):
@@ -236,7 +239,7 @@ class TCPTransport(Transport):
 			try:
 				decrypted_data = cipher.decrypt_and_verify(base64.b64decode(obj['data'].encode("utf-8")), base64.b64decode(obj['tag'].encode("utf-8")))
 				return self.parse(decrypted_data, isDecrypted=True)
-			except:
+			except Exception:
 				return
 		callback = "msg_"+obj['type']
 		del obj['type']
@@ -788,7 +791,7 @@ class HTTPSTransport(TCPTransport):
 					https_protocol.messages_path(self.https_path, self.session_id),
 					body,
 				)
-			except (OSError, ValueError, https_protocol.HTTPSProtocolError) as error:
+			except (OSError, ValueError, http.client.HTTPException, https_protocol.HTTPSProtocolError) as error:
 				failures += 1
 				if failures >= 3:
 					log.warning("HTTPS message delivery failed: %s", type(error).__name__)
@@ -838,7 +841,13 @@ class HTTPSTransport(TCPTransport):
 				https_protocol.messages_path(self.https_path, self.session_id),
 				https_protocol.encode_message_batch([], received),
 			)
-		except (OSError, ValueError, https_protocol.HTTPSProtocolError):
+		except (OSError, ValueError, http.client.HTTPException, https_protocol.HTTPSProtocolError):
+			# A listening session may never send a batch, so this is the only
+			# chance to heal the send connection before the next acknowledgement.
+			try:
+				self._reopen_send_connection()
+			except Exception:
+				pass
 			return
 		if status == 200:
 			self.acknowledged_sequence = max(self.acknowledged_sequence, received)

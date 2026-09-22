@@ -84,7 +84,6 @@ class URLHandlerWindow(windowUtils.CustomWindow):
 	def windowProc(self, hwnd, msg, wParam, lParam):
 		if msg != WM_COPYDATA:
 			return
-		hwnd = wParam
 		struct_pointer = lParam
 		message_data = ctypes.cast(struct_pointer, PCOPYDATASTRUCT)
 		url = ctypes.wstring_at(message_data.contents.lpData)

@@ -6,14 +6,15 @@ import ssl
 import sys
 import time
 
-sys.path.append(os.path.dirname(__file__))
-import miniupnpc
-
-del sys.path[-1]
 from logHandler import log
 from . import socket_utils
 from .certificate import ensure_certificate
 from dataclasses import dataclass
+
+sys.path.append(os.path.dirname(__file__))
+import miniupnpc
+
+del sys.path[-1]
 
 
 class Server:
@@ -61,7 +62,7 @@ class Server:
 				self.upnp.discover()
 				self.upnp.selectigd()
 				self.upnp.addportmapping(self.port, "TCP", self.upnp.lanaddr, self.port, "TeleNVDA", "", 3600)
-			except:
+			except Exception:
 				self.upnp = None
 		self.last_ping_time = time.monotonic()
 		log.info("TeleNVDA direct connection server started")
@@ -165,7 +166,7 @@ class Client:
 			# [2] https://docs.python.org/3.7/library/socket.html#socket.socket.recv
 			buffSize = 16384
 			sock_data = self.socket.recv(buffSize)
-		except:
+		except Exception:
 			self.close()
 			return
 		if not sock_data:  # Disconnect
@@ -248,7 +249,7 @@ class Client:
 		msgstr = json.dumps(msg) + "\n"
 		try:
 			self.socket.sendall(msgstr.encode("UTF-8"))
-		except:
+		except Exception:
 			self.close()
 
 	def send_to_others(self, origin=None, **obj):

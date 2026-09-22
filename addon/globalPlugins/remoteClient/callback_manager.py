@@ -1,8 +1,8 @@
 from logging import getLogger
-
-logger = getLogger("callback_manager")
 import wx
 from collections import defaultdict
+
+logger = getLogger("callback_manager")
 
 
 class CallbackManager:

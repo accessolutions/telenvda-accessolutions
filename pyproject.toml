@@ -70,6 +70,16 @@ exclude = [
 	"__pycache__",
 	".venv",
 	"buildVars.py",
+	# Third-party libraries bundled with the add-on, one directory per target
+	# architecture. They hold Cryptodome, python_socks and websocket-client, none
+	# of which are maintained here, so linting them would only create noise and
+	# any local fix would be lost on the next upgrade.
+	"addon/globalPlugins/remoteClient/lib32",
+	"addon/globalPlugins/remoteClient/lib64",
+	# Unpacked add-on releases kept next to the sources. They duplicate every
+	# module, bundled libraries included, so linting them reports each finding
+	# twice and points at a copy nobody edits.
+	"TeleNVDA Accessolutions-*",
 ]
 
 [tool.ruff.format]
@@ -90,6 +100,11 @@ logger-objects = ["logHandler.log"]
 # sconscripts contains many inbuilt functions not recognised by the lint,
 # so ignore F821.
 "sconstruct" = ["F821"]
+# regobj is a third-party module (MIT, Ryan Kelly) kept alongside the add-on
+# sources. It publishes the winreg type and permission constants by assigning
+# into globals() in a loop, which the lint cannot follow, hence the false F821
+# reports. Its remaining warnings belong to upstream, not to this project.
+"addon/globalPlugins/remoteClient/regobj.py" = ["F821", "F841"]
 
 [tool.pyright]
 venvPath = ".venv"

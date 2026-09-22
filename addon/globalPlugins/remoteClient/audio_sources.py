@@ -22,10 +22,6 @@ import os
 from ctypes import POINTER, byref, c_void_p, sizeof
 from ctypes.wintypes import BOOL, DWORD, HANDLE, LONG, MAX_PATH, WCHAR
 
-# NVDA only adds its handlers to its own logger, so a logger of this module's own
-# would write nothing at all below the warning level.
-from logHandler import log as logger
-
 from .audio_capture import GUID, _CLSID_MMDeviceEnumerator, _IID_IMMDeviceEnumerator, _release, _vtable_method
 
 

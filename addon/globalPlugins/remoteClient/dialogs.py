@@ -296,25 +296,45 @@ class ClientPanel(wx.Panel):
 		transport_kwargs = {"address": address, "serializer": serializer.JSONSerializer(), "insecure": insecure}
 		if transport_type == "https":
 			cs = configuration.get_config()['controlserver']
-			self.key_connector = transport.create_https_relay_transport(
+			# Selecting the relay version resolves the proxy for the destination,
+			# which on automatic detection queries WinHTTP and can block for
+			# several seconds. Every value read from a control is collected here,
+			# on the main thread, and the transport is built on a worker.
+			https_kwargs = dict(
+				transport_kwargs,
 				https_path=self.https_path.GetValue() or configuration.DEFAULT_HTTPS_PATH,
 				preference=cs.get('https_version', 'auto'),
 				https_path_v2=cs.get('https_path_v2', configuration.DEFAULT_HTTPS_PATH_V2),
-				**transport_kwargs,
 			)
-		elif transport_type == "websocket":
+			threading.Thread(
+				target=self._start_https_key_connector,
+				args=(https_kwargs,),
+				daemon=True,
+			).start()
+			return
+		if transport_type == "websocket":
 			transport_class = transport.WebSocketRelayTransport
 			transport_kwargs["ws_path"] = self.ws_path.GetValue() or "/"
 			self.key_connector = transport_class(**transport_kwargs)
 		else:
 			self.key_connector = transport.RelayTransport(**transport_kwargs)
-		self.key_connector.callback_manager.register_callback('msg_generate_key', self.handle_key_generated)
-		self.key_connector.callback_manager.register_callback(transport.TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.handle_certificate_failed)
-		if transport_type == "https":
-			self.key_connector.reconnector_thread.start()
-		else:
-			t = threading.Thread(target=self.key_connector.run)
-			t.start()
+		self._register_key_connector_callbacks(self.key_connector)
+		t = threading.Thread(target=self.key_connector.run)
+		t.start()
+
+	def _register_key_connector_callbacks(self, connector):
+		connector.callback_manager.register_callback('msg_generate_key', self.handle_key_generated)
+		connector.callback_manager.register_callback(transport.TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.handle_certificate_failed)
+
+	def _start_https_key_connector(self, https_kwargs):
+		try:
+			connector = transport.create_https_relay_transport(**https_kwargs)
+		except Exception:
+			log.exception("Unable to create the HTTPS relay transport for key generation")
+			return
+		self._register_key_connector_callbacks(connector)
+		self.key_connector = connector
+		connector.reconnector_thread.start()
 
 	def handle_key_generated(self, key=None):
 		self.key.SetValue(key)

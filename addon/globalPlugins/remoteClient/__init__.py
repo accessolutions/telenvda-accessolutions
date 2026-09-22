@@ -15,11 +15,11 @@ import os
 import queueHandler
 try:
 	from winAPI.secureDesktop import post_secureDesktopStateChange
-except:
+except ImportError:
 	post_secureDesktopStateChange = None
 try:
 	from utils import security
-except:
+except ImportError:
 	pass
 import buildVersion
 import shlobj
@@ -48,6 +48,41 @@ try:
 except ImportError:
 	#: Reserved virtual key code used to notify the controlled computer that its key state changed.
 	VK_NONE = 0xFF
+
+# The submodules come right after the imports above, before this module defines
+# anything of its own. Their relative order matters: session does
+# "from . import RelayTransport", so the transport import has to stay above it.
+# Nothing here needs a name defined further down, and edge deliberately imports
+# force_window_to_foreground inside a function to avoid the cycle.
+from . import bridge
+from . import configuration
+from . import cues
+from . import dialogs
+from . import https_version
+if buildVersion.version_year < 2025:
+	from . import keyboard_hook
+else:
+	import inputCore
+from . import keep_awake
+from . import local_machine
+from . import mouse_hook
+from . import remote_keyboard
+from . import serializer
+from . import server
+from . import updater
+from . import url_handler
+from .https_protocol import DEFAULT_PATH as DEFAULT_HTTPS_PATH, DEFAULT_PATH_V2 as DEFAULT_HTTPS_PATH_V2
+from .socket_utils import SERVER_PORT, address_to_hostport, wrap_socket
+from .transport import (
+	HTTPSRelayTransport,
+	HTTPSStreamRelayTransport,
+	RelayTransport,
+	TransportEvents,
+	WebSocketRelayTransport,
+	create_https_relay_transport,
+)
+
+from .session import MasterSession, SlaveSession
 
 logger = logging.getLogger(__name__)
 
@@ -124,35 +159,7 @@ def force_window_to_foreground(handle):
 		logger.debug("Unable to force a window to the foreground", exc_info=True)
 		return False
 
-from . import bridge
-from . import configuration
-from . import cues
-from . import dialogs
-from . import https_version
-if buildVersion.version_year < 2025:
-	from . import keyboard_hook
-else:
-	import inputCore
-from . import keep_awake
-from . import local_machine
-from . import mouse_hook
-from . import remote_keyboard
-from . import serializer
-from . import server
-from . import updater
-from . import url_handler
-from .https_protocol import DEFAULT_PATH as DEFAULT_HTTPS_PATH, DEFAULT_PATH_V2 as DEFAULT_HTTPS_PATH_V2
-from .socket_utils import SERVER_PORT, address_to_hostport, wrap_socket
-from .transport import (
-	HTTPSRelayTransport,
-	HTTPSStreamRelayTransport,
-	RelayTransport,
-	TransportEvents,
-	WebSocketRelayTransport,
-	create_https_relay_transport,
-)
 
-from .session import MasterSession, SlaveSession
 try:
 	addonHandler.initTranslation()
 except addonHandler.AddonError:
@@ -846,7 +853,7 @@ class GlobalPlugin(_GlobalPlugin):
 		try:
 			self.menu.Remove(self.connect_item.Id)
 			self.menu.Remove(self.disconnect_item.Id)
-		except:
+		except Exception:
 			pass
 		self.connect_item.Destroy()
 		self.connect_item=None
@@ -893,7 +900,7 @@ class GlobalPlugin(_GlobalPlugin):
 			pass
 		try:
 			os.unlink(self.ipc_file)
-		except:
+		except Exception:
 			pass
 		self.menu=None
 		url_handler.unregister_url_handler()
@@ -1985,7 +1992,7 @@ class GlobalPlugin(_GlobalPlugin):
 			# connecting to localhost, so this should be pretty fast. Use a short
 			# timeout, though.
 			self.slave_transport.connected_event.wait(self.SD_CONNECT_BLOCK_TIMEOUT)
-		except:
+		except Exception:
 			pass
 
 	def verify_connect(self, con_info):
@@ -2186,7 +2193,8 @@ class GlobalPlugin(_GlobalPlugin):
 		gesture="kb:control+alt+m",
 		**speakOnDemand)
 	def script_toggle_remote_mute(self, gesture):
-		if not self.is_connected() or self.connecting or self.slave_transport: return
+		if not self.is_connected() or self.connecting or self.slave_transport:
+			return
 		self.on_mute_item(None)
 
 	@script(
@@ -2194,7 +2202,8 @@ class GlobalPlugin(_GlobalPlugin):
 		description=_("""Sends Ctrl+Alt+Delete to the remote machine"""),
 		**speakOnDemand)
 	def script_send_ctrl_alt_del(self, gesture):
-		if not self.is_connected() or self.connecting or self.slave_transport: return
+		if not self.is_connected() or self.connecting or self.slave_transport:
+			return
 		self.on_send_ctrl_alt_del(None)
 
 	@script(

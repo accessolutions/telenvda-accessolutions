@@ -1,8 +1,8 @@
 from logging import getLogger
-
-log = getLogger("serializer")
 import json
 import speech.commands
+
+log = getLogger("serializer")
 
 
 class JSONSerializer:

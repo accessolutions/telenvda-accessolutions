@@ -24,13 +24,14 @@ import logging
 import addonHandler
 import base64
 import gui
-
-logger = logging.getLogger("local_machine")
 from logHandler import log
 
 import subprocess
 import tempfile
 import threading
+
+logger = logging.getLogger("local_machine")
+
 try:
 	addonHandler.initTranslation()
 except addonHandler.AddonError:
@@ -354,5 +355,5 @@ class LocalMachine:
 				cues.clipboard_received()
 				# Translators: message spoken when the file has been received successfully
 				ui.message(_("File received"))
-			except:
+			except Exception:
 				logger.exception("Unable to save received file to disk")

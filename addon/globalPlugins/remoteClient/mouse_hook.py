@@ -8,9 +8,6 @@ else. The controlling computer polls the pointer position on a timer instead, se
 """
 
 from logging import getLogger
-
-logger = getLogger("mouse_hook")
-
 import ctypes
 from ctypes import (
 	wintypes,
@@ -19,6 +16,8 @@ from ctypes import (
 )
 
 from .input import INJECTED_TAG
+
+logger = getLogger("mouse_hook")
 
 
 HC_ACTION = 0

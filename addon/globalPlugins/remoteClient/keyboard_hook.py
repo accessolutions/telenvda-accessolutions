@@ -1,7 +1,4 @@
 from logging import getLogger
-
-logger = getLogger("keyboard_hook")
-
 import ctypes
 from ctypes import (
 	wintypes,
@@ -9,6 +6,8 @@ from ctypes import (
 	c_long,
 	c_int,
 )
+
+logger = getLogger("keyboard_hook")
 
 
 HC_ACTION = 0
@@ -51,7 +50,6 @@ class KeyboardHook:
 	def keyboard_proc(self, code, wParam, lParam):
 		if code < 0 or code != HC_ACTION:
 			return ctypes.windll.user32.CallNextHookEx(0, code, wParam, lParam)
-		event_type = wParam
 		kbd = KBDLLHOOKSTRUCT.from_address(lParam)
 		vk_code = kbd.vkCode
 		scan_code = kbd.scanCode

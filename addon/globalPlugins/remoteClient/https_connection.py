@@ -63,6 +63,10 @@ def open_https_connection(address, proxy_settings, timeout, insecure=False):
 		raw_socket.close()
 		raise
 	connection = http.client.HTTPSConnection(host, port, timeout=timeout_value, context=context)
+	# The socket is supplied already tunnelled and wrapped. Automatic reopening
+	# would instead dial the target host directly, bypassing the proxy and the
+	# SSPI tunnel, so the caller must open a fresh connection explicitly.
+	connection.auto_open = 0
 	connection.sock = tls_socket
 	return connection
 
