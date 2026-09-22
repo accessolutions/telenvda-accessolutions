@@ -207,6 +207,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self._inactivity_timer = None
 		self.slave_session = None
 		self.master_session = None
+		self._slave_connection_failure_reported = False
 		self.create_menu()
 		NVDASettingsDialog.categoryClasses.append(dialogs.OptionsDialog)
 		self.connecting = False
@@ -1599,7 +1600,27 @@ class GlobalPlugin(_GlobalPlugin):
 		self.slave_session = None
 		wx.CallAfter(self.keep_awake.reload)
 
+	def on_connected_as_slave_failed(self):
+		"""Say once that the relay could not be reached, then keep trying quietly.
+
+		The controlled computer used to stay perfectly silent: its connector retried
+		every few seconds for ever and nothing, not a sound nor a word, told its user
+		that the session would never start.
+		"""
+		if self.slave_transport is None or self.slave_transport.successful_connects:
+			return
+		if self._slave_connection_failure_reported:
+			return
+		self._slave_connection_failure_reported = True
+		cues.disconnected()
+		ui.message(
+			# Translators: Message spoken on the controlled computer when the relay cannot be reached.
+			_("Unable to connect to the control server. TeleNVDA keeps trying."),
+		)
+
 	def on_connected_as_master_failed(self):
+		if self.master_transport is None:
+			return
 		if self.master_transport.successful_connects == 0:
 			self.disconnect_as_master()
 			# Translators: Title of the connection error dialog.
@@ -1942,6 +1963,7 @@ class GlobalPlugin(_GlobalPlugin):
 		)
 		self.slave_session = SlaveSession(transport=transport, local_machine=self.local_machine)
 		self.slave_transport = transport
+		self._slave_connection_failure_reported = False
 		transport.callback_manager.register_callback(
 			TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED,
 			self.on_certificate_as_slave_failed,
@@ -1949,6 +1971,10 @@ class GlobalPlugin(_GlobalPlugin):
 		self.slave_transport.callback_manager.register_callback(
 			TransportEvents.CONNECTED,
 			self.on_connected_as_slave,
+		)
+		self.slave_transport.callback_manager.register_callback(
+			TransportEvents.CONNECTION_FAILED,
+			self.on_connected_as_slave_failed,
 		)
 		self.slave_transport.callback_manager.register_callback(
 			TransportEvents.DISCONNECTED,
@@ -2026,6 +2052,7 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def on_connected_as_slave(self):
 		log.info("Control connector connected")
+		self._slave_connection_failure_reported = False
 		cues.control_server_connected()
 		# Translators: Presented in direct (client to server) remote connection when the controlled computer is ready.
 		speech.speakMessage(_("Connected to control server"))
