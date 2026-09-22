@@ -175,7 +175,9 @@ def test_https_connectivity_reports_http_statuses(monkeypatch, status, error_cod
 def test_https_connectivity_reports_html_response(monkeypatch):
 	module, _ = _load_connectivity_module()
 	monkeypatch.setattr(module.socket, "getaddrinfo", lambda *args: [])
-	connection = FakeConnection([FakeResponse(200, b"<html><body>blocked</body></html>", [("Content-Type", "text/html")])])
+	connection = FakeConnection(
+		[FakeResponse(200, b"<html><body>blocked</body></html>", [("Content-Type", "text/html")])],
+	)
 	monkeypatch.setattr(module.https_connection, "open_https_connection", lambda *args, **kwargs: connection)
 
 	result = module.test_endpoint("relay.example", 443, "https")

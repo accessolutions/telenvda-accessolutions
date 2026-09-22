@@ -41,31 +41,44 @@ def test_session_identifier_requires_unpadded_base64url_with_sufficient_entropy(
 
 
 def test_session_response_and_message_envelopes_round_trip_as_json():
-	response = https_protocol.decode_session_response(json.dumps({
-		"sessionId": _session_id(),
-		"token": base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("="),
-		"protocol": "nvdaremote-http/1",
-		"pollWaitSeconds": 25,
-		"maxBatchMessages": 32,
-		"maxMessageBytes": 1048576,
-	}).encode("utf-8"))
+	response = https_protocol.decode_session_response(
+		json.dumps(
+			{
+				"sessionId": _session_id(),
+				"token": base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("="),
+				"protocol": "nvdaremote-http/1",
+				"pollWaitSeconds": 25,
+				"maxBatchMessages": 32,
+				"maxMessageBytes": 1048576,
+			},
+		).encode("utf-8"),
+	)
 	assert response.protocol == "nvdaremote-http/1"
 
-	body = https_protocol.encode_message_batch([
-		https_protocol.MessageEnvelope(1, {"type": "protocol_version", "version": 2}),
-		https_protocol.MessageEnvelope(2, {"type": "join", "channel": "1234567", "connection_type": "master"}),
-	])
+	body = https_protocol.encode_message_batch(
+		[
+			https_protocol.MessageEnvelope(1, {"type": "protocol_version", "version": 2}),
+			https_protocol.MessageEnvelope(
+				2,
+				{"type": "join", "channel": "1234567", "connection_type": "master"},
+			),
+		],
+	)
 	assert json.loads(body) == {
 		"messages": [
 			{"sequence": 1, "payload": {"type": "protocol_version", "version": 2}},
 			{"sequence": 2, "payload": {"type": "join", "channel": "1234567", "connection_type": "master"}},
-		]
+		],
 	}
 
-	poll = https_protocol.decode_poll_response(json.dumps({
-		"messages": [{"sequence": 3, "payload": {"type": "ping"}}],
-		"lastSequence": 3,
-	}).encode("utf-8"))
+	poll = https_protocol.decode_poll_response(
+		json.dumps(
+			{
+				"messages": [{"sequence": 3, "payload": {"type": "ping"}}],
+				"lastSequence": 3,
+			},
+		).encode("utf-8"),
+	)
 	assert poll.last_sequence == 3
 	assert poll.messages == (https_protocol.MessageEnvelope(3, {"type": "ping"}),)
 
@@ -78,10 +91,14 @@ def test_decoders_reject_malformed_json_missing_fields_and_wrong_types():
 	with pytest.raises(https_protocol.HTTPSProtocolError):
 		https_protocol.decode_poll_response(json.dumps({"messages": {}, "lastSequence": 0}).encode("utf-8"))
 	with pytest.raises(https_protocol.HTTPSProtocolError):
-		https_protocol.decode_poll_response(json.dumps({
-		"messages": [{"sequence": 1, "payload": []}],
-		"lastSequence": 1,
-	}).encode("utf-8"))
+		https_protocol.decode_poll_response(
+			json.dumps(
+				{
+					"messages": [{"sequence": 1, "payload": []}],
+					"lastSequence": 1,
+				},
+			).encode("utf-8"),
+		)
 
 
 def test_sequence_tracker_accepts_order_ignores_duplicates_and_rejects_gaps():

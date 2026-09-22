@@ -108,7 +108,9 @@ _CLEANUP_ATTEMPTS = 10
 _CLEANUP_DELAY = 1.0
 
 _ENUM_WINDOWS_PROC = ctypes.WINFUNCTYPE(
-	ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM
+	ctypes.wintypes.BOOL,
+	ctypes.wintypes.HWND,
+	ctypes.wintypes.LPARAM,
 )
 
 
@@ -198,7 +200,9 @@ def _tame_off_screen_window(previous):
 			user32.ShowWindow(handle, _SW_HIDE)
 			style = user32.GetWindowLongW(handle, _GWL_EXSTYLE)
 			user32.SetWindowLongW(
-				handle, _GWL_EXSTYLE, (style | _WS_EX_TOOLWINDOW) & ~_WS_EX_APPWINDOW
+				handle,
+				_GWL_EXSTYLE,
+				(style | _WS_EX_TOOLWINDOW) & ~_WS_EX_APPWINDOW,
 			)
 			user32.ShowWindow(handle, _SW_SHOWNOACTIVATE)
 			logger.info("Screen sharing: the invisible window was taken out of the task switcher")

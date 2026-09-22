@@ -36,7 +36,7 @@ def open_https_connection(address, proxy_settings, timeout, insecure=False):
 	proxy_settings = _resolve_proxy_settings(proxy_settings, host, port)
 	proxy_enabled = bool(
 		getattr(proxy_settings, "enabled", False)
-		or (getattr(proxy_settings, "host", "") and getattr(proxy_settings, "port", 0))
+		or (getattr(proxy_settings, "host", "") and getattr(proxy_settings, "port", 0)),
 	)
 	timeout_value = timeout or _DEFAULT_TIMEOUT
 	if not proxy_enabled:

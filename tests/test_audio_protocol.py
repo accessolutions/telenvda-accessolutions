@@ -39,7 +39,13 @@ def test_response_must_confirm_the_complete_opus_format():
 	parameters = audio_protocol.validate_response("opus", 48000, 2, 20, 12)
 
 	assert parameters.stream == 12
-	for field, value in (("codec", "pcm"), ("sample_rate", 16000), ("channels", 1), ("frame_ms", 40), ("stream", 0)):
+	for field, value in (
+		("codec", "pcm"),
+		("sample_rate", 16000),
+		("channels", 1),
+		("frame_ms", 40),
+		("stream", 0),
+	):
 		values = {"codec": "opus", "sample_rate": 48000, "channels": 2, "frame_ms": 20, "stream": 12}
 		values[field] = value
 		with pytest.raises(audio_protocol.AudioProtocolError):
@@ -47,7 +53,13 @@ def test_response_must_confirm_the_complete_opus_format():
 
 
 def test_opus_data_validates_stream_size_and_packet_count():
-	data = audio_protocol.validate_opus_data(12, 100, 20, [_packet(b"one"), _packet(b"two")], expected_stream=12)
+	data = audio_protocol.validate_opus_data(
+		12,
+		100,
+		20,
+		[_packet(b"one"), _packet(b"two")],
+		expected_stream=12,
+	)
 
 	assert data.sequence == 100
 	assert data.packets == (b"one", b"two")

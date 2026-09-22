@@ -86,7 +86,9 @@ def _load_audio_playback(monkeypatch):
 	monkeypatch.setitem(
 		sys.modules,
 		"logHandler",
-		types.SimpleNamespace(log=types.SimpleNamespace(exception=lambda *args: None, debug=lambda *args, **kwargs: None)),
+		types.SimpleNamespace(
+			log=types.SimpleNamespace(exception=lambda *args: None, debug=lambda *args, **kwargs: None),
+		),
 	)
 	spec = importlib.util.spec_from_file_location("remoteClient.audio_playback", MODULE_PATH)
 	assert spec is not None and spec.loader is not None

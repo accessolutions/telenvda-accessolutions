@@ -92,12 +92,22 @@ def _test_https_endpoint(host, port, path, timeout, result, started):
 				create_body,
 			)
 		if _is_html_response(create_headers, create_body):
-			return _fail_result(result, started, "html_response", "The HTTPS endpoint returned HTML instead of JSON")
+			return _fail_result(
+				result,
+				started,
+				"html_response",
+				"The HTTPS endpoint returned HTML instead of JSON",
+			)
 		try:
 			session = https_protocol.decode_session_response(create_body)
 		except https_protocol.HTTPSProtocolError as error:
 			code = "protocol_mismatch" if error.reason == "unsupported_protocol" else "invalid_json"
-			return _fail_result(result, started, code, "The HTTPS endpoint returned an invalid session response")
+			return _fail_result(
+				result,
+				started,
+				code,
+				"The HTTPS endpoint returned an invalid session response",
+			)
 		delete_status, delete_headers, delete_body = _https_request(
 			connection,
 			"DELETE",
@@ -145,7 +155,9 @@ def _https_request(connection, method, path, body=None, token=None):
 
 def _is_html_response(headers, body):
 	content_type = headers.get("content-type", "").lower()
-	return "text/html" in content_type or body.lstrip().lower().startswith((b"<!doctype html", b"<html", b"<head"))
+	return "text/html" in content_type or body.lstrip().lower().startswith(
+		(b"<!doctype html", b"<html", b"<head"),
+	)
 
 
 def _fail_http_result(result, started, status, proxy_settings, headers, body, failure_code=None):
@@ -169,9 +181,21 @@ def _fail_exception_result(result, started, error, proxy_settings):
 	if https_connection.is_certificate_verification_error(error):
 		return _fail_result(result, started, "certificate_untrusted", "The TLS certificate is not trusted")
 	if isinstance(error, https_connection.HTTPSProxyAuthenticationError):
-		return _fail_result(result, started, "proxy_authentication_required", "The HTTP proxy requires authentication", status=407)
+		return _fail_result(
+			result,
+			started,
+			"proxy_authentication_required",
+			"The HTTP proxy requires authentication",
+			status=407,
+		)
 	if isinstance(error, https_connection.HTTPSProxyError):
-		return _fail_result(result, started, "proxy_unreachable", "The HTTP proxy rejected the connection", status=error.status)
+		return _fail_result(
+			result,
+			started,
+			"proxy_unreachable",
+			"The HTTP proxy rejected the connection",
+			status=error.status,
+		)
 	if isinstance(error, https_protocol.HTTPSProtocolError):
 		return _fail_result(result, started, error.reason, "The HTTPS relay request could not be validated")
 	if isinstance(error, ssl.SSLError):

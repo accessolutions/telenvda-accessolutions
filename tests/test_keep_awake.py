@@ -16,7 +16,9 @@ def _load_keep_awake(monkeypatch):
 	monkeypatch.setitem(
 		sys.modules,
 		"logHandler",
-		types.SimpleNamespace(log=types.SimpleNamespace(exception=lambda *args: None, debug=lambda *args: None)),
+		types.SimpleNamespace(
+			log=types.SimpleNamespace(exception=lambda *args: None, debug=lambda *args: None),
+		),
 	)
 	monkeypatch.setitem(
 		sys.modules,

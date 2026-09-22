@@ -34,7 +34,7 @@ https_stream = _load_module(
 
 
 def test_read_event_returns_message_and_decodes_payload():
-	response = io.BytesIO(b"id: 7\ndata: {\"type\":\"ping\"}\n\n")
+	response = io.BytesIO(b'id: 7\ndata: {"type":"ping"}\n\n')
 
 	event = https_stream.read_event(response, 4096)
 
@@ -88,7 +88,7 @@ def test_read_event_rejects_oversized_payload_and_line():
 
 def test_read_event_rejects_truncated_and_invalid_utf8_blocks():
 	with pytest.raises(https_stream.HTTPSStreamClosed):
-		https_stream.read_event(io.BytesIO(b"data: {\"type\":\"ping\"}"), 4096)
+		https_stream.read_event(io.BytesIO(b'data: {"type":"ping"}'), 4096)
 
 	with pytest.raises(https_protocol.HTTPSProtocolError) as error:
 		https_stream.read_event(io.BytesIO(b"data: \xff\n\n"), 4096)

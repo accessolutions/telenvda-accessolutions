@@ -36,7 +36,8 @@ def is_available():
 	except ImportError:
 		return False
 	return callable(getattr(keyboardHandler, "ignoreInjection", None)) or hasattr(
-		keyboardHandler, "ignoreInjected"
+		keyboardHandler,
+		"ignoreInjected",
 	)
 
 

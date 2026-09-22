@@ -62,13 +62,15 @@ def _configure_command(source: Path, build: Path, architecture: str) -> list[str
 		return command
 	compiler = "i686-w64-mingw32-gcc" if architecture == "x86" else "x86_64-w64-mingw32-gcc"
 	windres = "i686-w64-mingw32-windres" if architecture == "x86" else "x86_64-w64-mingw32-windres"
-	command.extend([
-		"-DCMAKE_SYSTEM_NAME=Windows",
-		f"-DCMAKE_C_COMPILER={compiler}",
-		f"-DCMAKE_RC_COMPILER={windres}",
-		"-DCMAKE_C_FLAGS=-static-libgcc -fno-stack-protector",
-		"-DCMAKE_SHARED_LINKER_FLAGS=-fno-stack-protector -Wl,-Bstatic -lssp -Wl,-Bdynamic",
-	])
+	command.extend(
+		[
+			"-DCMAKE_SYSTEM_NAME=Windows",
+			f"-DCMAKE_C_COMPILER={compiler}",
+			f"-DCMAKE_RC_COMPILER={windres}",
+			"-DCMAKE_C_FLAGS=-static-libgcc -fno-stack-protector",
+			"-DCMAKE_SHARED_LINKER_FLAGS=-fno-stack-protector -Wl,-Bstatic -lssp -Wl,-Bdynamic",
+		],
+	)
 	return command
 
 

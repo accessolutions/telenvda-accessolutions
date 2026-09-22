@@ -128,25 +128,44 @@ def root_of(pid, tree=None):
 
 def _session_manager():
 	enumerator = c_void_p()
-	if _ole32.CoCreateInstance(
-		byref(_CLSID_MMDeviceEnumerator), None, _CLSCTX_ALL,
-		byref(_IID_IMMDeviceEnumerator), byref(enumerator),
-	) != _S_OK:
+	if (
+		_ole32.CoCreateInstance(
+			byref(_CLSID_MMDeviceEnumerator),
+			None,
+			_CLSCTX_ALL,
+			byref(_IID_IMMDeviceEnumerator),
+			byref(enumerator),
+		)
+		!= _S_OK
+	):
 		return None
 	device = c_void_p()
 	try:
 		# GetDefaultAudioEndpoint(eRender, eConsole, &device)
-		if _vtable_method(enumerator, 4, ctypes.c_int, ctypes.c_int, POINTER(c_void_p))(
-			enumerator, 0, 0, byref(device)
-		) != _S_OK:
+		if (
+			_vtable_method(enumerator, 4, ctypes.c_int, ctypes.c_int, POINTER(c_void_p))(
+				enumerator,
+				0,
+				0,
+				byref(device),
+			)
+			!= _S_OK
+		):
 			return None
 	finally:
 		_release(enumerator)
 	manager = c_void_p()
 	try:
-		if _vtable_method(device, 3, POINTER(GUID), DWORD, c_void_p, POINTER(c_void_p))(
-			device, byref(_IID_IAudioSessionManager2), _CLSCTX_ALL, None, byref(manager)
-		) != _S_OK:
+		if (
+			_vtable_method(device, 3, POINTER(GUID), DWORD, c_void_p, POINTER(c_void_p))(
+				device,
+				byref(_IID_IAudioSessionManager2),
+				_CLSCTX_ALL,
+				None,
+				byref(manager),
+			)
+			!= _S_OK
+		):
 			return None
 	finally:
 		_release(device)
@@ -192,9 +211,14 @@ def _list_sessions():
 		seen = {}
 		for index in range(count.value):
 			control = c_void_p()
-			if _vtable_method(enumerator, 4, ctypes.c_int, POINTER(c_void_p))(
-				enumerator, index, byref(control)
-			) != _S_OK:
+			if (
+				_vtable_method(enumerator, 4, ctypes.c_int, POINTER(c_void_p))(
+					enumerator,
+					index,
+					byref(control),
+				)
+				!= _S_OK
+			):
 				continue
 			try:
 				entry = _read_session(control, own, tree)
@@ -216,9 +240,14 @@ def _list_sessions():
 
 def _read_session(control, own, tree):
 	extended = c_void_p()
-	if _vtable_method(control, 0, POINTER(GUID), POINTER(c_void_p))(
-		control, byref(_IID_IAudioSessionControl2), byref(extended)
-	) != _S_OK:
+	if (
+		_vtable_method(control, 0, POINTER(GUID), POINTER(c_void_p))(
+			control,
+			byref(_IID_IAudioSessionControl2),
+			byref(extended),
+		)
+		!= _S_OK
+	):
 		return None
 	try:
 		# IAudioSessionControl2::IsSystemSoundsSession returns S_OK for the session

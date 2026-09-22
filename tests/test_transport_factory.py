@@ -21,6 +21,7 @@ def _module(name, **attributes):
 
 def _install_stubs():
 	builtins._ = lambda value, *args, **kwargs: value
+
 	def script(*args, **kwargs):
 		return lambda function: function
 

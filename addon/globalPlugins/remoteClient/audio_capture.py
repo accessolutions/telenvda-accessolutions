@@ -322,7 +322,9 @@ def _activate_process_loopback(pid, mode):
 		client = c_void_p()
 		_check(
 			_vtable_method(operation, 3, POINTER(ctypes.HRESULT), POINTER(c_void_p))(
-				operation, byref(result), byref(client)
+				operation,
+				byref(result),
+				byref(client),
 			),
 			"GetActivateResult",
 		)
@@ -352,7 +354,10 @@ def _activate_system_loopback():
 		# GetDefaultAudioEndpoint(eRender, eConsole, &device)
 		_check(
 			_vtable_method(enumerator, 4, ctypes.c_int, ctypes.c_int, POINTER(c_void_p))(
-				enumerator, 0, 0, byref(device)
+				enumerator,
+				0,
+				0,
+				byref(device),
 			),
 			"GetDefaultAudioEndpoint",
 		)
@@ -363,7 +368,11 @@ def _activate_system_loopback():
 		# IMMDevice::Activate(riid, clsctx, params, &interface)
 		_check(
 			_vtable_method(device, 3, POINTER(GUID), DWORD, c_void_p, POINTER(c_void_p))(
-				device, byref(_IID_IAudioClient), _CLSCTX_ALL, None, byref(client)
+				device,
+				byref(_IID_IAudioClient),
+				_CLSCTX_ALL,
+				None,
+				byref(client),
 			),
 			"IMMDevice::Activate",
 		)
@@ -418,8 +427,14 @@ class _Capture:
 			flags = self._stream_flags()
 			_check(
 				_vtable_method(
-					client, 3, ctypes.c_int, DWORD, ctypes.c_longlong, ctypes.c_longlong,
-					POINTER(WAVEFORMATEX), POINTER(GUID),
+					client,
+					3,
+					ctypes.c_int,
+					DWORD,
+					ctypes.c_longlong,
+					ctypes.c_longlong,
+					POINTER(WAVEFORMATEX),
+					POINTER(GUID),
 				)(client, _AUDCLNT_SHAREMODE_SHARED, flags, _BUFFER_DURATION, 0, byref(fmt), None),
 				"IAudioClient::Initialize",
 			)
@@ -433,7 +448,9 @@ class _Capture:
 			capture = c_void_p()
 			_check(
 				_vtable_method(client, 14, POINTER(GUID), POINTER(c_void_p))(
-					client, byref(_IID_IAudioCaptureClient), byref(capture)
+					client,
+					byref(_IID_IAudioCaptureClient),
+					byref(capture),
 				),
 				"IAudioClient::GetService",
 			)
@@ -454,9 +471,13 @@ class _Capture:
 
 	def _pump(self, capture, event):
 		get_buffer = _vtable_method(
-			capture, 3,
-			POINTER(POINTER(BYTE)), POINTER(UINT), POINTER(DWORD),
-			POINTER(ctypes.c_ulonglong), POINTER(ctypes.c_ulonglong),
+			capture,
+			3,
+			POINTER(POINTER(BYTE)),
+			POINTER(UINT),
+			POINTER(DWORD),
+			POINTER(ctypes.c_ulonglong),
+			POINTER(ctypes.c_ulonglong),
 		)
 		release_buffer = _vtable_method(capture, 4, UINT)
 		next_packet = _vtable_method(capture, 5, POINTER(UINT))
@@ -666,9 +687,7 @@ class Mixer:
 	def _mix(self):
 		with self._lock:
 			sources = list(self._sources.values())
-		blocks = [
-			block for block in (source.take(self.output_block_bytes) for source in sources) if block
-		]
+		blocks = [block for block in (source.take(self.output_block_bytes) for source in sources) if block]
 		if not blocks:
 			return self._silence
 		if len(blocks) == 1:
@@ -716,7 +735,7 @@ def downmix(block):
 	samples = struct.Struct("<%dh" % (frames * CHANNELS)).unpack(block)
 	kept = range(0, frames * CHANNELS, CHANNELS * _DECIMATION)
 	return struct.Struct("<%dh" % len(kept)).pack(
-		*[(samples[index] + samples[index + 1]) >> 1 for index in kept]
+		*[(samples[index] + samples[index + 1]) >> 1 for index in kept],
 	)
 
 

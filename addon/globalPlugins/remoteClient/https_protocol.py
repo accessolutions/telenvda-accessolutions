@@ -83,7 +83,10 @@ def normalize_https_path(path: str | None) -> str:
 	if "%" in path:
 		for match in re.finditer("%", path):
 			position = match.start()
-			if position + 2 >= len(path) or not re.fullmatch(r"[0-9A-Fa-f]{2}", path[position + 1:position + 3]):
+			if position + 2 >= len(path) or not re.fullmatch(
+				r"[0-9A-Fa-f]{2}",
+				path[position + 1 : position + 3],
+			):
 				raise HTTPSProtocolError("HTTPS path contains an invalid escape", reason="invalid_path")
 	if not path.startswith("/"):
 		path = "/" + path
@@ -116,7 +119,10 @@ def validate_session_id(session_id: str) -> str:
 		decoded = base64.urlsafe_b64decode(session_id + "=" * (-len(session_id) % 4))
 	except (ValueError, TypeError):
 		raise HTTPSProtocolError("Session identifier is invalid", reason="invalid_session_id") from None
-	if len(decoded) < MIN_SESSION_ID_BYTES or base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != session_id:
+	if (
+		len(decoded) < MIN_SESSION_ID_BYTES
+		or base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != session_id
+	):
 		raise HTTPSProtocolError("Session identifier is invalid", reason="invalid_session_id")
 	return session_id
 
@@ -128,7 +134,10 @@ def validate_session_token(token: str) -> str:
 		decoded = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
 	except (ValueError, TypeError):
 		raise HTTPSAuthenticationError("Session token is invalid") from None
-	if len(decoded) != SESSION_TOKEN_BYTES or base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != token:
+	if (
+		len(decoded) != SESSION_TOKEN_BYTES
+		or base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != token
+	):
 		raise HTTPSAuthenticationError("Session token is invalid")
 	return token
 
@@ -159,7 +168,10 @@ def decode_session_response(raw: bytes | str) -> SessionResponse:
 		max_batch_messages = value["maxBatchMessages"]
 		max_message_bytes = value["maxMessageBytes"]
 	except KeyError as error:
-		raise HTTPSProtocolError(f"Session response is missing {error.args[0]}", reason="invalid_session_response") from None
+		raise HTTPSProtocolError(
+			f"Session response is missing {error.args[0]}",
+			reason="invalid_session_response",
+		) from None
 	if protocol not in (PROTOCOL, PROTOCOL_V2):
 		raise HTTPSProtocolError("Unsupported HTTPS relay protocol", reason="unsupported_protocol")
 	_validate_positive_integer(poll_wait_seconds, "pollWaitSeconds")
@@ -223,7 +235,10 @@ def decode_poll_response(raw: bytes | str) -> PollResponse:
 			raise HTTPSSequenceError(previous + 1, message.sequence)
 		previous = message.sequence
 	if messages and last_sequence < messages[-1].sequence:
-		raise HTTPSProtocolError("Poll response lastSequence is behind its messages", reason="invalid_poll_response")
+		raise HTTPSProtocolError(
+			"Poll response lastSequence is behind its messages",
+			reason="invalid_poll_response",
+		)
 	return PollResponse(messages=messages, last_sequence=last_sequence)
 
 

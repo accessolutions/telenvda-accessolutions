@@ -199,7 +199,10 @@ class OpusEncoder:
 		self._handle: Any = None
 		error = ctypes.c_int(0)
 		handle = self._library.opus_encoder_create(
-			sample_rate, channels, OPUS_APPLICATION_AUDIO, ctypes.byref(error)
+			sample_rate,
+			channels,
+			OPUS_APPLICATION_AUDIO,
+			ctypes.byref(error),
 		)
 		if not handle:
 			_check_result(self._library, error.value or OPUS_ALLOC_FAIL)
@@ -282,7 +285,10 @@ class OpusDecoder:
 		if self._handle is None:
 			raise OpusError(OPUS_INVALID_STATE)
 		gain = _gain_for_percent(percent)
-		_check_result(self._library, self._library.opus_decoder_ctl(self._handle, OPUS_SET_GAIN_REQUEST, gain))
+		_check_result(
+			self._library,
+			self._library.opus_decoder_ctl(self._handle, OPUS_SET_GAIN_REQUEST, gain),
+		)
 
 	def reset(self) -> None:
 		if self._handle is None:

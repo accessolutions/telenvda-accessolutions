@@ -33,6 +33,7 @@ import wx
 import addonHandler
 import gui
 import ui
+
 # NVDA only adds its handlers to its own logger, so a logger of this module's own
 # would write nothing at all below the warning level.
 from logHandler import log as logger
@@ -61,7 +62,9 @@ except Exception:
 try:
 	addonHandler.initTranslation()
 except addonHandler.AddonError:
-	logger.warning("Unable to initialise translations. This may be because the addon is running from NVDA scratchpad.")
+	logger.warning(
+		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad.",
+	)
 
 #: The messages of the feature. They are ordinary messages of the protocol, so the
 #: relay passes them to the other member of the channel without knowing what they
@@ -150,7 +153,7 @@ def excluded_applications():
 def set_excluded_applications(names):
 	config = configuration.get_config()
 	config["remote_audio"]["excluded_applications"] = sorted(
-		{str(name).strip().lower() for name in names if str(name).strip()}
+		{str(name).strip().lower() for name in names if str(name).strip()},
 	)
 	config.write()
 
@@ -328,7 +331,9 @@ class AudioShareManager:
 		else:
 			self._stop_refresh.clear()
 			self._refresh = threading.Thread(
-				target=self._follow_sources, name="audio_share_sources", daemon=True
+				target=self._follow_sources,
+				name="audio_share_sources",
+				daemon=True,
 			)
 			self._refresh.start()
 		self._mixer.start()
@@ -383,9 +388,7 @@ class AudioShareManager:
 			return
 		blocks, self._pending = self._pending, []
 		sequence = self._send_sequence
-		self._send_sequence = (
-			self._send_sequence + len(blocks)
-		) % (audio_protocol.MAX_SEQUENCE + 1)
+		self._send_sequence = (self._send_sequence + len(blocks)) % (audio_protocol.MAX_SEQUENCE + 1)
 		if self.state == STATE_IDLE:
 			return
 		queue_depth = self._transport_queue_depth()
@@ -517,7 +520,10 @@ class AudioShareManager:
 		names = sorted(set(self._sounding.values()))
 		if names == before:
 			return
-		logger.info("Remote audio, telling the other computer it is hearing: %s", ", ".join(names) or "nothing")
+		logger.info(
+			"Remote audio, telling the other computer it is hearing: %s",
+			", ".join(names) or "nothing",
+		)
 		try:
 			self._send(MSG_SOURCES, applications=names)
 		except Exception:
@@ -590,12 +596,16 @@ class AudioShareManager:
 	def _ask_permission(self, origin, excluded, parameters):
 		if audio_capture.is_process_capture_available():
 			# Translators: question asked before the sound of this computer is shared
-			message = _("Do you want to share the sound of this computer? The controlling computer will hear the applications playing here.")
+			message = _(
+				"Do you want to share the sound of this computer? The controlling computer will hear the applications playing here.",
+			)
 		else:
 			# This Windows cannot capture one program on its own, so consent has to be
 			# asked for what will really happen rather than for what usually happens.
 			# Translators: question asked before the sound of this computer is shared, when Windows cannot separate the applications
-			message = _("Do you want to share the sound of this computer? This version of Windows cannot separate the applications, so everything played here will be heard, including the speech of this screen reader.")
+			message = _(
+				"Do you want to share the sound of this computer? This version of Windows cannot separate the applications, so everything played here will be heard, including the speech of this screen reader.",
+			)
 		answer = gui.messageBox(
 			parent=gui.mainFrame,
 			# Translators: title of the remote audio request dialog
@@ -699,7 +709,10 @@ class AudioShareManager:
 		wx.CallAfter(ui.message, _("Remote audio started"))
 		if self.whole_device:
 			# Translators: message spoken when the assisted computer can only share all of its sound
-			wx.CallAfter(ui.message, _("This computer can only share all of its sound, including the speech of its screen reader"))
+			wx.CallAfter(
+				ui.message,
+				_("This computer can only share all of its sound, including the speech of its screen reader"),
+			)
 
 	def handle_stop(self, origin=None, **kwargs):
 		if not self._accept_from(origin) or origin != self.peer_id:
@@ -800,10 +813,13 @@ class AudioShareManager:
 	def handle_sources(self, applications=None, **kwargs):
 		if self.role != ROLE_VIEWER or not isinstance(applications, list):
 			return
-		self._remote_sounding = sorted({
-			name.strip().lower() for name in applications[:_MAX_EXCLUSIONS]
-			if isinstance(name, str) and name.strip()
-		})
+		self._remote_sounding = sorted(
+			{
+				name.strip().lower()
+				for name in applications[:_MAX_EXCLUSIONS]
+				if isinstance(name, str) and name.strip()
+			},
+		)
 		logger.info(
 			"Remote audio, the other computer says it is playing: %s",
 			", ".join(self._remote_sounding) or "nothing",
@@ -816,7 +832,8 @@ class AudioShareManager:
 		if self.role != ROLE_PUBLISHER or not self.active or not isinstance(excluded, list):
 			return
 		self._excluded = {
-			name.strip().lower() for name in excluded[:_MAX_EXCLUSIONS]
+			name.strip().lower()
+			for name in excluded[:_MAX_EXCLUSIONS]
 			if isinstance(name, str) and name.strip()
 		}
 		logger.info(

@@ -136,9 +136,11 @@ def _new_transport():
 
 def test_send_batch_uses_json_payloads_and_http_headers():
 	transport = _new_transport()
-	connection = FakeConnection([
-		FakeResponse(200, b'{"acceptedThrough":2}'),
-	])
+	connection = FakeConnection(
+		[
+			FakeResponse(200, b'{"acceptedThrough":2}'),
+		],
+	)
 	transport.send_connection = connection
 	transport.max_batch_messages = 2
 	transport.queue.put(b'{"type":"protocol_version","version":2}\n')
@@ -155,7 +157,7 @@ def test_send_batch_uses_json_payloads_and_http_headers():
 		"messages": [
 			{"sequence": 1, "payload": {"type": "protocol_version", "version": 2}},
 			{"sequence": 2, "payload": {"type": "join", "channel": "1234567", "connection_type": "master"}},
-		]
+		],
 	}
 	assert headers["Authorization"].startswith("Bearer ")
 	assert headers["X-TeleNVDA-Transport"] == "https-long-poll/1"
@@ -164,9 +166,11 @@ def test_send_batch_uses_json_payloads_and_http_headers():
 
 def test_send_batch_carries_received_through():
 	transport = _new_transport()
-	connection = FakeConnection([
-		FakeResponse(200, b'{"acceptedThrough":1}'),
-	])
+	connection = FakeConnection(
+		[
+			FakeResponse(200, b'{"acceptedThrough":1}'),
+		],
+	)
 	transport.send_connection = connection
 	transport.last_received_sequence = 4
 	batch = [https_protocol.MessageEnvelope(1, {"type": "ping"})]
@@ -180,9 +184,11 @@ def test_send_batch_carries_received_through():
 
 def test_send_acknowledgement_uses_an_empty_batch():
 	transport = _new_transport()
-	connection = FakeConnection([
-		FakeResponse(200, b'{"acceptedThrough":0}'),
-	])
+	connection = FakeConnection(
+		[
+			FakeResponse(200, b'{"acceptedThrough":0}'),
+		],
+	)
 	transport.send_connection = connection
 	transport.last_received_sequence = 4
 
@@ -197,20 +203,29 @@ def test_run_creates_session_polls_and_deletes_it():
 	transport = _new_transport()
 	transport.connected = False
 	session_id = transport.session_id
-	send_connection = FakeConnection([
-		FakeResponse(201, json.dumps({
-			"sessionId": transport.session_id,
-			"token": transport.session_token,
-			"protocol": "nvdaremote-http/1",
-			"pollWaitSeconds": 25,
-			"maxBatchMessages": 32,
-			"maxMessageBytes": 1048576,
-		}).encode("utf-8")),
-		FakeResponse(204),
-	])
-	poll_connection = FakeConnection([
-		FakeResponse(200, b'{"messages":[{"sequence":1,"payload":{"type":"ping"}}],"lastSequence":1}'),
-	])
+	send_connection = FakeConnection(
+		[
+			FakeResponse(
+				201,
+				json.dumps(
+					{
+						"sessionId": transport.session_id,
+						"token": transport.session_token,
+						"protocol": "nvdaremote-http/1",
+						"pollWaitSeconds": 25,
+						"maxBatchMessages": 32,
+						"maxMessageBytes": 1048576,
+					},
+				).encode("utf-8"),
+			),
+			FakeResponse(204),
+		],
+	)
+	poll_connection = FakeConnection(
+		[
+			FakeResponse(200, b'{"messages":[{"sequence":1,"payload":{"type":"ping"}}],"lastSequence":1}'),
+		],
+	)
 	connections = iter((send_connection, poll_connection))
 	transport._open_http_connection = lambda: next(connections)
 	transport.callback_manager.register_callback("msg_ping", lambda: transport._stop_event.set())
@@ -239,25 +254,34 @@ def test_stream_transport_negotiates_v2_and_receives_messages_after_ready():
 	assert transport.PROTOCOL == "nvdaremote-http/2"
 	session_id = base64.urlsafe_b64encode(bytes(range(16))).decode("ascii").rstrip("=")
 	token = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("=")
-	send_connection = FakeConnection([
-		FakeResponse(201, json.dumps({
-			"sessionId": session_id,
-			"token": token,
-			"protocol": "nvdaremote-http/2",
-			"pollWaitSeconds": 25,
-			"maxBatchMessages": 32,
-			"maxMessageBytes": 1048576,
-			"streamKeepaliveSeconds": 15,
-		}).encode("utf-8")),
-		FakeResponse(204),
-	])
-	poll_connection = FakeConnection([
-		FakeResponse(
-			200,
-			b'event: ready\ndata: {}\n\nid: 1\ndata: {"type":"ping"}\n\n',
-			[("Content-Type", "text/event-stream; charset=utf-8")],
-		),
-	])
+	send_connection = FakeConnection(
+		[
+			FakeResponse(
+				201,
+				json.dumps(
+					{
+						"sessionId": session_id,
+						"token": token,
+						"protocol": "nvdaremote-http/2",
+						"pollWaitSeconds": 25,
+						"maxBatchMessages": 32,
+						"maxMessageBytes": 1048576,
+						"streamKeepaliveSeconds": 15,
+					},
+				).encode("utf-8"),
+			),
+			FakeResponse(204),
+		],
+	)
+	poll_connection = FakeConnection(
+		[
+			FakeResponse(
+				200,
+				b'event: ready\ndata: {}\n\nid: 1\ndata: {"type":"ping"}\n\n',
+				[("Content-Type", "text/event-stream; charset=utf-8")],
+			),
+		],
+	)
 	connections = iter((send_connection, poll_connection))
 	transport._open_http_connection = lambda: next(connections)
 	transport.callback_manager.register_callback("msg_ping", lambda: transport._stop_event.set())
@@ -317,14 +341,16 @@ def test_https_factory_retries_v1_after_a_local_server_rejects_v2():
 				self._reply(404, b"{}")
 				return
 			if self.path == "/remote/http/v1/sessions":
-				body = json.dumps({
-					"sessionId": base64.urlsafe_b64encode(bytes(range(16))).decode("ascii").rstrip("="),
-					"token": base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("="),
-					"protocol": "nvdaremote-http/1",
-					"pollWaitSeconds": 25,
-					"maxBatchMessages": 32,
-					"maxMessageBytes": 1048576,
-				}).encode("utf-8")
+				body = json.dumps(
+					{
+						"sessionId": base64.urlsafe_b64encode(bytes(range(16))).decode("ascii").rstrip("="),
+						"token": base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("="),
+						"protocol": "nvdaremote-http/1",
+						"pollWaitSeconds": 25,
+						"maxBatchMessages": 32,
+						"maxMessageBytes": 1048576,
+					},
+				).encode("utf-8")
 				self._reply(201, body)
 				return
 			if self.path.startswith("/remote/http/v1/sessions/") and self.path.endswith("/messages"):
@@ -387,7 +413,11 @@ def test_certificate_policy_reuses_trusted_fingerprint_for_both_connections(monk
 	configuration = sys.modules["remoteClient.configuration"]
 	monkeypatch.setattr(transport_module, "hostport_to_address", lambda address: "relay.example:443")
 	address_key = "relay.example:443"
-	monkeypatch.setattr(configuration, "get_config", lambda: {"trusted_certs": {address_key: trusted_fingerprint}})
+	monkeypatch.setattr(
+		configuration,
+		"get_config",
+		lambda: {"trusted_certs": {address_key: trusted_fingerprint}},
+	)
 	attempts = 0
 	opened = []
 
@@ -400,11 +430,19 @@ def test_certificate_policy_reuses_trusted_fingerprint_for_both_connections(monk
 		return SimpleNamespace(close=lambda: None)
 
 	monkeypatch.setattr(transport, "_open_http_connection", open_connection)
-	monkeypatch.setattr(transport_module.https_connection, "open_https_connection", lambda *args, **kwargs: SimpleNamespace(
-		sock=SimpleNamespace(getpeercert=lambda binary_form: b"certificate"),
-		close=lambda: None,
-	))
-	monkeypatch.setattr(transport_module.https_connection, "peer_certificate_fingerprint", lambda connection: trusted_fingerprint)
+	monkeypatch.setattr(
+		transport_module.https_connection,
+		"open_https_connection",
+		lambda *args, **kwargs: SimpleNamespace(
+			sock=SimpleNamespace(getpeercert=lambda binary_form: b"certificate"),
+			close=lambda: None,
+		),
+	)
+	monkeypatch.setattr(
+		transport_module.https_connection,
+		"peer_certificate_fingerprint",
+		lambda connection: trusted_fingerprint,
+	)
 
 	first = transport._open_http_connection_with_certificate_policy()
 	second = transport._open_http_connection_with_certificate_policy()
@@ -438,7 +476,11 @@ def test_unknown_certificate_emits_trust_event_and_preserves_fingerprint(monkeyp
 		"open_https_connection",
 		lambda *args, **kwargs: SimpleNamespace(close=lambda: None),
 	)
-	monkeypatch.setattr(transport_module.https_connection, "peer_certificate_fingerprint", lambda connection: fingerprint)
+	monkeypatch.setattr(
+		transport_module.https_connection,
+		"peer_certificate_fingerprint",
+		lambda connection: fingerprint,
+	)
 
 	with pytest.raises(ssl.SSLCertVerificationError):
 		transport._open_http_connection_with_certificate_policy()

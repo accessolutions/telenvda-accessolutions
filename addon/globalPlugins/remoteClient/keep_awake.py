@@ -136,11 +136,11 @@ class KeepAwake:
 			self._timer = None
 
 	def _get_settings(self):
-		config = configuration.get_config()['keep_awake']
-		max_duration_minutes = int(config.get('max_duration_minutes', 0) or 0)
+		config = configuration.get_config()["keep_awake"]
+		max_duration_minutes = int(config.get("max_duration_minutes", 0) or 0)
 		if max_duration_minutes not in KEEP_AWAKE_MAX_DURATION_MINUTES:
 			max_duration_minutes = 0
-		enabled = bool(config['enabled'])
+		enabled = bool(config["enabled"])
 		if enabled:
 			try:
 				enabled = bool(self._is_active())
@@ -149,7 +149,7 @@ class KeepAwake:
 				enabled = False
 		return (
 			enabled,
-			max(5, int(config['delay_seconds'])),
+			max(5, int(config["delay_seconds"])),
 			max_duration_minutes * 60,
 		)
 
@@ -189,7 +189,11 @@ class KeepAwake:
 		if self._prevention_expired:
 			return
 		now = time.monotonic()
-		if max_duration and self._prevention_started is not None and now - self._prevention_started >= max_duration:
+		if (
+			max_duration
+			and self._prevention_started is not None
+			and now - self._prevention_started >= max_duration
+		):
 			self._prevention_expired = True
 			log.debug("Stopped preventing the computer from going to sleep after the maximum duration")
 			return

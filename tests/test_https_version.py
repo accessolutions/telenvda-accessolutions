@@ -29,7 +29,10 @@ def test_auto_prefers_v2_until_a_route_failure_is_remembered():
 	assert https_version.versions_to_try(https_version.AUTO, key) == [https_version.V2, https_version.V1]
 
 
-@pytest.mark.parametrize("preference, expected", ((https_version.V1, [https_version.V1]), (https_version.V2, [https_version.V2])))
+@pytest.mark.parametrize(
+	"preference, expected",
+	((https_version.V1, [https_version.V1]), (https_version.V2, [https_version.V2])),
+)
 def test_forced_version_ignores_route_memory(preference, expected):
 	key = https_version.network_key(("relay.example", 443), None)
 	https_version.remember_failure(key)
@@ -48,4 +51,7 @@ def test_proxy_is_part_of_the_route_key():
 	assert first_key != second_key
 	https_version.remember_failure(first_key)
 	assert https_version.versions_to_try(https_version.AUTO, first_key) == [https_version.V1]
-	assert https_version.versions_to_try(https_version.AUTO, second_key) == [https_version.V2, https_version.V1]
+	assert https_version.versions_to_try(https_version.AUTO, second_key) == [
+		https_version.V2,
+		https_version.V1,
+	]

@@ -1,10 +1,10 @@
 # Rapport d’audit de compatibilité NVDA
 
-**Extension auditée :** TeleNVDA Accessolutions  
-**Version examinée :** 2026.08.18.1146  
-**Version NVDA principalement analysée :** 2026.1  
-**Type d’audit :** analyse statique et comparaison avec les API NVDA  
-**Date :** 18 août 2026  
+**Extension auditée :** TeleNVDA Accessolutions
+**Version examinée :** 2026.08.18.1146
+**Version NVDA principalement analysée :** 2026.1
+**Type d’audit :** analyse statique et comparaison avec les API NVDA
+**Date :** 18 août 2026
 
 ## 1. Verdict exécutif
 

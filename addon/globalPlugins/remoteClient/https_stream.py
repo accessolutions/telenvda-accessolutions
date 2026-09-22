@@ -17,8 +17,7 @@ class StreamEvent(NamedTuple):
 
 
 class _LineReader(Protocol):
-	def readline(self, size: int = -1) -> bytes:
-		...
+	def readline(self, size: int = -1) -> bytes: ...
 
 
 def read_event(response: _LineReader, max_data_bytes: int) -> StreamEvent | None:
@@ -63,13 +62,19 @@ def read_event(response: _LineReader, max_data_bytes: int) -> StreamEvent | None
 			try:
 				sequence = int(decoded)
 			except ValueError as error:
-				raise https_protocol.HTTPSProtocolError("Stream id is invalid", reason="invalid_sequence") from error
+				raise https_protocol.HTTPSProtocolError(
+					"Stream id is invalid",
+					reason="invalid_sequence",
+				) from error
 			if sequence <= 0:
 				raise https_protocol.HTTPSProtocolError("Stream id is invalid", reason="invalid_sequence")
 		elif field_name == "data":
 			data_size += len(value)
 			if data_size > max_data_bytes:
-				raise https_protocol.HTTPSProtocolError("Stream payload is too large", reason="invalid_stream")
+				raise https_protocol.HTTPSProtocolError(
+					"Stream payload is too large",
+					reason="invalid_stream",
+				)
 			data_parts.append(decoded)
 
 
@@ -77,7 +82,13 @@ def decode_event_payload(event: StreamEvent) -> dict:
 	try:
 		payload = json.loads(event.data)
 	except ValueError as error:
-		raise https_protocol.HTTPSProtocolError("Stream payload is not valid JSON", reason="invalid_json") from error
+		raise https_protocol.HTTPSProtocolError(
+			"Stream payload is not valid JSON",
+			reason="invalid_json",
+		) from error
 	if not isinstance(payload, dict):
-		raise https_protocol.HTTPSProtocolError("Stream payload must be a JSON object", reason="invalid_message")
+		raise https_protocol.HTTPSProtocolError(
+			"Stream payload must be a JSON object",
+			reason="invalid_message",
+		)
 	return payload

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import queueHandler
+
 try:
 	from winAPI.secureDesktop import post_secureDesktopStateChange
 except ImportError:
@@ -34,6 +35,7 @@ import wx
 from config import conf as nvda_conf
 from globalPluginHandler import GlobalPlugin as _GlobalPlugin
 from keyboardHandler import KeyboardInputGesture
+
 try:
 	# Added in NVDA 2025.1, used by NVDA's own Remote Access to avoid triggering an
 	# action on the controlled computer when releasing modifiers.
@@ -43,6 +45,7 @@ except ImportError:
 from logHandler import log
 from scriptHandler import script
 from winUser import WM_QUIT
+
 try:
 	from winUser import VK_NONE
 except ImportError:
@@ -59,6 +62,7 @@ from . import configuration
 from . import cues
 from . import dialogs
 from . import https_version
+
 if buildVersion.version_year < 2025:
 	from . import keyboard_hook
 else:
@@ -93,6 +97,7 @@ _INACTIVITY_MONITOR_IDLE_DELAY_SECONDS = 60
 _SW_SHOW = 5
 _SW_RESTORE = 9
 
+
 def _get_user32():
 	"""Return a private user32 binding with the prototypes needed to force a window to the foreground.
 
@@ -123,6 +128,7 @@ def _get_user32():
 	user32.AttachThreadInput.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.DWORD, ctypes.wintypes.BOOL]
 	_get_user32._cached = user32
 	return user32
+
 
 def force_window_to_foreground(handle):
 	"""Try hard to bring the given window to the foreground.
@@ -164,13 +170,14 @@ try:
 	addonHandler.initTranslation()
 except addonHandler.AddonError:
 	log.warning(
-		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad."
+		"Unable to initialise translations. This may be because the addon is running from NVDA scratchpad.",
 	)
 speakOnDemand = {"speakOnDemand": True} if buildVersion.version_year >= 2024 else {}
 if buildVersion.version_year < 2025:
 	logging.getLogger("keyboard_hook").addHandler(logging.StreamHandler(sys.stdout))
 
 client = None
+
 
 class GlobalPlugin(_GlobalPlugin):
 	# Translators: script category for add-on gestures
@@ -181,9 +188,11 @@ class GlobalPlugin(_GlobalPlugin):
 		super().__init__(*args, **kwargs)
 		if client is not None and not getattr(client, "_terminated", False):
 			raise RuntimeError("TeleNVDA is already running. Only one instance can be loaded at a time.")
-		for addon in addonHandler.getAvailableAddons(): 
+		for addon in addonHandler.getAvailableAddons():
 			if addon.name == "remote" and not addon.isDisabled:
-				raise RuntimeError("TeleNVDA cannot be used while NVDA Remote is running. Please, disable NVDA Remote and restart NVDA.")
+				raise RuntimeError(
+					"TeleNVDA cannot be used while NVDA Remote is running. Please, disable NVDA Remote and restart NVDA.",
+				)
 		self.local_machine = local_machine.LocalMachine()
 		self.update_manager = updater.UpdateManager()
 		self._startup_update_checked = False
@@ -194,7 +203,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.create_menu()
 		NVDASettingsDialog.categoryClasses.append(dialogs.OptionsDialog)
 		self.connecting = False
-		self.muted = False # Used to know if mute remote was activated manually
+		self.muted = False  # Used to know if mute remote was activated manually
 		self.url_handler_window = url_handler.URLHandlerWindow(callback=self.verify_connect)
 		url_handler.register_url_handler(self.verify_connect)
 		self.master_transport = None
@@ -236,18 +245,30 @@ class GlobalPlugin(_GlobalPlugin):
 		try:
 			configuration.get_config()
 		except configobj.ParseError:
-			os.remove(os.path.abspath(os.path.join(globalVars.appArgs.configPath, configuration.CONFIG_FILE_NAME)))
-			queueHandler.queueFunction(queueHandler.eventQueue, wx.CallAfter, wx.MessageBox, _("Your NVDA Remote configuration was corrupted and has been reset."), _("NVDA Remote Configuration Error"), wx.OK|wx.ICON_EXCLAMATION)
+			os.remove(
+				os.path.abspath(os.path.join(globalVars.appArgs.configPath, configuration.CONFIG_FILE_NAME)),
+			)
+			queueHandler.queueFunction(
+				queueHandler.eventQueue,
+				wx.CallAfter,
+				wx.MessageBox,
+				_("Your NVDA Remote configuration was corrupted and has been reset."),
+				_("NVDA Remote Configuration Error"),
+				wx.OK | wx.ICON_EXCLAMATION,
+			)
 		self._schedule_inactivity_monitor()
-		if hasattr(shlobj, 'SHGetKnownFolderPath'):
-			self.temp_location = os.path.join(shlobj.SHGetKnownFolderPath(shlobj.FolderId.PROGRAM_DATA), 'temp')
+		if hasattr(shlobj, "SHGetKnownFolderPath"):
+			self.temp_location = os.path.join(
+				shlobj.SHGetKnownFolderPath(shlobj.FolderId.PROGRAM_DATA),
+				"temp",
+			)
 		else:
-			self.temp_location = os.path.join(shlobj.SHGetFolderPath(0, shlobj.CSIDL_COMMON_APPDATA), 'temp')
-		self.ipc_file = os.path.join(self.temp_location, 'remote.ipc')
+			self.temp_location = os.path.join(shlobj.SHGetFolderPath(0, shlobj.CSIDL_COMMON_APPDATA), "temp")
+		self.ipc_file = os.path.join(self.temp_location, "remote.ipc")
 		self.sd_focused = False
 		if post_secureDesktopStateChange:
 			post_secureDesktopStateChange.register(self.onSecureDesktopChange)
-		if hasattr(globalVars, 'teleNVDA'):
+		if hasattr(globalVars, "teleNVDA"):
 			self.postStartupHandler()
 		core.postNvdaStartup.register(self.postStartupHandler)
 		globalVars.teleNVDA = None
@@ -267,7 +288,7 @@ class GlobalPlugin(_GlobalPlugin):
 	@staticmethod
 	def _config_bool(value):
 		if isinstance(value, str):
-			return value.strip().casefold() in ('1', 'true', 'yes', 'on')
+			return value.strip().casefold() in ("1", "true", "yes", "on")
 		return bool(value)
 
 	@staticmethod
@@ -280,38 +301,38 @@ class GlobalPlugin(_GlobalPlugin):
 		"""
 		if nvda_config is None:
 			nvda_config = nvda_conf
-		remote = nvda_config.get('remote')
+		remote = nvda_config.get("remote")
 		if not remote:
 			return None
 		# NVDA 2026.1 renamed this section and some of its keys. Both spellings are
 		# accepted so that the settings of earlier versions are still recognised.
-		server = remote.get('controlServer') or remote.get('controlserver')
+		server = remote.get("controlServer") or remote.get("controlserver")
 		if not server:
 			return None
-		if not GlobalPlugin._config_bool(server.get('autoconnect')):
+		if not GlobalPlugin._config_bool(server.get("autoconnect")):
 			return None
-		key = str(server.get('key') or '')
+		key = str(server.get("key") or "")
 		if not key:
 			return None
-		self_hosted = GlobalPlugin._config_bool(server.get('selfHosted', server.get('self_hosted', False)))
-		host = str(server.get('host') or '')
+		self_hosted = GlobalPlugin._config_bool(server.get("selfHosted", server.get("self_hosted", False)))
+		host = str(server.get("host") or "")
 		if not self_hosted and not host:
 			return None
 		try:
-			port = int(server.get('port', SERVER_PORT))
+			port = int(server.get("port", SERVER_PORT))
 		except (TypeError, ValueError):
 			port = SERVER_PORT
 		try:
-			mode = int(server.get('connectionMode', server.get('connection_type', 0)))
+			mode = int(server.get("connectionMode", server.get("connection_type", 0)))
 		except (TypeError, ValueError):
 			mode = 0
 		return {
-			'key': key,
-			'self_hosted': self_hosted,
-			'host': host,
-			'port': port,
+			"key": key,
+			"self_hosted": self_hosted,
+			"host": host,
+			"port": port,
 			# 0 means being controlled, 1 means controlling, in both add-ons.
-			'connection_type': 1 if mode else 0,
+			"connection_type": 1 if mode else 0,
 		}
 
 	def _import_native_remote_settings(self):
@@ -345,43 +366,43 @@ class GlobalPlugin(_GlobalPlugin):
 					native = self._read_native_remote_autoconnect(external_config)
 					if native is not None:
 						break
-			cs = config['controlserver']
+			cs = config["controlserver"]
 			if native is None:
 				# Do not permanently suppress a future import when this NVDA
 				# instance has no native Remote configuration yet.
 				return
-			if not cs['autoconnect']:
-				cs['autoconnect'] = True
+			if not cs["autoconnect"]:
+				cs["autoconnect"] = True
 				# The previous TeleNVDA activity may be expired. Imported settings are
 				# an explicit activation and must not be disabled immediately at startup.
-				config['activity']['last_activity_timestamp'] = 0.0
-				cs['self_hosted'] = native['self_hosted']
-				cs['connection_type'] = native['connection_type']
-				cs['key'] = native['key']
-				if native['self_hosted']:
-					cs['port'] = native['port']
+				config["activity"]["last_activity_timestamp"] = 0.0
+				cs["self_hosted"] = native["self_hosted"]
+				cs["connection_type"] = native["connection_type"]
+				cs["key"] = native["key"]
+				if native["self_hosted"]:
+					cs["port"] = native["port"]
 				else:
-					cs['host'] = configuration.normalize_server_host(native['host'])
+					cs["host"] = configuration.normalize_server_host(native["host"])
 					# NVDA Remote may store the HTTPS port explicitly in the host field.
 					# TeleNVDA imports this connection as plain TCP, for which 443 must not
 					# be kept as an explicit port: the normal TCP port is 6837.
 					try:
-						host, port = address_to_hostport(native['host'], default_port=0)
+						host, port = address_to_hostport(native["host"], default_port=0)
 					except (TypeError, ValueError):
 						pass
 					else:
 						if host:
-							cs['host'] = configuration.normalize_server_host(host)
+							cs["host"] = configuration.normalize_server_host(host)
 						if port:
-							cs['port'] = SERVER_PORT if port == 443 else port
+							cs["port"] = SERVER_PORT if port == 443 else port
 						else:
-							cs['port'] = native['port']
+							cs["port"] = native["port"]
 					# The Remote Access built into NVDA only speaks the plain TCP protocol.
-					cs['transport'] = 'tcp'
+					cs["transport"] = "tcp"
 				config.write()
 				log.info(
 					"TeleNVDA: the automatic connection of the Remote Access built into "
-					"NVDA has been copied to TeleNVDA."
+					"NVDA has been copied to TeleNVDA.",
 				)
 			configuration.mark_native_remote_settings_imported()
 		except Exception:
@@ -391,22 +412,22 @@ class GlobalPlugin(_GlobalPlugin):
 		if configuration.readonly:
 			return
 		try:
-			remote = nvda_conf.get('remote')
-			if remote is None or 'enabled' not in remote:
+			remote = nvda_conf.get("remote")
+			if remote is None or "enabled" not in remote:
 				return
 			managed, original_enabled = configuration.get_native_remote_state()
 			if managed and configuration.should_restore_native_remote_on_reactivation():
-				if remote['enabled'] != original_enabled:
-					remote['enabled'] = original_enabled
+				if remote["enabled"] != original_enabled:
+					remote["enabled"] = original_enabled
 					nvda_conf.save()
 				configuration.clear_native_remote_state()
 				return
 			if not managed:
-				original_enabled = bool(remote['enabled'])
+				original_enabled = bool(remote["enabled"])
 				if not configuration.save_native_remote_state(original_enabled):
 					return
-			if remote['enabled'] is not False:
-				remote['enabled'] = False
+			if remote["enabled"] is not False:
+				remote["enabled"] = False
 				nvda_conf.save()
 		except Exception:
 			log.exception("Unable to manage native NVDA Remote configuration")
@@ -423,18 +444,18 @@ class GlobalPlugin(_GlobalPlugin):
 		if globalVars.appArgs.secure:
 			return
 		try:
-			remote = nvda_conf.get('remote')
-			server = (remote.get('controlServer') or remote.get('controlserver')) if remote else None
-			if not server or not server.get('autoconnect'):
+			remote = nvda_conf.get("remote")
+			server = (remote.get("controlServer") or remote.get("controlserver")) if remote else None
+			if not server or not server.get("autoconnect"):
 				return
-			server['autoconnect'] = False
+			server["autoconnect"] = False
 		except Exception:
 			log.exception("Unable to suspend the native NVDA Remote automatic connection")
 			return
 
 		def restore():
 			try:
-				server['autoconnect'] = True
+				server["autoconnect"] = True
 			except Exception:
 				log.exception("Unable to restore the native NVDA Remote automatic connection")
 
@@ -490,13 +511,19 @@ class GlobalPlugin(_GlobalPlugin):
 	def _disable_autoconnect_for_inactivity(self):
 		if not configuration.should_disable_autoconnect_for_inactivity():
 			return False
-		cs = configuration.get_config()['controlserver']
-		cs['autoconnect'] = False
+		cs = configuration.get_config()["controlserver"]
+		cs["autoconnect"] = False
 		if not configuration.readonly:
 			configuration.get_config().write()
 		# Translators: Spoken when auto-connect is automatically disabled after a long period without remote control activity.
-		ui.message(_("The auto-connect option was automatically disabled after a long period without any remote control activity."))
-		log.info("TeleNVDA: auto-connect was automatically disabled after a long period without any remote control activity.")
+		ui.message(
+			_(
+				"The auto-connect option was automatically disabled after a long period without any remote control activity.",
+			),
+		)
+		log.info(
+			"TeleNVDA: auto-connect was automatically disabled after a long period without any remote control activity.",
+		)
 		return True
 
 	def postStartupHandler(self):
@@ -508,16 +535,16 @@ class GlobalPlugin(_GlobalPlugin):
 		# The built-in client cannot be stopped while NVDA is still walking its
 		# handlers, so it is stopped once the notification is over.
 		wx.CallAfter(self._shutdown_native_remote)
-		cs = configuration.get_config()['controlserver']
+		cs = configuration.get_config()["controlserver"]
 		if globalVars.appArgs.secure:
 			self.handle_secure_desktop()
 		self._disable_autoconnect_for_inactivity()
-		if cs['autoconnect'] and not self.master_session and not self.slave_session:
-			wx.CallLater(50,self.perform_autoconnect)
+		if cs["autoconnect"] and not self.master_session and not self.slave_session:
+			wx.CallLater(50, self.perform_autoconnect)
 		if (
 			not self._startup_update_checked
 			and not globalVars.appArgs.secure
-			and configuration.get_config().get('updates', {}).get('check_at_startup', True)
+			and configuration.get_config().get("updates", {}).get("check_at_startup", True)
 		):
 			self._startup_update_checked = True
 			if updater.has_pending_install():
@@ -548,15 +575,18 @@ class GlobalPlugin(_GlobalPlugin):
 	def _prompt_finish_pending_update(self):
 		if self._terminated:
 			return
-		if gui.messageBox(
-			_(
-				"A previously downloaded TeleNVDA update could not be finished "
-				"automatically. NVDA must be restarted to complete the "
-				"installation. Restart NVDA now?"
-			),
-			_("TeleNVDA update"),
-			wx.YES | wx.NO | wx.ICON_INFORMATION,
-		) == wx.YES:
+		if (
+			gui.messageBox(
+				_(
+					"A previously downloaded TeleNVDA update could not be finished "
+					"automatically. NVDA must be restarted to complete the "
+					"installation. Restart NVDA now?",
+				),
+				_("TeleNVDA update"),
+				wx.YES | wx.NO | wx.ICON_INFORMATION,
+			)
+			== wx.YES
+		):
 			core.restart()
 
 	def _current_addon_version(self):
@@ -606,7 +636,7 @@ class GlobalPlugin(_GlobalPlugin):
 			return
 		message = _(
 			"A TeleNVDA update is available: version {version}.\n\n"
-			"Do you want to download and install it now?"
+			"Do you want to download and install it now?",
 		).format(version=update.version)
 		if gui.messageBox(message, _("TeleNVDA update"), wx.YES | wx.NO | wx.ICON_INFORMATION) != wx.YES:
 			return
@@ -647,11 +677,16 @@ class GlobalPlugin(_GlobalPlugin):
 				wx.OK | wx.ICON_ERROR,
 			)
 		else:
-			if gui.messageBox(
-				_("The TeleNVDA update was installed. NVDA must be restarted to finish the installation. Restart NVDA now?"),
-				_("TeleNVDA update"),
-				wx.YES | wx.NO | wx.ICON_INFORMATION,
-			) == wx.YES:
+			if (
+				gui.messageBox(
+					_(
+						"The TeleNVDA update was installed. NVDA must be restarted to finish the installation. Restart NVDA now?",
+					),
+					_("TeleNVDA update"),
+					wx.YES | wx.NO | wx.ICON_INFORMATION,
+				)
+				== wx.YES
+			):
 				core.restart()
 		finally:
 			try:
@@ -660,34 +695,34 @@ class GlobalPlugin(_GlobalPlugin):
 				pass
 
 	def perform_autoconnect(self):
-		cs = configuration.get_config()['controlserver']
-		channel = cs['key']
-		encryption_key = cs['encryption_key']
+		cs = configuration.get_config()["controlserver"]
+		channel = cs["key"]
+		encryption_key = cs["encryption_key"]
 		https_path = DEFAULT_HTTPS_PATH
 		https_preference = https_version.AUTO
 		https_path_v2 = DEFAULT_HTTPS_PATH_V2
-		if cs['self_hosted']:
-			port = cs['port']
-			address = ('localhost',port)
-			UPNP = cs['UPNP']
+		if cs["self_hosted"]:
+			port = cs["port"]
+			address = ("localhost", port)
+			UPNP = cs["UPNP"]
 			self.start_control_server(port, channel, UPNP)
-			transport_type = 'tcp'
+			transport_type = "tcp"
 		else:
 			address = address_to_hostport(
-				cs['host'],
-				default_port=int(cs.get('port', SERVER_PORT) or SERVER_PORT),
+				cs["host"],
+				default_port=int(cs.get("port", SERVER_PORT) or SERVER_PORT),
 			)
-			transport_type = cs.get('transport', 'tcp')
-			https_path = cs.get('https_path', DEFAULT_HTTPS_PATH)
-			https_preference = cs.get('https_version', https_version.AUTO)
-			https_path_v2 = cs.get('https_path_v2', DEFAULT_HTTPS_PATH_V2)
-		if cs['connection_type']==0:
+			transport_type = cs.get("transport", "tcp")
+			https_path = cs.get("https_path", DEFAULT_HTTPS_PATH)
+			https_preference = cs.get("https_version", https_version.AUTO)
+			https_path_v2 = cs.get("https_path_v2", DEFAULT_HTTPS_PATH_V2)
+		if cs["connection_type"] == 0:
 			self.connect_as_slave(
 				address,
 				channel,
 				encryption_key,
 				transport_type=transport_type,
-				ws_path=cs.get('ws_path', '/'),
+				ws_path=cs.get("ws_path", "/"),
 				https_path=https_path,
 				https_preference=https_preference,
 				https_path_v2=https_path_v2,
@@ -698,7 +733,7 @@ class GlobalPlugin(_GlobalPlugin):
 				channel,
 				encryption_key,
 				transport_type=transport_type,
-				ws_path=cs.get('ws_path', '/'),
+				ws_path=cs.get("ws_path", "/"),
 				https_path=https_path,
 				https_preference=https_preference,
 				https_path_v2=https_path_v2,
@@ -710,57 +745,117 @@ class GlobalPlugin(_GlobalPlugin):
 		self.menu = wx.Menu()
 		tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
 		# Translators: Item in TeleNVDA submenu to connect to a remote computer.
-		self.connect_item = self.menu.Append(wx.ID_ANY, _("Connect..."), _("Remotely connect to another computer running NVDA Remote Access or TeleNVDA"))
+		self.connect_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Connect..."),
+			_("Remotely connect to another computer running NVDA Remote Access or TeleNVDA"),
+		)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.do_connect, self.connect_item)
 		# Translators: Item in TeleNVDA submenu to disconnect from a remote computer.
-		self.disconnect_item = self.menu.Append(wx.ID_ANY, _("Disconnect"), _("Disconnect from another computer running NVDA Remote Access or TeleNVDA"))
+		self.disconnect_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Disconnect"),
+			_("Disconnect from another computer running NVDA Remote Access or TeleNVDA"),
+		)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_disconnect_item, self.disconnect_item)
 		self.menu.Remove(self.disconnect_item.Id)
 		# Translators: Menu item in TeleNVDA submenu to mute speech and sounds from the remote computer.
-		self.mute_item = self.menu.Append(wx.ID_ANY, _("Mute remote"), _("Mute speech and sounds from the remote computer"))
+		self.mute_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Mute remote"),
+			_("Mute speech and sounds from the remote computer"),
+		)
 		self.mute_item.Enable(False)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_mute_item, self.mute_item)
 		# Translators: Menu item in TeleNVDA submenu to push clipboard content to the remote computer.
-		self.push_clipboard_item = self.menu.Append(wx.ID_ANY, _("&Push clipboard"), _("Push the clipboard to the other machine"))
+		self.push_clipboard_item = self.menu.Append(
+			wx.ID_ANY,
+			_("&Push clipboard"),
+			_("Push the clipboard to the other machine"),
+		)
 		self.push_clipboard_item.Enable(False)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_push_clipboard_item, self.push_clipboard_item)
 		# Translators: Menu item in TeleNVDA submenu to send a file to the remote computer.
-		self.send_file_item = self.menu.Append(wx.ID_ANY, _("Send &file..."), _("Send a file to the other machine"))
+		self.send_file_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Send &file..."),
+			_("Send a file to the other machine"),
+		)
 		self.send_file_item.Enable(False)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_send_file_item, self.send_file_item)
-		self.screenshot_item = self.menu.Append(wx.ID_ANY, _("Request &screenshot"), _("Capture the remote screen using TeleNVDA"))
+		self.screenshot_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Request &screenshot"),
+			_("Capture the remote screen using TeleNVDA"),
+		)
 		self.screenshot_item.Enable(False)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_screenshot_item, self.screenshot_item)
-		self.screenshot_powershell_item = self.menu.Append(wx.ID_ANY, _("Request screenshot (&PowerShell)"), _("Capture the remote screen using the PowerShell beta method"))
+		self.screenshot_powershell_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Request screenshot (&PowerShell)"),
+			_("Capture the remote screen using the PowerShell beta method"),
+		)
 		self.screenshot_powershell_item.Enable(False)
-		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_screenshot_powershell_item, self.screenshot_powershell_item)
+		gui.mainFrame.sysTrayIcon.Bind(
+			wx.EVT_MENU,
+			self.on_screenshot_powershell_item,
+			self.screenshot_powershell_item,
+		)
 		self.copyLinkMenu = wx.Menu()
 		# Translators: Menu item in TeleNVDA submenu to copy a link to the current session compatible with NVDA Remote.
-		self.copy_link_remote_item = self.copyLinkMenu .Append(wx.ID_ANY, _("NVDA &Remote protocol (recommended)"), _("Copy a link to the remote session compatible with both NVDA Remote and TeleNVDA"))
+		self.copy_link_remote_item = self.copyLinkMenu.Append(
+			wx.ID_ANY,
+			_("NVDA &Remote protocol (recommended)"),
+			_("Copy a link to the remote session compatible with both NVDA Remote and TeleNVDA"),
+		)
 		self.copy_link_remote_item.Enable(False)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_copy_link_remote_item, self.copy_link_remote_item)
 		# Translators: Menu item in TeleNVDA submenu to copy a link to the current session compatible with TeleNVDA.
-		self.copy_link_tele_item = self.copyLinkMenu .Append(wx.ID_ANY, _("&TeleNVDA protocol"), _("Copy a link to the remote session compatible only with TeleNVDA"))
+		self.copy_link_tele_item = self.copyLinkMenu.Append(
+			wx.ID_ANY,
+			_("&TeleNVDA protocol"),
+			_("Copy a link to the remote session compatible only with TeleNVDA"),
+		)
 		self.copy_link_tele_item.Enable(False)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_copy_link_tele_item, self.copy_link_tele_item)
 		# Translators: Menu item in TeleNVDA submenu to copy a link to the current session.
-		self.copy_link_item=self.menu.AppendSubMenu(self.copyLinkMenu, _("Copy &link"), _("Copy a link to the remote session"))
+		self.copy_link_item = self.menu.AppendSubMenu(
+			self.copyLinkMenu,
+			_("Copy &link"),
+			_("Copy a link to the remote session"),
+		)
 		# Translators: Menu item in TeleNVDA submenu to open add-on options.
 		self.options_item = self.menu.Append(wx.ID_ANY, _("&Options..."), _("Options"))
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_options_item, self.options_item)
 		# Translators: Item in TeleNVDA submenu to check for updates.
-		self.update_item = self.menu.Append(wx.ID_ANY, _("Check for &updates..."), _("Check for TeleNVDA updates"))
+		self.update_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Check for &updates..."),
+			_("Check for TeleNVDA updates"),
+		)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_update_item, self.update_item)
 		# Translators: Item in TeleNVDA submenu to test relay connectivity.
-		self.connectivity_test_item = self.menu.Append(wx.ID_ANY, _("Connectivity &test..."), _("Test DNS, TLS and WebSocket connectivity"))
-		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_connectivity_test_item, self.connectivity_test_item)
+		self.connectivity_test_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Connectivity &test..."),
+			_("Test DNS, TLS and WebSocket connectivity"),
+		)
+		gui.mainFrame.sysTrayIcon.Bind(
+			wx.EVT_MENU,
+			self.on_connectivity_test_item,
+			self.connectivity_test_item,
+		)
 		# Translators: Menu item in TeleNVDA submenu to send Control+Alt+Delete to the remote computer.
-		self.send_ctrl_alt_del_item = self.menu.Append(wx.ID_ANY, _("Send Ctrl+Alt+Del"), _("Send Ctrl+Alt+Del"))
+		self.send_ctrl_alt_del_item = self.menu.Append(
+			wx.ID_ANY,
+			_("Send Ctrl+Alt+Del"),
+			_("Send Ctrl+Alt+Del"),
+		)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_send_ctrl_alt_del, self.send_ctrl_alt_del_item)
 		self.send_ctrl_alt_del_item.Enable(False)
 
 		# Translators: Label of menu in NVDA tools menu.
-		self.remote_item=tools_menu.AppendSubMenu(self.menu, _("R&emote"), _("TeleNVDA"))
+		self.remote_item = tools_menu.AppendSubMenu(self.menu, _("R&emote"), _("TeleNVDA"))
 
 	def start_mouse_hook(self):
 		if self.mouse_hook_thread is not None:
@@ -807,7 +902,15 @@ class GlobalPlugin(_GlobalPlugin):
 			thread.join()
 		self.mouse_hook_thread = None
 
-	def mouse_hook_callback(self, action=None, button=None, pressed=None, delta=None, horizontal=False, **kwargs):
+	def mouse_hook_callback(
+		self,
+		action=None,
+		button=None,
+		pressed=None,
+		delta=None,
+		horizontal=False,
+		**kwargs,
+	):
 		self.keep_awake.notify_local_input()
 		session = self.master_session
 		if session is not None:
@@ -836,7 +939,7 @@ class GlobalPlugin(_GlobalPlugin):
 		configuration.flush_activity()
 		try:
 			addon = addonHandler.getCodeAddon()
-			if getattr(addon, 'isPendingDisable', False):
+			if getattr(addon, "isPendingDisable", False):
 				configuration.mark_native_remote_for_reactivation()
 		except addonHandler.AddonError:
 			pass
@@ -846,53 +949,53 @@ class GlobalPlugin(_GlobalPlugin):
 		NVDASettingsDialog.categoryClasses.remove(dialogs.OptionsDialog)
 		self.copyLinkMenu.Remove(self.copy_link_remote_item.Id)
 		self.copy_link_remote_item.Destroy()
-		self.copy_link_remote_item=None
+		self.copy_link_remote_item = None
 		self.copyLinkMenu.Remove(self.copy_link_tele_item.Id)
 		self.copy_link_tele_item.Destroy()
-		self.copy_link_tele_item=None
+		self.copy_link_tele_item = None
 		try:
 			self.menu.Remove(self.connect_item.Id)
 			self.menu.Remove(self.disconnect_item.Id)
 		except Exception:
 			pass
 		self.connect_item.Destroy()
-		self.connect_item=None
+		self.connect_item = None
 		self.disconnect_item.Destroy()
-		self.disconnect_item=None
+		self.disconnect_item = None
 		self.menu.Remove(self.mute_item.Id)
 		self.mute_item.Destroy()
-		self.mute_item=None
+		self.mute_item = None
 		self.menu.Remove(self.push_clipboard_item.Id)
 		self.push_clipboard_item.Destroy()
-		self.push_clipboard_item=None
+		self.push_clipboard_item = None
 		self.menu.Remove(self.send_file_item.Id)
 		self.send_file_item.Destroy()
-		self.send_file_item=None
+		self.send_file_item = None
 		self.menu.Remove(self.screenshot_item.Id)
 		self.screenshot_item.Destroy()
-		self.screenshot_item=None
+		self.screenshot_item = None
 		self.menu.Remove(self.screenshot_powershell_item.Id)
 		self.screenshot_powershell_item.Destroy()
-		self.screenshot_powershell_item=None
+		self.screenshot_powershell_item = None
 		self.menu.Remove(self.copy_link_item.Id)
 		self.copy_link_item.Destroy()
 		self.copy_link_item = None
 		self.menu.Remove(self.options_item.Id)
 		self.options_item.Destroy()
-		self.options_item=None
+		self.options_item = None
 		self.menu.Remove(self.update_item.Id)
 		self.update_item.Destroy()
-		self.update_item=None
+		self.update_item = None
 		self.menu.Remove(self.connectivity_test_item.Id)
 		self.connectivity_test_item.Destroy()
 		self.connectivity_test_item = None
 		self.menu.Remove(self.send_ctrl_alt_del_item.Id)
 		self.send_ctrl_alt_del_item.Destroy()
-		self.send_ctrl_alt_del_item=None
+		self.send_ctrl_alt_del_item = None
 		tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
 		tools_menu.Remove(self.remote_item.Id)
 		self.remote_item.Destroy()
-		self.remote_item=None
+		self.remote_item = None
 		try:
 			self.menu.Destroy()
 			self.copyLinkMenu.Destroy()
@@ -902,33 +1005,38 @@ class GlobalPlugin(_GlobalPlugin):
 			os.unlink(self.ipc_file)
 		except Exception:
 			pass
-		self.menu=None
+		self.menu = None
 		url_handler.unregister_url_handler()
 		self.url_handler_window.destroy()
-		self.url_handler_window=None
+		self.url_handler_window = None
 		core.postNvdaStartup.unregister(self.postStartupHandler)
 		client = None
 
 	def on_disconnect_item(self, evt):
 		if evt:
 			evt.Skip()
+
 		def disconnect_as_slave_with_alert():
-			if (self.slave_transport is not None
-				and configuration.get_config()['ui']['alert_before_slave_disconnect']
-				and not gui.message.isModalMessageBoxActive()):  # Check if a modal message box is open
+			if (
+				self.slave_transport is not None
+				and configuration.get_config()["ui"]["alert_before_slave_disconnect"]
+				and not gui.message.isModalMessageBoxActive()
+			):  # Check if a modal message box is open
 				result = gui.messageBox(
 					# Translators: question before disconnecting
 					message=_("Are you sure you want to disconnect the controlled computer?"),
 					# Translators: question title
 					caption=_("Warning!"),
-					style=wx.YES | wx.NO | wx.ICON_WARNING
+					style=wx.YES | wx.NO | wx.ICON_WARNING,
 				)
 				if result == wx.YES:
 					self.disconnect()
-			elif (self.master_transport is not None
-				  or (self.slave_transport is not None
-					  and not configuration.get_config()['ui']['alert_before_slave_disconnect'])):
+			elif self.master_transport is not None or (
+				self.slave_transport is not None
+				and not configuration.get_config()["ui"]["alert_before_slave_disconnect"]
+			):
 				self.disconnect()
+
 		wx.CallAfter(disconnect_as_slave_with_alert)
 
 	def on_mute_item(self, evt):
@@ -938,47 +1046,49 @@ class GlobalPlugin(_GlobalPlugin):
 			# Translators: Menu item in TeleNVDA submenu to unmute speech and sounds from the remote computer.
 			self.mute_item.SetItemLabel(_("Unmute remote"))
 			ui.message(_("Mute speech and sounds from the remote computer"))
-			if not configuration.get_config()['ui']['mute_when_controlling_local_machine']:
+			if not configuration.get_config()["ui"]["mute_when_controlling_local_machine"]:
 				self.local_machine.is_muted = True
 			self.muted = True
 		else:
 			# Translators: Menu item in TeleNVDA submenu to mute speech and sounds from the remote computer.
 			self.mute_item.SetItemLabel(_("Mute remote"))
 			ui.message(_("Unmute speech and sounds from the remote computer"))
-			if not configuration.get_config()['ui']['mute_when_controlling_local_machine']:
+			if not configuration.get_config()["ui"]["mute_when_controlling_local_machine"]:
 				self.local_machine.is_muted = False
 			self.muted = False
 
 	def on_push_clipboard_item(self, evt):
 		connector = self.slave_transport or self.master_transport
 		try:
-			connector.send(type='set_clipboard_text', text=api.getClipData())
+			connector.send(type="set_clipboard_text", text=api.getClipData())
 			configuration.record_activity()
 			cues.clipboard_pushed()
 		except TypeError:
 			log.exception("Unable to push clipboard")
 
-
 	def on_send_file_item(self, evt):
 		session = self.slave_session or self.master_session
 		connector = self.slave_transport or self.master_transport
-		if session is None or not getattr(connector, 'connected', False):
+		if session is None or not getattr(connector, "connected", False):
 			ui.message(_("Not connected."))
 			return
 		if globalVars.appArgs.secure:
 			return
 		# Check if a file dialog is already open
-		if getattr(self, 'is_send_file_dialog_open', False):
+		if getattr(self, "is_send_file_dialog_open", False):
 			return
 		# Set the flag to True, indicating that the file dialog is open
-		setattr(self, 'is_send_file_dialog_open', True)
+		setattr(self, "is_send_file_dialog_open", True)
 		try:
-			fd = wx.FileDialog(gui.mainFrame,
+			fd = wx.FileDialog(
+				gui.mainFrame,
 				# Translators: message displayed in transfer file dialog when sending a file
 				message=_("Choose the file you want to send to the remote computer"),
 				# Translators: supported file types when sending or receiving files
 				wildcard=_("All files (*.*)") + "|*.*",
-				defaultDir=os.environ['userprofile'], style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_PREVIEW)
+				defaultDir=os.environ["userprofile"],
+				style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_PREVIEW,
+			)
 			try:
 				if fd.ShowModal() != wx.ID_OK:
 					return
@@ -987,26 +1097,34 @@ class GlobalPlugin(_GlobalPlugin):
 				fd.Destroy()
 		finally:
 			# Reset the flag to False after the file dialog is closed
-			setattr(self, 'is_send_file_dialog_open', False)
+			setattr(self, "is_send_file_dialog_open", False)
 		session.file_transfer_manager.send_file(path)
 
 	@script(
 		# Translators: report number of connected computers gesture description
 		_("Reports number of computers connected to a session"),
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_reportConnectedClients(self, gesture):
 		session = self.master_session or self.slave_session
 		if not session:
 			ui.message(_("Not connected."))
 			return
 		# TRANSLATORS: message reported when get number of clients gesture is pressed
-		ui.message(ngettext("This is the only computer connected to this session", "There are {} computers connected to this session", session.client_count).format(session.client_count))
+		ui.message(
+			ngettext(
+				"This is the only computer connected to this session",
+				"There are {} computers connected to this session",
+				session.client_count,
+			).format(session.client_count),
+		)
 
 	@script(
 		# Translators: send file gesture description
 		_("Sends the specified file to the remote machine"),
 		gesture="kb:control+shift+NVDA+f",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_send_file(self, gesture):
 		wx.CallAfter(self.on_send_file_item, None)
 
@@ -1014,14 +1132,15 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: push clipboard gesture description
 		_("Sends the contents of the clipboard to the remote machine"),
 		gesture="kb:control+shift+NVDA+c",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_push_clipboard(self, gesture):
 		connector = self.slave_transport or self.master_transport
-		if not getattr(connector,'connected',False):
+		if not getattr(connector, "connected", False):
 			ui.message(_("Not connected."))
 			return
 		try:
-			connector.send(type='set_clipboard_text', text=api.getClipData())
+			connector.send(type="set_clipboard_text", text=api.getClipData())
 			configuration.record_activity()
 			cues.clipboard_pushed()
 			ui.message(_("Clipboard pushed"))
@@ -1032,7 +1151,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: toggle screen sharing gesture description
 		_("Shows or stops showing the screen of the controlled computer"),
 		gesture="kb:control+shift+NVDA+v",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_toggle_screen_share(self, gesture):
 		"""Start or stop watching the screen of the controlled computer.
 
@@ -1073,7 +1193,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: toggle remote keyboard passthrough gesture description
 		_("Toggles whether remote keyboard input is interpreted by NVDA on the controlled computer"),
 		gesture="kb:shift+insert+escape",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_toggle_remote_keyboard_passthrough(self, gesture):
 		"""Ask the controlled computer to interpret or bypass remote key input."""
 		if not self._is_master_connected() or self.master_session is None:
@@ -1107,16 +1228,16 @@ class GlobalPlugin(_GlobalPlugin):
 		messages = {
 			remote_keyboard.ERROR_NO_SLAVE: _("No controlled computer is connected."),
 			remote_keyboard.ERROR_MULTIPLE_SLAVES: _(
-				"Several controlled computers are connected; the remote keyboard mode was cancelled."
+				"Several controlled computers are connected; the remote keyboard mode was cancelled.",
 			),
 			remote_keyboard.ERROR_UNSUPPORTED_NVDA_VERSION: _(
-				"The controlled computer does not support remote keyboard passthrough."
+				"The controlled computer does not support remote keyboard passthrough.",
 			),
 			remote_keyboard.ERROR_REQUEST_PENDING: _(
-				"A remote keyboard mode change is already in progress."
+				"A remote keyboard mode change is already in progress.",
 			),
 			remote_keyboard.ERROR_TIMEOUT: _(
-				"The controlled computer did not confirm the remote keyboard mode change."
+				"The controlled computer did not confirm the remote keyboard mode change.",
 			),
 		}
 		return messages.get(
@@ -1126,9 +1247,12 @@ class GlobalPlugin(_GlobalPlugin):
 
 	@script(
 		# Translators: toggle remote audio gesture description
-		_("Starts or stops hearing the sound of the controlled computer, or lists the applications heard when pressed twice"),
+		_(
+			"Starts or stops hearing the sound of the controlled computer, or lists the applications heard when pressed twice",
+		),
 		gesture="kb:control+shift+NVDA+k",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_toggle_remote_audio(self, gesture):
 		"""Start or stop hearing the applications playing on the controlled computer.
 
@@ -1151,7 +1275,8 @@ class GlobalPlugin(_GlobalPlugin):
 			wx.CallAfter(self._open_audio_sources)
 			return
 		self.remote_audio_timer = wx.CallLater(
-			self._double_press_delay(), self._toggle_remote_audio
+			self._double_press_delay(),
+			self._toggle_remote_audio,
 		)
 
 	def _open_audio_sources(self):
@@ -1204,7 +1329,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: toggle remote mouse control gesture description
 		_("Starts or stops driving the mouse of the controlled computer"),
 		gesture="kb:control+shift+NVDA+m",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_toggle_remote_mouse(self, gesture):
 		"""Mirror the local mouse onto the controlled computer, or stop doing so.
 
@@ -1252,15 +1378,19 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: remote screenshot gesture description
 		_("Takes a screenshot of the controlled computer and opens it on the controlling computer"),
 		gesture="kb:control+shift+NVDA+p",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_screenshot(self, gesture):
 		self._screenshot("native")
 
 	@script(
 		# Translators: remote screenshot using PowerShell gesture description
-		_("Takes a screenshot of the controlled computer using the PowerShell beta method and opens it on the controlling computer"),
+		_(
+			"Takes a screenshot of the controlled computer using the PowerShell beta method and opens it on the controlling computer",
+		),
 		gesture="kb:control+windows+alt+p",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_screenshot_powershell(self, gesture):
 		self._screenshot("powershell")
 
@@ -1275,7 +1405,13 @@ class GlobalPlugin(_GlobalPlugin):
 		api.copyToClip(str(url))
 
 	def on_options_item(self, evt):
-		wx.CallAfter(gui.mainFrame.popupSettingsDialog if hasattr(gui.mainFrame, "popupSettingsDialog") else gui.mainFrame._popupSettingsDialog, gui.NVDASettingsDialog, dialogs.OptionsDialog)
+		wx.CallAfter(
+			gui.mainFrame.popupSettingsDialog
+			if hasattr(gui.mainFrame, "popupSettingsDialog")
+			else gui.mainFrame._popupSettingsDialog,
+			gui.NVDASettingsDialog,
+			dialogs.OptionsDialog,
+		)
 		evt.Skip()
 
 	def on_update_item(self, evt):
@@ -1297,7 +1433,7 @@ class GlobalPlugin(_GlobalPlugin):
 		evt.Skip()
 
 	def on_send_ctrl_alt_del(self, evt):
-		self.master_transport.send('send_SAS')
+		self.master_transport.send("send_SAS")
 		configuration.record_activity()
 		# Translators: message spoken when the Ctrl+Alt+Delete has been sent to the remote machine successfully
 		ui.message(_("Ctrl+Alt+Delete has been sent to the remote machine"))
@@ -1409,9 +1545,9 @@ class GlobalPlugin(_GlobalPlugin):
 		if self.master_session is not None:
 			self.set_receiving_braille(False)
 		if was_sending_keys:
-			if buildVersion.version_year==2022 and buildVersion.version_major==4:
+			if buildVersion.version_year == 2022 and buildVersion.version_major == 4:
 				security.postSessionLockStateChanged.unregister(self.onSessionLockStateChange)
-			elif buildVersion.version_year>=2023:
+			elif buildVersion.version_year >= 2023:
 				security.post_sessionLockStateChanged.unregister(self.onSessionLockStateChange)
 		self._clear_remote_key_state()
 		if stop_hook and buildVersion.version_year < 2025:
@@ -1419,7 +1555,7 @@ class GlobalPlugin(_GlobalPlugin):
 				ctypes.windll.user32.PostThreadMessageW(self.hook_thread.ident, WM_QUIT, 0, 0)
 				self.hook_thread.join()
 				self.hook_thread = None
-		if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.muted:
+		if configuration.get_config()["ui"]["mute_when_controlling_local_machine"] and not self.muted:
 			self.local_machine.is_muted = True
 		self.muted = False
 		return was_sending_keys
@@ -1459,13 +1595,17 @@ class GlobalPlugin(_GlobalPlugin):
 		if self.master_transport.successful_connects == 0:
 			self.disconnect_as_master()
 			# Translators: Title of the connection error dialog.
-			gui.messageBox(parent=gui.mainFrame, caption=_("Error Connecting"),
-			# Translators: Message shown when cannot connect to the remote computer.
-			message=_("Unable to connect to the remote computer"), style=wx.OK | wx.ICON_WARNING)
+			gui.messageBox(
+				parent=gui.mainFrame,
+				caption=_("Error Connecting"),
+				# Translators: Message shown when cannot connect to the remote computer.
+				message=_("Unable to connect to the remote computer"),
+				style=wx.OK | wx.ICON_WARNING,
+			)
 
 	def _get_open_connect_dialog(self):
 		"""Return the connect dialog currently open, or None if there is none left."""
-		dlg = getattr(self, '_connect_dialog', None)
+		dlg = getattr(self, "_connect_dialog", None)
 		if dlg is None:
 			return None
 		try:
@@ -1531,6 +1671,7 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: Title of the connect dialog.
 		dlg = dialogs.DirectConnectDialog(parent=gui.mainFrame, id=wx.ID_ANY, title=_("TeleNVDA - Connect"))
 		self._connect_dialog = dlg
+
 		def handle_dlg_complete(dlg_result):
 			if self._connect_dialog is dlg:
 				self._connect_dialog = None
@@ -1538,7 +1679,7 @@ class GlobalPlugin(_GlobalPlugin):
 				# Reset the flag to False when the dialog is closed
 				self.is_connect_dialog_open = False
 				return
-			if dlg.client_or_server.GetSelection() == 0: #client
+			if dlg.client_or_server.GetSelection() == 0:  # client
 				# Persist the transport and proxy settings first: the transport layer reads
 				# them from the configuration when it opens the connection, and the dialog
 				# preloads them so the user does not have to enter them again.
@@ -1548,10 +1689,10 @@ class GlobalPlugin(_GlobalPlugin):
 				encryption_key = dlg.panel.encryption_key.GetValue()
 				transport_type = dlg.panel.get_transport_type()
 				ws_path = dlg.panel.ws_path.GetValue() or "/"
-				cs = configuration.get_config()['controlserver']
-				https_path = cs.get('https_path', DEFAULT_HTTPS_PATH)
-				https_preference = cs.get('https_version', https_version.AUTO)
-				https_path_v2 = cs.get('https_path_v2', DEFAULT_HTTPS_PATH_V2)
+				cs = configuration.get_config()["controlserver"]
+				https_path = cs.get("https_path", DEFAULT_HTTPS_PATH)
+				https_preference = cs.get("https_version", https_version.AUTO)
+				https_path_v2 = cs.get("https_path_v2", DEFAULT_HTTPS_PATH_V2)
 				if dlg.connection_type.GetSelection() == 0:
 					self.connect_as_slave(
 						(server_addr, port),
@@ -1574,16 +1715,31 @@ class GlobalPlugin(_GlobalPlugin):
 						https_preference=https_preference,
 						https_path_v2=https_path_v2,
 					)
-			else: #We want a server
+			else:  # We want a server
 				channel = dlg.panel.key.GetValue()
 				encryption_key = dlg.panel.encryption_key.GetValue()
-				self.start_control_server(int(dlg.panel.port.GetValue()), channel, useUPNP=bool(dlg.panel.useUPNP.GetValue()))
+				self.start_control_server(
+					int(dlg.panel.port.GetValue()),
+					channel,
+					useUPNP=bool(dlg.panel.useUPNP.GetValue()),
+				)
 				if dlg.connection_type.GetSelection() == 0:
-					self.connect_as_slave(('127.0.0.1', int(dlg.panel.port.GetValue())), channel, insecure=True, encryption_key=encryption_key)
+					self.connect_as_slave(
+						("127.0.0.1", int(dlg.panel.port.GetValue())),
+						channel,
+						insecure=True,
+						encryption_key=encryption_key,
+					)
 				else:
-					self.connect_as_master(('127.0.0.1', int(dlg.panel.port.GetValue())), channel, insecure=True, encryption_key=encryption_key)
+					self.connect_as_master(
+						("127.0.0.1", int(dlg.panel.port.GetValue())),
+						channel,
+						insecure=True,
+						encryption_key=encryption_key,
+					)
 			# Reset the flag to False when the dialog is closed
 			self.is_connect_dialog_open = False
+
 		gui.runScriptModalDialog(dlg, callback=handle_dlg_complete)
 		# The dialog is shown asynchronously and may be created behind the window the
 		# user was working in, so explicitly push it to the foreground once it exists.
@@ -1599,8 +1755,11 @@ class GlobalPlugin(_GlobalPlugin):
 		self.master_connection_interrupted = False
 		configuration.write_connection_to_config(
 			self.master_transport.address,
-			'https' if isinstance(self.master_transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)) else
-			'websocket' if isinstance(self.master_transport, WebSocketRelayTransport) else 'tcp',
+			"https"
+			if isinstance(self.master_transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport))
+			else "websocket"
+			if isinstance(self.master_transport, WebSocketRelayTransport)
+			else "tcp",
 		)
 		configuration.write_key_to_config(self.master_transport.channel)
 		if not self.menu.FindItemById(self.disconnect_item.Id):
@@ -1630,7 +1789,7 @@ class GlobalPlugin(_GlobalPlugin):
 			# Translators: Presented when an interrupted remote connection becomes available again. Keyboard control remains local until the user toggles it.
 			ui.message(_("The remote computer is available again. Control remains local."))
 		cues.connected()
-		if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.sending_keys:
+		if configuration.get_config()["ui"]["mute_when_controlling_local_machine"] and not self.sending_keys:
 			self.local_machine.is_muted = True
 
 	def on_disconnected_as_master(self):
@@ -1700,7 +1859,7 @@ class GlobalPlugin(_GlobalPlugin):
 			address,
 			key,
 			encryption_key,
-			'master',
+			"master",
 			insecure=insecure,
 			transport_type=transport_type,
 			ws_path=ws_path,
@@ -1709,14 +1868,29 @@ class GlobalPlugin(_GlobalPlugin):
 			https_path_v2=https_path_v2,
 		)
 		self.master_session = MasterSession(transport=transport, local_machine=self.local_machine)
-		transport.callback_manager.register_callback(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.on_certificate_as_master_failed)
+		transport.callback_manager.register_callback(
+			TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED,
+			self.on_certificate_as_master_failed,
+		)
 		transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected_as_master)
-		transport.callback_manager.register_callback(TransportEvents.CONNECTION_FAILED, self.on_connected_as_master_failed)
+		transport.callback_manager.register_callback(
+			TransportEvents.CONNECTION_FAILED,
+			self.on_connected_as_master_failed,
+		)
 		transport.callback_manager.register_callback(TransportEvents.CLOSING, self.disconnecting_as_master)
-		transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.on_disconnected_as_master)
-		transport.callback_manager.register_callback('msg_request_local_control', self.on_request_local_control)
-		transport.callback_manager.register_callback('msg_client_left', self.on_master_client_left)
-		transport.callback_manager.register_callback('msg_nvda_not_connected', self.on_remote_nvda_not_connected)
+		transport.callback_manager.register_callback(
+			TransportEvents.DISCONNECTED,
+			self.on_disconnected_as_master,
+		)
+		transport.callback_manager.register_callback(
+			"msg_request_local_control",
+			self.on_request_local_control,
+		)
+		transport.callback_manager.register_callback("msg_client_left", self.on_master_client_left)
+		transport.callback_manager.register_callback(
+			"msg_nvda_not_connected",
+			self.on_remote_nvda_not_connected,
+		)
 		self.master_transport = transport
 		self.master_transport.reconnector_thread.start()
 
@@ -1732,17 +1906,25 @@ class GlobalPlugin(_GlobalPlugin):
 		https_preference=https_version.AUTO,
 		https_path_v2=DEFAULT_HTTPS_PATH_V2,
 	):
-		if not nvda_conf['keyboard']['handleInjectedKeys'] and gui.messageBox(
-		# Translators: A message to warn the user that handle keys from other applications should be on.
-		message=_("The option to handle keys from other applications is disabled in your NVDA keyboard settings. In order to allow the keyboard of this machine to be controlled, this option should be enabled. Would you like to do this now?"),
-		# Translators: The title of the warning dialog displayed when handle keys from other applications is disabled.
-		caption=_("Warning"),style=wx.YES|wx.NO|wx.ICON_WARNING)==wx.YES:
-			nvda_conf['keyboard']['handleInjectedKeys']=True
+		if (
+			not nvda_conf["keyboard"]["handleInjectedKeys"]
+			and gui.messageBox(
+				# Translators: A message to warn the user that handle keys from other applications should be on.
+				message=_(
+					"The option to handle keys from other applications is disabled in your NVDA keyboard settings. In order to allow the keyboard of this machine to be controlled, this option should be enabled. Would you like to do this now?",
+				),
+				# Translators: The title of the warning dialog displayed when handle keys from other applications is disabled.
+				caption=_("Warning"),
+				style=wx.YES | wx.NO | wx.ICON_WARNING,
+			)
+			== wx.YES
+		):
+			nvda_conf["keyboard"]["handleInjectedKeys"] = True
 		transport = self._create_relay_transport(
 			address,
 			key,
 			encryption_key,
-			'slave',
+			"slave",
 			insecure=insecure,
 			transport_type=transport_type,
 			ws_path=ws_path,
@@ -1752,9 +1934,18 @@ class GlobalPlugin(_GlobalPlugin):
 		)
 		self.slave_session = SlaveSession(transport=transport, local_machine=self.local_machine)
 		self.slave_transport = transport
-		transport.callback_manager.register_callback(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED, self.on_certificate_as_slave_failed)
-		self.slave_transport.callback_manager.register_callback(TransportEvents.CONNECTED, self.on_connected_as_slave)
-		self.slave_transport.callback_manager.register_callback(TransportEvents.DISCONNECTED, self.on_disconnected_as_slave)
+		transport.callback_manager.register_callback(
+			TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED,
+			self.on_certificate_as_slave_failed,
+		)
+		self.slave_transport.callback_manager.register_callback(
+			TransportEvents.CONNECTED,
+			self.on_connected_as_slave,
+		)
+		self.slave_transport.callback_manager.register_callback(
+			TransportEvents.DISCONNECTED,
+			self.on_disconnected_as_slave,
+		)
 		self.slave_transport.reconnector_thread.start()
 		if not self.menu.FindItemById(self.disconnect_item.Id):
 			self.menu.Insert(0, self.disconnect_item)
@@ -1766,20 +1957,24 @@ class GlobalPlugin(_GlobalPlugin):
 		self.last_fail_key = transport.channel
 		self.last_fail_encryption_key = transport.encryption_key
 		if isinstance(transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)):
-			self.last_fail_transport_type = 'https'
-			self.last_fail_https_path = getattr(transport, '_https_path_v1', DEFAULT_HTTPS_PATH)
-			self.last_fail_https_preference = getattr(transport, '_https_version_preference', https_version.AUTO)
-			self.last_fail_https_path_v2 = getattr(transport, '_https_path_v2', DEFAULT_HTTPS_PATH_V2)
-			self.last_fail_ws_path = '/'
+			self.last_fail_transport_type = "https"
+			self.last_fail_https_path = getattr(transport, "_https_path_v1", DEFAULT_HTTPS_PATH)
+			self.last_fail_https_preference = getattr(
+				transport,
+				"_https_version_preference",
+				https_version.AUTO,
+			)
+			self.last_fail_https_path_v2 = getattr(transport, "_https_path_v2", DEFAULT_HTTPS_PATH_V2)
+			self.last_fail_ws_path = "/"
 		elif isinstance(transport, WebSocketRelayTransport):
-			self.last_fail_transport_type = 'websocket'
-			self.last_fail_ws_path = getattr(transport, 'ws_path', '/')
+			self.last_fail_transport_type = "websocket"
+			self.last_fail_ws_path = getattr(transport, "ws_path", "/")
 			self.last_fail_https_path = DEFAULT_HTTPS_PATH
 			self.last_fail_https_preference = https_version.AUTO
 			self.last_fail_https_path_v2 = DEFAULT_HTTPS_PATH_V2
 		else:
-			self.last_fail_transport_type = 'tcp'
-			self.last_fail_ws_path = '/'
+			self.last_fail_transport_type = "tcp"
+			self.last_fail_ws_path = "/"
 			self.last_fail_https_path = DEFAULT_HTTPS_PATH
 			self.last_fail_https_preference = https_version.AUTO
 			self.last_fail_https_path_v2 = DEFAULT_HTTPS_PATH_V2
@@ -1835,8 +2030,11 @@ class GlobalPlugin(_GlobalPlugin):
 		self.copy_link_tele_item.Enable(True)
 		configuration.write_connection_to_config(
 			self.slave_transport.address,
-			'https' if isinstance(self.slave_transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)) else
-			'websocket' if isinstance(self.slave_transport, WebSocketRelayTransport) else 'tcp',
+			"https"
+			if isinstance(self.slave_transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport))
+			else "websocket"
+			if isinstance(self.slave_transport, WebSocketRelayTransport)
+			else "tcp",
 		)
 		wx.CallAfter(self.keep_awake.reload)
 
@@ -1861,7 +2059,7 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def hook_callback(self, **kwargs):
 		self.keep_awake.notify_local_input()
-		#Prevent disabling sending keys if another key is held down
+		# Prevent disabling sending keys if another key is held down
 		if not self.sending_keys:
 			return False
 		if not self._is_master_connected():
@@ -1870,20 +2068,20 @@ class GlobalPlugin(_GlobalPlugin):
 		if not self._remote_slave_available():
 			self._abort_remote_control()
 			return False
-		keyCode = (kwargs['vk_code'], kwargs['extended'])
-		if not kwargs['pressed'] and keyCode in self.hostPendingModifiers:
+		keyCode = (kwargs["vk_code"], kwargs["extended"])
+		if not kwargs["pressed"] and keyCode in self.hostPendingModifiers:
 			self.hostPendingModifiers.discard(keyCode)
 			return False
-		if not kwargs['pressed'] and keyCode == self.hostPendingNonmodifier:
+		if not kwargs["pressed"] and keyCode == self.hostPendingNonmodifier:
 			self.hostPendingNonmodifier = None
 			return False
-		gesture = KeyboardInputGesture(self.key_modifiers, keyCode[0], kwargs['scan_code'], keyCode[1])
+		gesture = KeyboardInputGesture(self.key_modifiers, keyCode[0], kwargs["scan_code"], keyCode[1])
 		if gesture.isModifier:
-			if kwargs['pressed']:
+			if kwargs["pressed"]:
 				self.key_modifiers.add(keyCode)
 			else:
 				self.key_modifiers.discard(keyCode)
-		elif kwargs['pressed']:
+		elif kwargs["pressed"]:
 			script = gesture.script
 			if self.ignoreGesture:
 				self.ignoreGesture = False
@@ -1892,7 +2090,7 @@ class GlobalPlugin(_GlobalPlugin):
 				return True
 		self.master_transport.send(type="key", **kwargs)
 		configuration.record_activity()
-		return True #Don't pass it on
+		return True  # Don't pass it on
 
 	def set_receiving_braille(self, state):
 		if state and self.master_session.patch_callbacks_added and braille.handler.enabled:
@@ -1901,38 +2099,38 @@ class GlobalPlugin(_GlobalPlugin):
 				braille.handler.enabled = False
 				if braille.handler._cursorBlinkTimer:
 					braille.handler._cursorBlinkTimer.Stop()
-					braille.handler._cursorBlinkTimer=None
+					braille.handler._cursorBlinkTimer = None
 				if braille.handler.buffer is braille.handler.messageBuffer:
 					braille.handler.buffer.clear()
 					braille.handler.buffer = braille.handler.mainBuffer
 					if braille.handler._messageCallLater:
 						braille.handler._messageCallLater.Stop()
 						braille.handler._messageCallLater = None
-			self.local_machine.receiving_braille=True
+			self.local_machine.receiving_braille = True
 		elif not state:
 			self.master_session.patcher.unpatch_braille_input()
 			if buildVersion.version_year < 2023:
 				braille.handler.enabled = bool(braille.handler.displaySize)
-			self.local_machine.receiving_braille=False
+			self.local_machine.receiving_braille = False
 
 	def onSecureDesktopChange(self, isSecureDesktop: bool):
-		'''
+		"""
 		@param isSecureDesktop: True if the new desktop is the secure desktop.
-		'''
+		"""
 		if isSecureDesktop:
 			self.enter_secure_desktop()
 		else:
 			self.leave_secure_desktop()
 
 	def event_gainFocus(self, obj, nextHandler):
-		if not hasattr(IAccessibleHandler, 'SecureDesktopNVDAObject'):
+		if not hasattr(IAccessibleHandler, "SecureDesktopNVDAObject"):
 			nextHandler()
 			return
 		if isinstance(obj, IAccessibleHandler.SecureDesktopNVDAObject):
 			self.sd_focused = True
 			self.enter_secure_desktop()
 		elif self.sd_focused and not isinstance(obj, IAccessibleHandler.SecureDesktopNVDAObject):
-			#event_leaveFocus won't work for some reason
+			# event_leaveFocus won't work for some reason
 			self.sd_focused = False
 			self.leave_secure_desktop()
 		nextHandler()
@@ -1944,49 +2142,61 @@ class GlobalPlugin(_GlobalPlugin):
 		if not os.path.exists(self.temp_location):
 			os.makedirs(self.temp_location)
 		channel = str(uuid.uuid4())
-		self.sd_server = server.Server(port=0, password=channel, bind_host='127.0.0.1')
+		self.sd_server = server.Server(port=0, password=channel, bind_host="127.0.0.1")
 		port = self.sd_server.server_socket.getsockname()[1]
 		server_thread = threading.Thread(target=self.sd_server.run)
 		server_thread.daemon = True
 		server_thread.start()
-		self.sd_relay = RelayTransport(address=('127.0.0.1', port), serializer=serializer.JSONSerializer(), channel=channel, insecure=True)
-		self.sd_relay.callback_manager.register_callback('msg_client_joined', self.on_master_display_change)
-		self.slave_transport.callback_manager.register_callback('msg_set_braille_info', self.on_master_display_change)
+		self.sd_relay = RelayTransport(
+			address=("127.0.0.1", port),
+			serializer=serializer.JSONSerializer(),
+			channel=channel,
+			insecure=True,
+		)
+		self.sd_relay.callback_manager.register_callback("msg_client_joined", self.on_master_display_change)
+		self.slave_transport.callback_manager.register_callback(
+			"msg_set_braille_info",
+			self.on_master_display_change,
+		)
 		self.sd_bridge = bridge.BridgeTransport(self.slave_transport, self.sd_relay)
 		relay_thread = threading.Thread(target=self.sd_relay.run)
 		relay_thread.daemon = True
 		relay_thread.start()
 		data = [port, channel]
-		with open(self.ipc_file, 'w') as fp:
+		with open(self.ipc_file, "w") as fp:
 			json.dump(data, fp)
 
 	def leave_secure_desktop(self):
 		if self.sd_server is None:
-			return #Nothing to do
+			return  # Nothing to do
 		self.sd_bridge.disconnect()
 		self.sd_bridge = None
 		self.sd_server.close()
 		self.sd_server = None
 		self.sd_relay.close()
 		self.sd_relay = None
-		self.slave_transport.callback_manager.unregister_callback('msg_set_braille_info', self.on_master_display_change)
+		self.slave_transport.callback_manager.unregister_callback(
+			"msg_set_braille_info",
+			self.on_master_display_change,
+		)
 		self.slave_session.set_display_size()
 
 	def on_master_display_change(self, **kwargs):
-		self.sd_relay.send(type='set_display_size', sizes=self.slave_session.master_display_sizes)
+		self.sd_relay.send(type="set_display_size", sizes=self.slave_session.master_display_sizes)
 
 	SD_CONNECT_BLOCK_TIMEOUT = 1
+
 	def handle_secure_desktop(self):
 		try:
 			with open(self.ipc_file) as fp:
 				data = json.load(fp)
 			os.unlink(self.ipc_file)
 			port, channel = data
-			test_socket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			test_socket=wrap_socket(test_socket, ssl_version=ssl.PROTOCOL_TLS_CLIENT)
-			test_socket.connect(('127.0.0.1', port))
+			test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			test_socket = wrap_socket(test_socket, ssl_version=ssl.PROTOCOL_TLS_CLIENT)
+			test_socket.connect(("127.0.0.1", port))
 			test_socket.close()
-			self.connect_as_slave(('127.0.0.1', port), channel, insecure=True)
+			self.connect_as_slave(("127.0.0.1", port), channel, insecure=True)
 			# So we don't miss the first output when switching to a secure desktop,
 			# block the main thread until the connection is established. We're
 			# connecting to localhost, so this should be pretty fast. Use a short
@@ -1997,22 +2207,38 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def verify_connect(self, con_info):
 		if self.is_connected() or self.connecting:
-			gui.messageBox(_("TeleNVDA is already connected. Disconnect before opening a new connection."), _("TeleNVDA Already Connected"), wx.OK|wx.ICON_WARNING)
+			gui.messageBox(
+				_("TeleNVDA is already connected. Disconnect before opening a new connection."),
+				_("TeleNVDA Already Connected"),
+				wx.OK | wx.ICON_WARNING,
+			)
 			return
 		self.connecting = True
 		server_addr = con_info.get_address()
 		key = con_info.key
 		encryption_key = con_info.encryption_key
-		if con_info.mode == 'master':
-			message = _("Do you wish to control the machine on server {server} with key {key}?").format(server=server_addr, key=key)
-		elif con_info.mode == 'slave':
-			message = _("Do you wish to allow this machine to be controlled on server {server} with key {key}?").format(server=server_addr, key=key)
-		if gui.messageBox(message, _("TeleNVDA Connection Request"), wx.YES|wx.NO|wx.NO_DEFAULT|wx.ICON_WARNING) != wx.YES:
+		if con_info.mode == "master":
+			message = _("Do you wish to control the machine on server {server} with key {key}?").format(
+				server=server_addr,
+				key=key,
+			)
+		elif con_info.mode == "slave":
+			message = _(
+				"Do you wish to allow this machine to be controlled on server {server} with key {key}?",
+			).format(server=server_addr, key=key)
+		if (
+			gui.messageBox(
+				message,
+				_("TeleNVDA Connection Request"),
+				wx.YES | wx.NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+			)
+			!= wx.YES
+		):
 			self.connecting = False
 			return
-		if con_info.mode == 'master':
+		if con_info.mode == "master":
 			self.connect_as_master((con_info.hostname, con_info.port), key=key, encryption_key=encryption_key)
-		elif con_info.mode == 'slave':
+		elif con_info.mode == "slave":
 			self.connect_as_slave((con_info.hostname, con_info.port), key=key, encryption_key=encryption_key)
 		self.connecting = False
 
@@ -2024,11 +2250,14 @@ class GlobalPlugin(_GlobalPlugin):
 
 	@script(
 		# Translators: Copy link compatible with NVDA Remote gesture description
-		description=_("Copies a link to the remote session to the clipboard compatible with both NVDA Remote and TeleNVDA"),
-		**speakOnDemand)
+		description=_(
+			"Copies a link to the remote session to the clipboard compatible with both NVDA Remote and TeleNVDA",
+		),
+		**speakOnDemand,
+	)
 	def script_copy_remote_link(self, gesture):
 		connector = self.slave_transport or self.master_transport
-		if not getattr(connector,'connected',False):
+		if not getattr(connector, "connected", False):
 			ui.message(_("Not connected."))
 			return
 		self.on_copy_link_remote_item(None)
@@ -2037,10 +2266,11 @@ class GlobalPlugin(_GlobalPlugin):
 	@script(
 		# Translators: Copy link compatible with TeleNVDA gesture description
 		description=_("Copies a link to the remote session to the clipboard compatible only with TeleNVDA"),
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_copy_tele_link(self, gesture):
 		connector = self.slave_transport or self.master_transport
-		if not getattr(connector,'connected',False):
+		if not getattr(connector, "connected", False):
 			ui.message(_("Not connected."))
 			return
 		self.on_copy_link_tele_item(None)
@@ -2050,7 +2280,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: description for the Connect gesture
 		_("""Opens a dialog to start a remote session"""),
 		gesture="kb:alt+NVDA+pageUp",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_connect(self, gesture):
 		if self.master_transport or self.slave_transport:
 			ui.message(_("TeleNVDA Already Connected"))
@@ -2061,7 +2292,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: description for the Disconnect gesture
 		_("""Disconnect a remote session"""),
 		gesture="kb:alt+NVDA+pageDown",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_disconnect(self, gesture):
 		if self.master_transport is None and self.slave_transport is None:
 			ui.message(_("Not connected."))
@@ -2070,9 +2302,12 @@ class GlobalPlugin(_GlobalPlugin):
 
 	@script(
 		# Translators: description for the gesture that connects or disconnects a remote session.
-		_("""If a remote session is active, disconnects it; otherwise opens a dialog to start a remote session"""),
+		_(
+			"""If a remote session is active, disconnects it; otherwise opens a dialog to start a remote session""",
+		),
 		gesture="kb:NVDA+alt+r",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_toggle_connection(self, gesture):
 		if self.master_transport is None and self.slave_transport is None:
 			self.do_connect(None)
@@ -2081,9 +2316,12 @@ class GlobalPlugin(_GlobalPlugin):
 
 	@script(
 		# Translators: gesture description for the ignoreNextGesture script
-		_("""Set the host to ignore the next gesture completely, sending next gesture to the guest as is. Useful when you need to use the gesture asigned to toggle between guest and host, in the guest machine."""),
-		gesture = "kb:control+f11",
-		**speakOnDemand)
+		_(
+			"""Set the host to ignore the next gesture completely, sending next gesture to the guest as is. Useful when you need to use the gesture asigned to toggle between guest and host, in the guest machine.""",
+		),
+		gesture="kb:control+f11",
+		**speakOnDemand,
+	)
 	def script_ignoreNextGesture(self, gesture):
 		if not self._is_master_connected() or not self.sending_keys:
 			return gesture.send()
@@ -2095,7 +2333,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: Documentation string for the script that toggles the control between guest and host machine.
 		description=_("Toggles the control between guest and host machine"),
 		gesture="kb:NVDA+alt+tab",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_sendKeys(self, gesture):
 		if not self._is_master_connected():
 			if self._is_slave_connected():
@@ -2124,9 +2363,9 @@ class GlobalPlugin(_GlobalPlugin):
 		"""Start sending the local keyboard to the controlled computer."""
 		self.sending_keys = True
 		self.set_receiving_braille(True)
-		if buildVersion.version_year==2022 and buildVersion.version_major==4:
+		if buildVersion.version_year == 2022 and buildVersion.version_major == 4:
 			security.postSessionLockStateChanged.register(self.onSessionLockStateChange)
-		elif buildVersion.version_year>=2023:
+		elif buildVersion.version_year >= 2023:
 			security.post_sessionLockStateChanged.register(self.onSessionLockStateChange)
 		if gesture is not None:
 			# The keys of the toggling gesture are still held down locally, so their release
@@ -2138,7 +2377,7 @@ class GlobalPlugin(_GlobalPlugin):
 			self.hostPendingNonmodifier = None
 		# Translators: Presented when sending keyboard keys from the controlling computer to the controlled computer.
 		ui.message(_("Controlling remote machine."))
-		if configuration.get_config()['ui']['mute_when_controlling_local_machine'] and not self.muted:
+		if configuration.get_config()["ui"]["mute_when_controlling_local_machine"] and not self.muted:
 			# Only change this value if user didn't explicitly mute the remote machine
 			self.local_machine.is_muted = False
 
@@ -2179,7 +2418,13 @@ class GlobalPlugin(_GlobalPlugin):
 			elif script in self.guestScripts:
 				wx.CallAfter(script, gesture)
 				return False
-		self.master_transport.send(type="key", vk_code=vkCode, scan_code=scanCode, extended=extended, pressed=pressed)
+		self.master_transport.send(
+			type="key",
+			vk_code=vkCode,
+			scan_code=scanCode,
+			extended=extended,
+			pressed=pressed,
+		)
 		configuration.record_activity()
 		return False
 
@@ -2191,7 +2436,8 @@ class GlobalPlugin(_GlobalPlugin):
 		# Translators: gesture description for the toggle remote mute script
 		description=_("""Mute or unmute the speech coming from the remote computer"""),
 		gesture="kb:control+alt+m",
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_toggle_remote_mute(self, gesture):
 		if not self.is_connected() or self.connecting or self.slave_transport:
 			return
@@ -2200,7 +2446,8 @@ class GlobalPlugin(_GlobalPlugin):
 	@script(
 		# Translators: send Ctrl+Alt+Delete gesture description
 		description=_("""Sends Ctrl+Alt+Delete to the remote machine"""),
-		**speakOnDemand)
+		**speakOnDemand,
+	)
 	def script_send_ctrl_alt_del(self, gesture):
 		if not self.is_connected() or self.connecting or self.slave_transport:
 			return
@@ -2208,6 +2455,7 @@ class GlobalPlugin(_GlobalPlugin):
 
 	@script(
 		# Translators: open addon settings gesture description
-		description=_("""Opens the addon settings panel inside NVDA settings dialog"""))
+		description=_("""Opens the addon settings panel inside NVDA settings dialog"""),
+	)
 	def script_options(self, gesture):
 		self.on_options_item(None)

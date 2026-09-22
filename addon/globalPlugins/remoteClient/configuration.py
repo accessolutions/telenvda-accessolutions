@@ -6,12 +6,13 @@ import configobj
 from configobj import validate
 import globalVars
 from . import socket_utils
+
 readonly = globalVars.appArgs.secure or globalVars.appArgs.launcher
 
-CONFIG_FILE_NAME = 'teleNVDA.ini'
+CONFIG_FILE_NAME = "teleNVDA.ini"
 DEFAULT_SERVER_HOST = "nvdaremote.accessolutions.fr"
 LEGACY_SERVER_HOSTS = frozenset(("remote.nvda.es",))
-LEGACY_CONFIG_FILE_NAME = 'remote.ini'
+LEGACY_CONFIG_FILE_NAME = "remote.ini"
 DEFAULT_HTTPS_PATH = "/remote/http/v1"
 DEFAULT_HTTPS_PATH_V2 = "/remote/http/v2"
 
@@ -121,13 +122,15 @@ configspec = StringIO("""
 	portcheck = string(default="https://nvda.es/portcheck.php?port={port}")
 """)
 
+
 def is_hidden_server_address(address):
 	"""Return whether an address should be omitted from the connection history list."""
 	return str(address).strip().casefold() in HIDDEN_SERVER_ADDRESSES
 
+
 def normalize_server_host(host):
 	"""Return the current relay hostname without an embedded port."""
-	original = str(host or '').strip()
+	original = str(host or "").strip()
 	if not original:
 		return original
 	try:
@@ -140,60 +143,59 @@ def normalize_server_host(host):
 		return DEFAULT_SERVER_HOST
 	return parsed_host
 
+
 def _migrate_server_configuration(config):
 	"""Migrate old relay host names and embedded TCP ports."""
 	changed = False
-	section = config['controlserver']
-	https_path = str(section.get('https_path', DEFAULT_HTTPS_PATH) or '').strip()
-	if 'https_path' not in section or not https_path:
-		section['https_path'] = DEFAULT_HTTPS_PATH
+	section = config["controlserver"]
+	https_path = str(section.get("https_path", DEFAULT_HTTPS_PATH) or "").strip()
+	if "https_path" not in section or not https_path:
+		section["https_path"] = DEFAULT_HTTPS_PATH
 		changed = True
-	https_version = str(section.get('https_version', 'auto') or 'auto').strip().lower()
-	if 'https_version' not in section or https_version not in ('auto', 'v1', 'v2'):
-		new_https_version = 'auto'
-	elif section.get('https_version') != https_version:
+	https_version = str(section.get("https_version", "auto") or "auto").strip().lower()
+	if "https_version" not in section or https_version not in ("auto", "v1", "v2"):
+		new_https_version = "auto"
+	elif section.get("https_version") != https_version:
 		new_https_version = https_version
 	else:
 		new_https_version = None
 	if new_https_version is not None:
-		section['https_version'] = new_https_version
+		section["https_version"] = new_https_version
 		changed = True
-	https_path_v2 = str(section.get('https_path_v2', DEFAULT_HTTPS_PATH_V2) or '').strip()
-	if 'https_path_v2' not in section or not https_path_v2:
-		section['https_path_v2'] = DEFAULT_HTTPS_PATH_V2
+	https_path_v2 = str(section.get("https_path_v2", DEFAULT_HTTPS_PATH_V2) or "").strip()
+	if "https_path_v2" not in section or not https_path_v2:
+		section["https_path_v2"] = DEFAULT_HTTPS_PATH_V2
 		changed = True
-	if not section.get('self_hosted', False):
-		raw_host = str(section.get('host', '') or '').strip()
+	if not section.get("self_hosted", False):
+		raw_host = str(section.get("host", "") or "").strip()
 		if raw_host:
 			try:
 				host, port = socket_utils.address_to_hostport(
 					raw_host,
-					default_port=int(section.get('port', socket_utils.SERVER_PORT) or socket_utils.SERVER_PORT),
+					default_port=int(
+						section.get("port", socket_utils.SERVER_PORT) or socket_utils.SERVER_PORT,
+					),
 				)
 			except (TypeError, ValueError):
 				host, port = raw_host, None
 			canonical_host = normalize_server_host(host)
 			if canonical_host != raw_host:
-				section['host'] = canonical_host
+				section["host"] = canonical_host
 				changed = True
 			if port is not None:
 				# Old native/TeleNVDA TCP settings could contain :443 in the
 				# host. The native Remote protocol uses the standard TCP port;
 				# WebSocket connections must keep 443 explicitly.
-				transport = str(section.get('transport', 'tcp')).lower()
+				transport = str(section.get("transport", "tcp")).lower()
 				is_known_relay = canonical_host.casefold() == DEFAULT_SERVER_HOST.casefold()
-				should_use_tcp_default = (
-					port == 443
-					and transport == 'tcp'
-					and is_known_relay
-				)
+				should_use_tcp_default = port == 443 and transport == "tcp" and is_known_relay
 				new_port = socket_utils.SERVER_PORT if should_use_tcp_default else port
-				if section.get('port') != new_port:
-					section['port'] = new_port
+				if section.get("port") != new_port:
+					section["port"] = new_port
 					changed = True
 
-	connections = config['connections']
-	last_connected = connections.get('last_connected', [])
+	connections = config["connections"]
+	last_connected = connections.get("last_connected", [])
 	canonical_history = []
 	for address in last_connected:
 		raw_address = str(address).strip()
@@ -210,57 +212,58 @@ def _migrate_server_configuration(config):
 		if canonical_address != address:
 			changed = True
 	if canonical_history != list(last_connected):
-		connections['last_connected'] = canonical_history
+		connections["last_connected"] = canonical_history
 		changed = True
 	return changed
+
 
 def _has_configured_remote_settings(config):
 	"""Return whether the active TeleNVDA profile already contains user data."""
 	if has_explicit_remote_settings(config):
 		return True
-	return list(config['connections'].get('last_connected', [])) != [DEFAULT_SERVER_HOST]
+	return list(config["connections"].get("last_connected", [])) != [DEFAULT_SERVER_HOST]
+
 
 def has_explicit_remote_settings(config=None):
 	if config is None:
 		config = get_config()
-	section = config['controlserver']
-	if section.get('autoconnect') or section.get('self_hosted') or section.get('key'):
+	section = config["controlserver"]
+	if section.get("autoconnect") or section.get("self_hosted") or section.get("key"):
 		return True
-	if section.get('UPNP') or section.get('encryption_key') or section.get('connection_type'):
+	if section.get("UPNP") or section.get("encryption_key") or section.get("connection_type"):
 		return True
-	if normalize_server_host(section.get('host')) != DEFAULT_SERVER_HOST:
+	if normalize_server_host(section.get("host")) != DEFAULT_SERVER_HOST:
 		return True
 	try:
-		if int(section.get('port', socket_utils.SERVER_PORT)) != socket_utils.SERVER_PORT:
+		if int(section.get("port", socket_utils.SERVER_PORT)) != socket_utils.SERVER_PORT:
 			return True
 	except (TypeError, ValueError):
 		return True
 	if (
-		section.get('transport', 'tcp') != 'tcp'
-		or section.get('ws_path', '/') != '/'
-		or str(section.get('https_path', DEFAULT_HTTPS_PATH) or '').strip() not in ('', DEFAULT_HTTPS_PATH)
-		or str(section.get('https_version', 'auto') or 'auto').strip().lower() != 'auto'
-		or str(section.get('https_path_v2', DEFAULT_HTTPS_PATH_V2) or '').strip() not in ('', DEFAULT_HTTPS_PATH_V2)
-		or section.get('proxy_mode', 'auto') != 'auto'
-		or section.get('proxy_host')
-		or section.get('proxy_port')
-		or section.get('proxy_username')
-		or section.get('proxy_password')
+		section.get("transport", "tcp") != "tcp"
+		or section.get("ws_path", "/") != "/"
+		or str(section.get("https_path", DEFAULT_HTTPS_PATH) or "").strip() not in ("", DEFAULT_HTTPS_PATH)
+		or str(section.get("https_version", "auto") or "auto").strip().lower() != "auto"
+		or str(section.get("https_path_v2", DEFAULT_HTTPS_PATH_V2) or "").strip()
+		not in ("", DEFAULT_HTTPS_PATH_V2)
+		or section.get("proxy_mode", "auto") != "auto"
+		or section.get("proxy_host")
+		or section.get("proxy_port")
+		or section.get("proxy_username")
+		or section.get("proxy_password")
 	):
 		return True
 	return False
 
+
 def _get_control_server_section(config):
-	return (
-		config.get('controlserver')
-		or config.get('controlServer')
-		or config.get('control_server')
-	)
+	return config.get("controlserver") or config.get("controlServer") or config.get("control_server")
+
 
 def _coerce_config_value(value, current_value):
 	if isinstance(current_value, bool):
 		if isinstance(value, str):
-			return value.strip().casefold() in ('1', 'true', 'yes', 'on')
+			return value.strip().casefold() in ("1", "true", "yes", "on")
 		return bool(value)
 	if isinstance(current_value, int):
 		try:
@@ -268,6 +271,7 @@ def _coerce_config_value(value, current_value):
 		except (TypeError, ValueError):
 			return current_value
 	return value
+
 
 def migrate_external_addon_settings():
 	"""Import an old TeleNVDA/NVDA Remote profile into a pristine profile.
@@ -287,39 +291,39 @@ def migrate_external_addon_settings():
 		section = _get_control_server_section(source)
 		if not section:
 			continue
-		current = config['controlserver']
+		current = config["controlserver"]
 		key_aliases = {
-			'autoconnect': ('autoconnect',),
-			'self_hosted': ('self_hosted', 'selfHosted'),
-			'UPNP': ('UPNP', 'upnp'),
-			'connection_type': ('connection_type', 'connectionMode'),
-			'host': ('host',),
-			'port': ('port',),
-			'key': ('key',),
-			'encryption_key': ('encryption_key', 'encryptionKey'),
-			'transport': ('transport',),
-			'ws_path': ('ws_path', 'wsPath'),
-			'https_path': ('https_path', 'httpsPath'),
-			'https_version': ('https_version', 'httpsVersion'),
-			'https_path_v2': ('https_path_v2', 'httpsPathV2'),
-			'proxy_mode': ('proxy_mode', 'proxyMode'),
-			'proxy_host': ('proxy_host', 'proxyHost'),
-			'proxy_port': ('proxy_port', 'proxyPort'),
-			'proxy_username': ('proxy_username', 'proxyUsername'),
-			'proxy_password': ('proxy_password', 'proxyPassword'),
-			'proxy_type': ('proxy_type', 'proxyType'),
-			'disable_autoconnect_after_inactivity': ('disable_autoconnect_after_inactivity',),
-			'inactivity_auto_disable_seconds': ('inactivity_auto_disable_seconds',),
+			"autoconnect": ("autoconnect",),
+			"self_hosted": ("self_hosted", "selfHosted"),
+			"UPNP": ("UPNP", "upnp"),
+			"connection_type": ("connection_type", "connectionMode"),
+			"host": ("host",),
+			"port": ("port",),
+			"key": ("key",),
+			"encryption_key": ("encryption_key", "encryptionKey"),
+			"transport": ("transport",),
+			"ws_path": ("ws_path", "wsPath"),
+			"https_path": ("https_path", "httpsPath"),
+			"https_version": ("https_version", "httpsVersion"),
+			"https_path_v2": ("https_path_v2", "httpsPathV2"),
+			"proxy_mode": ("proxy_mode", "proxyMode"),
+			"proxy_host": ("proxy_host", "proxyHost"),
+			"proxy_port": ("proxy_port", "proxyPort"),
+			"proxy_username": ("proxy_username", "proxyUsername"),
+			"proxy_password": ("proxy_password", "proxyPassword"),
+			"proxy_type": ("proxy_type", "proxyType"),
+			"disable_autoconnect_after_inactivity": ("disable_autoconnect_after_inactivity",),
+			"inactivity_auto_disable_seconds": ("inactivity_auto_disable_seconds",),
 		}
 		for key, aliases in key_aliases.items():
 			for alias in aliases:
 				if alias in section and key in current:
 					current[key] = _coerce_config_value(section[alias], current[key])
 					break
-		connections = source.get('connections')
-		if connections and connections.get('last_connected'):
-			config['connections']['last_connected'] = list(connections['last_connected'])
-		for section_name in ('ui', 'updates', 'screenshots', 'file_transfer', 'screen_share', 'keep_awake'):
+		connections = source.get("connections")
+		if connections and connections.get("last_connected"):
+			config["connections"]["last_connected"] = list(connections["last_connected"])
+		for section_name in ("ui", "updates", "screenshots", "file_transfer", "screen_share", "keep_awake"):
 			source_section = source.get(section_name)
 			target_section = config.get(section_name)
 			if not source_section or not target_section:
@@ -327,7 +331,7 @@ def migrate_external_addon_settings():
 			for key in target_section:
 				if key in source_section:
 					target_section[key] = _coerce_config_value(source_section[key], target_section[key])
-		for section_name in ('seen_motds', 'trusted_certs'):
+		for section_name in ("seen_motds", "trusted_certs"):
 			source_section = source.get(section_name)
 			if not source_section:
 				continue
@@ -342,18 +346,21 @@ def migrate_external_addon_settings():
 					)
 				config[section_name][canonical_address] = value
 		_migrate_server_configuration(config)
-		if config['controlserver'].get('autoconnect'):
-			config['activity']['last_activity_timestamp'] = 0.0
+		if config["controlserver"].get("autoconnect"):
+			config["activity"]["last_activity_timestamp"] = 0.0
 		config.write()
 		return True
 	return False
 
+
 def _is_portable_copy():
 	try:
 		import config as nvda_config
+
 		return not nvda_config.isInstalledCopy()
 	except (AttributeError, ImportError, OSError):
 		return True
+
 
 def get_portable_migration_config_dirs():
 	"""Return the installed user-config directory when NVDA is portable."""
@@ -361,7 +368,8 @@ def get_portable_migration_config_dirs():
 		return []
 	try:
 		import config as nvda_config
-		get_installed_path = getattr(nvda_config, 'getInstalledUserConfigPath', None)
+
+		get_installed_path = getattr(nvda_config, "getInstalledUserConfigPath", None)
 		if get_installed_path is not None:
 			installed_dir = get_installed_path()
 		else:
@@ -376,17 +384,20 @@ def get_portable_migration_config_dirs():
 		return []
 	return [installed_dir] if os.path.isdir(installed_dir) else []
 
+
 def load_external_config(path):
 	"""Load an optional ConfigObj file used for profile migration."""
 	try:
 		if not os.path.isfile(path):
 			return None
-		return configobj.ConfigObj(infile=path, default_encoding='utf8')
+		return configobj.ConfigObj(infile=path, default_encoding="utf8")
 	except (OSError, configobj.ConfigObjError, UnicodeError):
 		return None
 
+
 def get_portable_native_config_paths():
-	return [os.path.join(directory, 'nvda.ini') for directory in get_portable_migration_config_dirs()]
+	return [os.path.join(directory, "nvda.ini") for directory in get_portable_migration_config_dirs()]
+
 
 def get_legacy_addon_config_paths():
 	"""Return TeleNVDA and old NVDA Remote config paths to inspect."""
@@ -397,9 +408,10 @@ def get_legacy_addon_config_paths():
 			(
 				os.path.join(directory, CONFIG_FILE_NAME),
 				os.path.join(directory, LEGACY_CONFIG_FILE_NAME),
-			)
+			),
 		)
 	return paths
+
 
 def _migrate_proxy_mode(config):
 	"""Switch configurations left in manual mode without a proxy host to automatic detection.
@@ -411,20 +423,26 @@ def _migrate_proxy_mode(config):
 	This runs only once: replaying it at every start would keep discarding a proxy mode
 	deliberately chosen by the user, which then appears not to be saved at all.
 	"""
-	migrations = config['migrations']
-	if migrations.get('proxy_mode_reset'):
+	migrations = config["migrations"]
+	if migrations.get("proxy_mode_reset"):
 		return False
-	migrations['proxy_mode_reset'] = True
-	section = config['controlserver']
-	if section.get('proxy_mode') == 'manual' and not section.get('proxy_host', '').strip():
-		section['proxy_mode'] = 'auto'
+	migrations["proxy_mode_reset"] = True
+	section = config["controlserver"]
+	if section.get("proxy_mode") == "manual" and not section.get("proxy_host", "").strip():
+		section["proxy_mode"] = "auto"
 	return True
+
 
 def get_config():
 	global _config
 	if not _config:
 		path = os.path.abspath(os.path.join(globalVars.appArgs.configPath, CONFIG_FILE_NAME))
-		_config = configobj.ConfigObj(infile=path, configspec=configspec, default_encoding='utf8', create_empty=not readonly)
+		_config = configobj.ConfigObj(
+			infile=path,
+			configspec=configspec,
+			default_encoding="utf8",
+			create_empty=not readonly,
+		)
 		val = validate.Validator()
 		_config.validate(val, copy=True)
 		migrated = _migrate_proxy_mode(_config)
@@ -436,60 +454,68 @@ def get_config():
 				pass
 	return _config
 
+
 def get_screenshot_directory():
 	"""Return the configured screenshot directory or the current user's temp directory."""
-	configured = get_config()['screenshots'].get('directory', '').strip()
+	configured = get_config()["screenshots"].get("directory", "").strip()
 	if configured:
 		configured = os.path.abspath(os.path.expanduser(os.path.expandvars(configured)))
 		if os.path.isdir(configured) and os.access(configured, os.W_OK):
 			return configured
 	return tempfile.gettempdir()
 
+
 def get_native_remote_state():
 	"""Return whether TeleNVDA manages native NVDA Remote and its original state."""
-	state = get_config()['native_remote']
-	return state['managed'], state['original_enabled']
+	state = get_config()["native_remote"]
+	return state["managed"], state["original_enabled"]
+
 
 def save_native_remote_state(original_enabled):
 	"""Remember the native NVDA Remote state before TeleNVDA disables it."""
 	if readonly:
 		return False
-	state = get_config()['native_remote']
-	state['managed'] = True
-	state['original_enabled'] = bool(original_enabled)
-	state['restore_on_reactivation'] = False
+	state = get_config()["native_remote"]
+	state["managed"] = True
+	state["original_enabled"] = bool(original_enabled)
+	state["restore_on_reactivation"] = False
 	get_config().write()
 	return True
 
+
 def should_restore_native_remote_on_reactivation():
 	"""Return whether native NVDA Remote must be restored after re-enabling TeleNVDA."""
-	return get_config()['native_remote'].get('restore_on_reactivation', False)
+	return get_config()["native_remote"].get("restore_on_reactivation", False)
+
 
 def mark_native_remote_for_reactivation():
 	"""Remember that TeleNVDA is being disabled before the next NVDA restart."""
 	if readonly:
 		return False
-	state = get_config()['native_remote']
-	if not state['managed']:
+	state = get_config()["native_remote"]
+	if not state["managed"]:
 		return False
-	state['restore_on_reactivation'] = True
+	state["restore_on_reactivation"] = True
 	get_config().write()
 	return True
+
 
 def clear_native_remote_state():
 	"""Forget the native NVDA Remote state after restoring it."""
 	if readonly:
 		return False
-	state = get_config()['native_remote']
-	state['managed'] = False
-	state['original_enabled'] = True
-	state['restore_on_reactivation'] = False
+	state = get_config()["native_remote"]
+	state["managed"] = False
+	state["original_enabled"] = True
+	state["restore_on_reactivation"] = False
 	get_config().write()
 	return True
 
+
 def were_native_remote_settings_imported():
 	"""Return whether the automatic connection of native NVDA Remote was already looked at."""
-	return get_config()['native_remote'].get('settings_imported', False)
+	return get_config()["native_remote"].get("settings_imported", False)
+
 
 def mark_native_remote_settings_imported():
 	"""Remember that a valid native NVDA Remote connection was imported or kept.
@@ -499,44 +525,44 @@ def mark_native_remote_settings_imported():
 	"""
 	if readonly:
 		return False
-	get_config()['native_remote']['settings_imported'] = True
+	get_config()["native_remote"]["settings_imported"] = True
 	get_config().write()
 	return True
+
 
 def trust_certificate(address, fingerprint):
 	"""Trust a server certificate when its fingerprint was obtained successfully."""
 	if not fingerprint:
 		return False
 	config = get_config()
-	config['trusted_certs'][socket_utils.hostport_to_address(address)] = fingerprint
+	config["trusted_certs"][socket_utils.hostport_to_address(address)] = fingerprint
 	if not readonly:
 		config.write()
 	return True
 
-def write_connection_to_config(address, transport_type='tcp'):
+
+def write_connection_to_config(address, transport_type="tcp"):
 	"""Writes an address to the last connected section of the config.
 	If the address is already in the config, move it to the end."""
 	conf = get_config()
-	last_cons = conf['connections']['last_connected']
+	last_cons = conf["connections"]["last_connected"]
 	host, port = address
 	host = normalize_server_host(host)
-	if (
-		transport_type == 'tcp'
-		and port == 443
-		and host.casefold() == DEFAULT_SERVER_HOST.casefold()
-	):
+	if transport_type == "tcp" and port == 443 and host.casefold() == DEFAULT_SERVER_HOST.casefold():
 		port = socket_utils.SERVER_PORT
 	address = socket_utils.hostport_to_address((host, port))
 	if address in last_cons:
-		conf['connections']['last_connected'].remove(address)
-	conf['connections']['last_connected'].append(address)
+		conf["connections"]["last_connected"].remove(address)
+	conf["connections"]["last_connected"].append(address)
 	if not readonly:
 		conf.write()
+
 
 def get_server_history():
 	"""Return relay addresses offered by the connection dialog, newest first."""
 	host_items = [
-		address for address in reversed(get_config()['connections']['last_connected'])
+		address
+		for address in reversed(get_config()["connections"]["last_connected"])
 		if not is_hidden_server_address(address)
 	]
 	for default_host in DEFAULT_SERVER_HOSTS:
@@ -544,20 +570,23 @@ def get_server_history():
 			host_items.append(default_host)
 	return host_items
 
+
 def get_key_history_limit():
 	"""Return the configured number of successful connection keys to retain."""
 	try:
-		limit = int(get_config()['connections'].get('key_history_limit', DEFAULT_KEY_HISTORY_LIMIT))
+		limit = int(get_config()["connections"].get("key_history_limit", DEFAULT_KEY_HISTORY_LIMIT))
 	except (TypeError, ValueError):
 		limit = DEFAULT_KEY_HISTORY_LIMIT
 	return max(0, min(limit, MAX_KEY_HISTORY_LIMIT))
 
+
 def get_key_history():
 	"""Return the most recent distinct keys used to control another machine."""
-	history = get_config()['connections'].get('key_history', [])
+	history = get_config()["connections"].get("key_history", [])
 	if isinstance(history, str):
 		history = [history] if history else []
-	return [str(key) for key in history if str(key)][:get_key_history_limit()]
+	return [str(key) for key in history if str(key)][: get_key_history_limit()]
+
 
 def write_key_to_config(key):
 	"""Remember a key after a successful controller connection."""
@@ -569,9 +598,10 @@ def write_key_to_config(key):
 	conf = get_config()
 	history = [item for item in get_key_history() if item != key]
 	history.insert(0, key)
-	conf['connections']['key_history'] = history[:get_key_history_limit()]
+	conf["connections"]["key_history"] = history[: get_key_history_limit()]
 	conf.write()
 	return True
+
 
 def record_activity():
 	"""Record that a real remote control action was just performed or received
@@ -583,10 +613,11 @@ def record_activity():
 		return
 	conf = get_config()
 	now = time.time()
-	conf['activity']['last_activity_timestamp'] = now
+	conf["activity"]["last_activity_timestamp"] = now
 	if now - _last_activity_write_time >= _MIN_ACTIVITY_WRITE_INTERVAL:
 		conf.write()
 		_last_activity_write_time = now
+
 
 def flush_activity():
 	"""Force any pending (throttled) activity timestamp to be written to disk.
@@ -595,11 +626,14 @@ def flush_activity():
 		return
 	get_config().write()
 
+
 def parse_inactivity_duration(value):
 	"""Convert a jj:hh:mm inactivity duration to seconds."""
 	parts = value.strip().split(":")
-	if len(parts) != 3 or not parts[0].isdigit() or any(
-		len(part) != 2 or not part.isdigit() for part in parts[1:]
+	if (
+		len(parts) != 3
+		or not parts[0].isdigit()
+		or any(len(part) != 2 or not part.isdigit() for part in parts[1:])
 	):
 		raise ValueError
 	days, hours, minutes = (int(part) for part in parts)
@@ -610,6 +644,7 @@ def parse_inactivity_duration(value):
 		raise ValueError
 	return seconds
 
+
 def format_inactivity_duration(seconds):
 	"""Convert an inactivity duration in seconds to jj:hh:mm."""
 	minutes, _ = divmod(int(seconds), 60)
@@ -617,10 +652,11 @@ def format_inactivity_duration(seconds):
 	hours, minutes = divmod(minutes, 60)
 	return "{:02d}:{:02d}:{:02d}".format(days, hours, minutes)
 
+
 def get_inactivity_auto_disable_seconds():
 	"""Return the configured inactivity duration, falling back to the default."""
-	seconds = get_config()['controlserver'].get(
-		'inactivity_auto_disable_seconds',
+	seconds = get_config()["controlserver"].get(
+		"inactivity_auto_disable_seconds",
 		DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS,
 	)
 	try:
@@ -631,16 +667,18 @@ def get_inactivity_auto_disable_seconds():
 		return DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS
 	return seconds
 
+
 def get_inactivity_timeout_remaining():
 	"""Return seconds remaining before auto-connect must be disabled, or None."""
 	conf = get_config()
-	cs = conf['controlserver']
-	if not cs['autoconnect'] or not cs['disable_autoconnect_after_inactivity']:
+	cs = conf["controlserver"]
+	if not cs["autoconnect"] or not cs["disable_autoconnect_after_inactivity"]:
 		return None
-	last_activity = conf['activity']['last_activity_timestamp']
+	last_activity = conf["activity"]["last_activity_timestamp"]
 	if not last_activity:
 		return None
 	return max(0.0, last_activity + get_inactivity_auto_disable_seconds() - time.time())
+
 
 def should_disable_autoconnect_for_inactivity():
 	"""Return whether auto-connect should now be disabled because no real
