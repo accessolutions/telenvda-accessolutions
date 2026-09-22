@@ -25,6 +25,12 @@ def _install_import_stubs():
 	wx.CallAfter = lambda callback, *args, **kwargs: callback(*args, **kwargs)
 	sys.modules.setdefault("wx", wx)
 
+	# The transport records its connections through the daily log, which asks NVDA
+	# where its configuration lives before writing anything.
+	global_vars = ModuleType("globalVars")
+	global_vars.appArgs = SimpleNamespace(secure=False, launcher=False, configPath="")
+	sys.modules.setdefault("globalVars", global_vars)
+
 	remote_client = ModuleType("remoteClient")
 	remote_client.__path__ = [str(PACKAGE_PATH)]
 	sys.modules.setdefault("remoteClient", remote_client)
@@ -508,3 +514,21 @@ def test_http_error_does_not_trigger_certificate_callback(monkeypatch):
 		transport._open_http_connection_with_certificate_policy()
 
 	assert callbacks == []
+
+
+def test_messages_and_connection_events_reach_the_daily_log(tmp_path):
+	traffic_log = transport_module.traffic_log
+	settings = {"enabled": True, "traffic": True, "retention_days": 30}
+	assert traffic_log.initialize(settings, str(tmp_path)) is True
+	message = b'{"type":"speak","sequence":["a secret spoken out loud"]}'
+	try:
+		transport = _new_transport()
+		transport.parse(message)
+		transport._fire(transport_module.TransportEvents.DISCONNECTED)
+	finally:
+		traffic_log.terminate()
+
+	content = next(tmp_path.glob("telenvda-*.log")).read_text(encoding="utf-8")
+	assert "traffic in type=speak bytes=%d transport=HTTPSTransport" % len(message) in content
+	assert "a secret spoken out loud" not in content
+	assert "connection transport_disconnected transport=HTTPSTransport address=relay.example:443" in content

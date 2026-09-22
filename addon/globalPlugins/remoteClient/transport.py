@@ -17,7 +17,7 @@ from logging import getLogger
 from . import callback_manager
 from . import configuration
 from . import https_connection, https_protocol, https_stream, https_version
-from . import proxy_tunnel, proxy_utils, sspi_proxy, ws_protocol
+from . import proxy_tunnel, proxy_utils, sspi_proxy, traffic_log, ws_protocol
 from .socket_utils import hostport_to_address
 from enum import Enum
 
@@ -97,11 +97,26 @@ class Transport:
 		self.successful_connects = 0
 		self.connected_event = threading.Event()
 
+	def _fire(self, event, **kwargs):
+		"""Record a connection event in the daily log, then notify the callbacks.
+
+		The callbacks are handed over to the main thread, so the log entry is written
+		here rather than from one of them: a transport dying while NVDA exits would
+		otherwise leave no trace of what happened.
+		"""
+		address = getattr(self, "address", None)
+		traffic_log.log_connection(
+			event.value,
+			transport=self.__class__.__name__,
+			address="%s:%s" % address if address else None,
+		)
+		self.callback_manager.call_callbacks(event, **kwargs)
+
 	def transport_connected(self):
 		self.successful_connects += 1
 		self.connected = True
 		self.connected_event.set()
-		self.callback_manager.call_callbacks(TransportEvents.CONNECTED)
+		self._fire(TransportEvents.CONNECTED)
 
 
 class TCPTransport(Transport):
@@ -163,17 +178,17 @@ class TCPTransport(Transport):
 				self.insecure = True
 				return self.run()
 			self.last_fail_fingerprint = fingerprint
-			self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
+			self._fire(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
 		except ssl.SSLError:
 			if self.send_alpn:
 				self.send_alpn = False
 				return self.run()
 			else:
-				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+				self._fire(TransportEvents.CONNECTION_FAILED)
 				raise
 		except Exception:
-			self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+			self._fire(TransportEvents.CONNECTION_FAILED)
 			raise
 		self.transport_connected()
 		self.queue_thread = threading.Thread(target=self.send_queue)
@@ -196,7 +211,7 @@ class TCPTransport(Transport):
 					break
 		self.connected = False
 		self.connected_event.clear()
-		self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
+		self._fire(TransportEvents.DISCONNECTED)
 		self._disconnect()
 
 	def create_outbound_socket(self, host, port, insecure=False):
@@ -284,6 +299,12 @@ class TCPTransport(Transport):
 			except Exception:
 				return
 		callback = "msg_" + obj["type"]
+		traffic_log.log_traffic(
+			traffic_log.INBOUND,
+			obj["type"],
+			len(line),
+			transport=self.__class__.__name__,
+		)
 		del obj["type"]
 		self.callback_manager.call_callbacks(callback, **obj)
 
@@ -351,6 +372,15 @@ class TCPTransport(Transport):
 		if self.encryption_hash is not None and type in SIGNALING_TYPES:
 			kwargs = self.seal_signaling_envelope(kwargs)
 		obj = self.serializer.serialize(type=type, **kwargs)
+		if type != "encrypted":
+			# The recursive call which seals a message in an "encrypted" envelope would
+			# otherwise report the very same message a second time.
+			traffic_log.log_traffic(
+				traffic_log.OUTBOUND,
+				type,
+				len(obj),
+				transport=self.__class__.__name__,
+			)
 		if (
 			self.encryption_hash is not None
 			and type not in EXCLUDED_FROM_ENCRYPTION
@@ -386,7 +416,7 @@ class TCPTransport(Transport):
 			self.server_sock = None
 
 	def close(self):
-		self.callback_manager.call_callbacks(TransportEvents.CLOSING)
+		self._fire(TransportEvents.CLOSING)
 		self.reconnector_thread.running = False
 		self._disconnect()
 		self.closed = True
@@ -526,13 +556,13 @@ class WebSocketTransport(TCPTransport):
 		conf = configuration.get_config().get("controlserver", {})
 		url = self._websocket_url()
 		proxy_settings = proxy_utils.resolve_for_url(proxy_utils.from_config(conf), url)
-		log.debug(
-			"Opening %s (proxy %s)",
-			url,
+		proxy_description = (
 			f"{proxy_settings.type}://{proxy_settings.host}:{proxy_settings.port}"
 			if proxy_settings.enabled
-			else "none",
+			else "none"
 		)
+		log.debug("Opening %s (proxy %s)", url, proxy_description)
+		traffic_log.log_connection("websocket_opening", url=url, proxy=proxy_description)
 		try:
 			return self._open_websocket(proxy_settings, self.insecure)
 		except Exception as error:
@@ -558,7 +588,7 @@ class WebSocketTransport(TCPTransport):
 				return self.create_websocket()
 			self.last_fail_fingerprint = fingerprint
 			self._certificate_authentication_failed = True
-			self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
+			self._fire(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
 
 	def run(self):
@@ -567,11 +597,11 @@ class WebSocketTransport(TCPTransport):
 			self.websocket = self.create_websocket()
 		except ssl.SSLCertVerificationError:
 			if not self._certificate_authentication_failed:
-				self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
+				self._fire(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
 		except Exception:
 			if not self._certificate_authentication_failed:
-				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+				self._fire(TransportEvents.CONNECTION_FAILED)
 			raise
 		self.transport_connected()
 		while self.websocket is not None and not self.closed:
@@ -588,7 +618,7 @@ class WebSocketTransport(TCPTransport):
 					self.parse(line)
 		self.connected = False
 		self.connected_event.clear()
-		self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
+		self._fire(TransportEvents.DISCONNECTED)
 		self._disconnect()
 
 	def write(self, obj):
@@ -604,7 +634,7 @@ class WebSocketTransport(TCPTransport):
 			self.websocket = None
 
 	def close(self):
-		self.callback_manager.call_callbacks(TransportEvents.CLOSING)
+		self._fire(TransportEvents.CLOSING)
 		self.reconnector_thread.running = False
 		self.closed = True
 		self._disconnect()
@@ -745,7 +775,7 @@ class HTTPSTransport(TCPTransport):
 				return self._open_http_connection()
 			self.last_fail_fingerprint = fingerprint
 			self._certificate_authentication_failed = True
-			self.callback_manager.call_callbacks(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
+			self._fire(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
 
 	def _set_connection(self, name, connection):
@@ -821,6 +851,12 @@ class HTTPSTransport(TCPTransport):
 			)
 		self.session_id = response.session_id
 		self.session_token = response.token
+		traffic_log.log_connection(
+			"https_session_created",
+			url=self._relay_url(),
+			protocol=response.protocol,
+			session=response.session_id,
+		)
 		self.poll_wait = response.poll_wait_seconds
 		self.max_batch_messages = min(response.max_batch_messages, https_protocol.MAX_BATCH_MESSAGES)
 		self.max_message_bytes = response.max_message_bytes
@@ -1014,13 +1050,13 @@ class HTTPSTransport(TCPTransport):
 				self.last_received_sequence = tracker.last_sequence
 		except Exception:
 			if not was_connected and not self._certificate_authentication_failed:
-				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+				self._fire(TransportEvents.CONNECTION_FAILED)
 			raise
 		finally:
 			if was_connected:
 				self.connected = False
 				self.connected_event.clear()
-				self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
+				self._fire(TransportEvents.DISCONNECTED)
 			self._disconnect()
 
 	def write(self, obj):
@@ -1057,7 +1093,7 @@ class HTTPSTransport(TCPTransport):
 		self.connected = False
 
 	def close(self):
-		self.callback_manager.call_callbacks(TransportEvents.CLOSING)
+		self._fire(TransportEvents.CLOSING)
 		self.reconnector_thread.running = False
 		self.closed = True
 		self._disconnect()
@@ -1170,7 +1206,7 @@ class HTTPSStreamTransport(HTTPSTransport):
 			raise
 		except Exception:
 			if not was_connected and not self._certificate_authentication_failed:
-				self.callback_manager.call_callbacks(TransportEvents.CONNECTION_FAILED)
+				self._fire(TransportEvents.CONNECTION_FAILED)
 			raise
 		finally:
 			if response is not None:
@@ -1181,7 +1217,7 @@ class HTTPSStreamTransport(HTTPSTransport):
 			if was_connected:
 				self.connected = False
 				self.connected_event.clear()
-				self.callback_manager.call_callbacks(TransportEvents.DISCONNECTED)
+				self._fire(TransportEvents.DISCONNECTED)
 			self._disconnect()
 
 

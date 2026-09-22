@@ -37,6 +37,11 @@ Install the `.nvda-addon` package through NVDA's Add-ons Manager. NVDA must
 be installed on every participating computer. Restart NVDA if it requests a
 restart after installation or an update.
 
+The `TeleNVDA` and `Remote` add-ons offer the same remote assistance and cannot
+run alongside this one, so they are removed during the installation. The removal
+is reported and becomes effective once NVDA has restarted. The daily logs of the
+previous version of this add-on are kept across an update.
+
 For secure-desktop access, install the add-on on the secure desktop through
 NVDA's General Settings, using **Use currently saved settings on the logon and
 other secure screens**. This requires administrator privileges.
@@ -327,6 +332,40 @@ Open **NVDA menu > Tools > Remote > Connectivity test**. Enter the relay
 address, protocol, port, and WebSocket path when applicable. The test records
 DNS, TLS, and WebSocket diagnostic information in the local connectivity log;
 it does not require or record a session access key.
+
+## Daily log
+
+TeleNVDA writes one file per day in the `log` directory of the add-on, normally
+`%appdata%\NVDA\addons\TeleNVDA Accessolutions\log`, named
+`telenvda-YYYY-MM-DD.log`. Unlike NVDA's own log, which is rewritten at every
+start, it keeps a month of history of what the relay connection did:
+
+* every connection event of the WebSocket and classic HTTPS transports: the
+  address dialled, the proxy used, the session opened, the certificate refused,
+  the failure and the disconnection;
+* every relay message, by direction, type and size;
+* every warning and error raised by TeleNVDA, including those NVDA records in
+  its own log.
+
+The content of the messages is never written: it carries speech, braille,
+keystrokes and clipboard text. The file only says that a message of a given type
+and size was exchanged. Nothing at all is written on a secure screen, and the
+files older than thirty days are deleted.
+
+The `teleNVDA.ini` file of the NVDA profile holds the settings of this log:
+
+```ini
+[logging]
+enabled = True
+traffic = True
+retention_days = 30
+```
+
+Setting `traffic` to `False` keeps the connection events, the warnings and the
+errors while leaving out the message by message traffic. Setting
+`retention_days` to `0` keeps every file. When the add-on directory cannot be
+written to, which happens with some managed deployments, the files are written
+to `teleNVDA-log` in the NVDA user configuration directory instead.
 
 ## Security recommendations
 

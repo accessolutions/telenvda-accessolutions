@@ -16,6 +16,9 @@ __pycache__/
 /*.nvda-addon.sha256
 /*.zip
 
+# Daily logs written next to the add-on when it runs from these sources
+/addon/log/
+
 # Local certificates and SCons metadata
 /server.pem
 /teleNVDA-server.pem

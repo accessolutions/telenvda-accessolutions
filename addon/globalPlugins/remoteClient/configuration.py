@@ -25,6 +25,10 @@ DEFAULT_SERVER_HOSTS = ("nvda.fr", "nvdaremote.com")
 DEFAULT_KEY_HISTORY_LIMIT = 10
 MAX_KEY_HISTORY_LIMIT = 50
 
+# Number of days the daily log files are kept before being deleted, 0 meaning forever.
+DEFAULT_LOG_RETENTION_DAYS = 30
+MAX_LOG_RETENTION_DAYS = 365
+
 # Addresses which may already exist in the connection history but should no
 # longer be suggested by the connection dialog.
 HIDDEN_SERVER_ADDRESSES = frozenset(("nvdaremote.accessolutions.fr:443",))
@@ -88,6 +92,11 @@ configspec = StringIO("""
 
 [updates]
 	check_at_startup = boolean(default=True)
+
+[logging]
+	enabled = boolean(default=True)
+	traffic = boolean(default=True)
+	retention_days = integer(default=30)
 
 [screenshots]
 	directory = string(default="")
@@ -453,6 +462,24 @@ def get_config():
 			except Exception:
 				pass
 	return _config
+
+
+def get_logging_settings():
+	"""Return the settings of the daily log kept in the add-on directory.
+
+	``retention_days`` is capped at a year, and 0 means that the daily files are
+	never deleted.
+	"""
+	section = get_config()["logging"]
+	try:
+		retention_days = int(section.get("retention_days", DEFAULT_LOG_RETENTION_DAYS))
+	except (TypeError, ValueError):
+		retention_days = DEFAULT_LOG_RETENTION_DAYS
+	return {
+		"enabled": bool(section.get("enabled", True)),
+		"traffic": bool(section.get("traffic", True)),
+		"retention_days": max(0, min(retention_days, MAX_LOG_RETENTION_DAYS)),
+	}
 
 
 def get_screenshot_directory():

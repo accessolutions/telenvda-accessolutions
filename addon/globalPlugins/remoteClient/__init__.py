@@ -73,6 +73,7 @@ from . import mouse_hook
 from . import remote_keyboard
 from . import serializer
 from . import server
+from . import traffic_log
 from . import updater
 from . import url_handler
 from .https_protocol import DEFAULT_PATH as DEFAULT_HTTPS_PATH, DEFAULT_PATH_V2 as DEFAULT_HTTPS_PATH_V2
@@ -193,6 +194,11 @@ class GlobalPlugin(_GlobalPlugin):
 				raise RuntimeError(
 					"TeleNVDA cannot be used while NVDA Remote is running. Please, disable NVDA Remote and restart NVDA.",
 				)
+		# Started before anything else so that a failure of the setup below is recorded.
+		try:
+			traffic_log.initialize()
+		except Exception:
+			log.exception("Unable to start the TeleNVDA daily log")
 		self.local_machine = local_machine.LocalMachine()
 		self.update_manager = updater.UpdateManager()
 		self._startup_update_checked = False
@@ -1010,6 +1016,7 @@ class GlobalPlugin(_GlobalPlugin):
 		self.url_handler_window.destroy()
 		self.url_handler_window = None
 		core.postNvdaStartup.unregister(self.postStartupHandler)
+		traffic_log.terminate()
 		client = None
 
 	def on_disconnect_item(self, evt):

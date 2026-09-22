@@ -7,6 +7,17 @@ avec le protocole NVDA Remote.
 Ce projet est maintenu par Accessolutions :
 [github.com/Accessolutions/telenvda-accessolutions](https://github.com/Accessolutions/telenvda-accessolutions).
 
+## Installation
+
+Installez le paquet `.nvda-addon` depuis le gestionnaire de modules
+complémentaires de NVDA.
+
+Les extensions `TeleNVDA` et `Remote` offrent la même assistance à distance et
+ne peuvent pas cohabiter avec celle-ci : elles sont supprimées pendant
+l'installation. La suppression est signalée et devient effective au prochain
+démarrage de NVDA. Les journaux quotidiens de la version précédente de cette
+extension sont conservés lors d'une mise à jour.
+
 ## Connexions
 
 TeleNVDA conserve le transport TLS historique et ajoute un transport
@@ -75,6 +86,42 @@ DNS, l'établissement TLS et, pour WebSocket, la négociation HTTPS. Le résulta
 est présenté à l'écran et ajouté au journal local
 `teleNVDA-connectivity.log`. Les mots de passe et clés de session ne sont
 jamais écrits dans ce journal.
+
+## Journal quotidien
+
+TeleNVDA écrit un fichier par jour dans le dossier `log` de l'extension,
+normalement `%appdata%\NVDA\addons\TeleNVDA Accessolutions\log`, nommé
+`telenvda-AAAA-MM-JJ.log`. Contrairement au journal de NVDA, réécrit à chaque
+démarrage, il conserve un mois de l'activité de la connexion au relais :
+
+* les événements de connexion des transports WebSocket et HTTPS classique :
+  l'adresse appelée, le proxy utilisé, la session ouverte, le certificat
+  refusé, l'échec et la déconnexion ;
+* chaque message du relais, par sens, type et taille ;
+* les avertissements et les erreurs de TeleNVDA, y compris ceux que NVDA
+  consigne dans son propre journal.
+
+Le contenu des messages n'est jamais écrit : il transporte la parole, le
+braille, les frappes clavier et le presse-papiers. Le fichier indique
+seulement qu'un message d'un type et d'une taille donnés a été échangé. Rien
+n'est écrit sur un écran sécurisé, et les fichiers de plus de trente jours sont
+supprimés.
+
+Le fichier `teleNVDA.ini` du profil NVDA contient les réglages de ce journal :
+
+```ini
+[logging]
+enabled = True
+traffic = True
+retention_days = 30
+```
+
+Mettre `traffic` à `False` conserve les événements de connexion, les
+avertissements et les erreurs, sans le détail message par message. Mettre
+`retention_days` à `0` conserve tous les fichiers. Lorsque le dossier de
+l'extension n'est pas accessible en écriture, ce qui arrive sur certains
+déploiements gérés, les fichiers sont écrits dans `teleNVDA-log`, au sein du
+dossier de configuration de NVDA.
 
 ## Connexion directe
 

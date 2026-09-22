@@ -60,6 +60,8 @@ i18nSources = pythonSources + ["buildVars.py"]
 excludedFiles = [
 	"globalPlugins/remoteClient/lib32/bin/wsdump.exe",
 	"globalPlugins/remoteClient/lib64/bin/wsdump.exe",
+	# Daily logs written next to the add-on when it runs from these sources.
+	"log/*",
 ]
 
 # Base language for the NVDA add-on
