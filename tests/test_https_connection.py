@@ -10,7 +10,10 @@ import sys
 import pytest
 
 
-MODULE_PATH = Path(__file__).parents[1] / "addon/globalPlugins/remoteClient/https_connection.py"
+PACKAGE_PATH = Path(__file__).parents[1] / "addon/globalPlugins/remoteClient"
+# The module is loaded outside of its package, so its siblings must be importable.
+sys.path.insert(0, str(PACKAGE_PATH))
+MODULE_PATH = PACKAGE_PATH / "https_connection.py"
 SPEC = importlib.util.spec_from_file_location("https_connection", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 https_connection = importlib.util.module_from_spec(SPEC)
@@ -132,7 +135,10 @@ def test_http_407_without_credentials_retries_with_windows_authentication(monkey
 	tls_context = FakeTLSContext()
 	settings = _settings(host="proxy.example", port=8080, enabled=True)
 	sspi_settings = _settings(host="proxy.example", port=8080, enabled=True, type="negotiate")
-	proxy_utils = SimpleNamespace(with_windows_authentication=lambda value: sspi_settings)
+	proxy_utils = SimpleNamespace(
+		allows_windows_authentication=lambda value: True,
+		with_windows_authentication=lambda value: sspi_settings,
+	)
 	monkeypatch.setitem(sys.modules, "proxy_utils", proxy_utils)
 	monkeypatch.setattr(https_connection.ssl, "SSLContext", lambda protocol: tls_context)
 	monkeypatch.setattr(

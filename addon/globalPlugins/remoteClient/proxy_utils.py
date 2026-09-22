@@ -94,7 +94,12 @@ def from_system(url):
 def resolve_for_url(settings, url):
 	"""Resolve automatic Windows proxy settings for one destination URL."""
 	if not settings.auto_detect:
-		return settings
+		if settings.enabled or not settings.use_environment:
+			return settings
+		# No proxy is configured for the add-on, but the machine may still
+		# declare one. Resolving it here keeps every transport on the same
+		# route instead of leaving each library to read the environment.
+		return from_system(url) or settings
 	detected = None
 	try:
 		from .windows_proxy import detect_proxy
@@ -123,13 +128,22 @@ def uses_sspi(settings):
 	return settings.enabled and settings.type in ("negotiate", "ntlm")
 
 
-def needs_windows_authentication(settings, error):
-	"""Return whether a failed CONNECT should be retried with Windows credentials.
+def allows_windows_authentication(settings):
+	"""Return whether a rejected CONNECT may be retried with Windows credentials.
 
 	An HTTP proxy that answers 407 wants authentication we did not provide, so
 	the SSPI tunnel (NTLM / Kerberos) is worth a try before giving up.
 	"""
-	if not settings.enabled or settings.type != "http" or settings.username:
+	return bool(settings.enabled and settings.type == "http" and not settings.username)
+
+
+def needs_windows_authentication(settings, error):
+	"""Return whether an opaque connection failure was a proxy 407.
+
+	The WebSocket library reports the proxy status in the message only, so the
+	retry decision has to be taken from the text of the error.
+	"""
+	if not allows_windows_authentication(settings):
 		return False
 	return "407" in str(error)
 

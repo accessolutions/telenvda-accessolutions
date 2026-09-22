@@ -11,20 +11,17 @@ import re
 import shutil
 import socket
 import ssl
-import sys
 import tempfile
 import threading
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 import addonHandler
-import buildVersion
 from logHandler import log
 
-from . import configuration, proxy_utils, sspi_proxy
+from . import configuration, proxy_tunnel, proxy_utils, sspi_proxy
 
 REPOSITORY = "accessolutions/telenvda-accessolutions"
 # Keep the Accessolutions identity as the canonical internal add-on name.
@@ -255,38 +252,11 @@ def _fetch_with_urllib(url: str, settings: proxy_utils.ProxySettings) -> bytes:
 	return data
 
 
-def _python_socks_proxy(settings: proxy_utils.ProxySettings):
-	library_dir = Path(__file__).parent / ("lib64" if buildVersion.version_year >= 2026 else "lib32")
-	library_dir_text = str(library_dir)
-	if library_dir_text not in sys.path:
-		sys.path.insert(0, library_dir_text)
-	try:
-		from python_socks._types import ProxyType
-		from python_socks.sync import Proxy
-	finally:
-		if sys.path and sys.path[0] == library_dir_text:
-			sys.path.pop(0)
-	proxy_type = {
-		"socks4": ProxyType.SOCKS4,
-		"socks4a": ProxyType.SOCKS4,
-		"socks5": ProxyType.SOCKS5,
-		"socks5h": ProxyType.SOCKS5,
-	}[settings.type]
-	return Proxy.create(
-		proxy_type=proxy_type,
-		host=settings.host,
-		port=int(settings.port),
-		username=settings.username or None,
-		password=settings.password or None,
-		rdns=settings.type in ("socks4a", "socks5h"),
-	)
-
-
 def _open_socket(settings: proxy_utils.ProxySettings, host: str, port: int) -> socket.socket:
 	if not settings.enabled:
 		return socket.create_connection((host, port), timeout=_NETWORK_TIMEOUT)
-	if settings.type in ("socks4", "socks4a", "socks5", "socks5h"):
-		return _python_socks_proxy(settings).connect(host, port, timeout=_NETWORK_TIMEOUT)
+	if settings.type in proxy_tunnel.SOCKS_TYPES:
+		return proxy_tunnel.open_socks_socket(settings, host, port, _NETWORK_TIMEOUT)
 	if settings.type in ("negotiate", "ntlm"):
 		return sspi_proxy.open_sspi_proxy_tunnel(settings, host, port, timeout=_NETWORK_TIMEOUT)
 	raise UpdateError(f"Unsupported proxy type: {settings.type}")

@@ -14,6 +14,11 @@ import re
 import socket
 from ctypes import wintypes
 
+try:
+	from . import proxy_tunnel
+except ImportError:
+	import proxy_tunnel
+
 
 class SSPIProxyError(Exception):
 	"""Raised when Windows cannot complete proxy authentication."""
@@ -72,7 +77,6 @@ _SEC_I_COMPLETE_NEEDED = 0x00090313
 _SEC_I_COMPLETE_AND_CONTINUE = 0x00090314
 _SEC_E_INCOMPLETE_MESSAGE = 0x80190318
 
-_MAX_PROXY_HEADER_BYTES = 65536
 _MAX_AUTH_ROUNDS = 8
 
 
@@ -288,43 +292,6 @@ class SSPIProxyAuthenticator:
 			self._credential_acquired = False
 
 
-def _proxy_target(host, port):
-	if ":" in host and not host.startswith("["):
-		host = f"[{host}]"
-	return f"{host}:{int(port)}"
-
-
-def _read_proxy_response(sock):
-	data = bytearray()
-	while not data.endswith(b"\r\n\r\n"):
-		if len(data) >= _MAX_PROXY_HEADER_BYTES:
-			raise SSPIProxyError("The proxy response headers are too large")
-		chunk = sock.recv(1)
-		if not chunk:
-			raise SSPIProxyError("The proxy closed the connection during authentication")
-		data.extend(chunk)
-
-	lines = bytes(data[:-4]).split(b"\r\n")
-	try:
-		status_line = lines.pop(0).decode("iso-8859-1")
-		status = int(status_line.split(" ", 2)[1])
-	except (IndexError, ValueError, UnicodeDecodeError) as error:
-		raise SSPIProxyError("The proxy returned an invalid HTTP response") from error
-
-	headers = {}
-	for line in lines:
-		if b":" not in line:
-			continue
-		name, value = line.split(b":", 1)
-		key = name.decode("iso-8859-1").strip().lower()
-		text = value.decode("iso-8859-1").strip()
-		if key in headers:
-			headers[key] += ", " + text
-		else:
-			headers[key] = text
-	return status, headers
-
-
 def _select_proxy_challenge(value, mechanism):
 	if not value:
 		return None, None
@@ -374,28 +341,25 @@ def open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout=60):
 	try:
 		sock = socket.create_connection((proxy.host, int(proxy.port)), timeout=timeout or None)
 		sock.settimeout(timeout or None)
-		target = _proxy_target(target_host, target_port)
 		scheme = "Negotiate" if proxy.type == "negotiate" else "NTLM"
 		token = None
 		started = False
 		for _ in range(_MAX_AUTH_ROUNDS):
-			request = [
-				f"CONNECT {target} HTTP/1.1",
-				f"Host: {target}",
-				"Proxy-Connection: Keep-Alive",
-				"Connection: Keep-Alive",
-				"User-Agent: TeleNVDA",
-			]
+			authorization = ""
 			if token:
-				request.append(f"Proxy-Authorization: {scheme} {base64.b64encode(token).decode('ascii')}")
-			request_bytes = ("\r\n".join(request) + "\r\n\r\n").encode("ascii")
-			sock.sendall(request_bytes)
-			status, headers = _read_proxy_response(sock)
+				authorization = f"{scheme} {base64.b64encode(token).decode('ascii')}"
+			sock.sendall(
+				proxy_tunnel.build_connect_request(target_host, target_port, authorization),
+			)
+			status, headers = proxy_tunnel.read_connect_response(sock, SSPIProxyError)
 			if status == 200:
 				authenticator.close()
 				return sock
 			if status != 407:
 				raise SSPIProxyError(f"The proxy rejected CONNECT with HTTP status {status}")
+			# The authentication rounds continue on this socket, so the error
+			# page returned with the challenge must not stay in the stream.
+			proxy_tunnel.drain_response_body(sock, headers)
 			selected_scheme, challenge = _select_proxy_challenge(
 				headers.get("proxy-authenticate", ""),
 				proxy.type,

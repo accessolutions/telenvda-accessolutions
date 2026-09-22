@@ -17,7 +17,7 @@ from logging import getLogger
 from . import callback_manager
 from . import configuration
 from . import https_connection, https_protocol, https_stream, https_version
-from . import proxy_utils, sspi_proxy, ws_protocol
+from . import proxy_tunnel, proxy_utils, sspi_proxy, ws_protocol
 from .socket_utils import hostport_to_address
 from enum import Enum
 
@@ -472,15 +472,7 @@ class WebSocketTransport(TCPTransport):
 		)
 		tls_socket = None
 		try:
-			context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-			context.minimum_version = ssl.TLSVersion.TLSv1_2
-			if insecure:
-				context.check_hostname = False
-				context.verify_mode = ssl.CERT_NONE
-			else:
-				context.load_default_certs()
-				context.check_hostname = True
-				context.verify_mode = ssl.CERT_REQUIRED
+			context = proxy_tunnel.create_tls_context(insecure)
 			tls_socket = context.wrap_socket(raw_socket, server_hostname=host)
 			raw_socket = None
 			return websocket.create_connection(

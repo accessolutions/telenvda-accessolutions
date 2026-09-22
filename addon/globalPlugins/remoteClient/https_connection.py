@@ -3,15 +3,17 @@
 import base64
 import hashlib
 import http.client
-from pathlib import Path
 import socket
 import ssl
-import sys
 from typing import Callable
+
+try:
+	from . import proxy_tunnel
+except ImportError:
+	import proxy_tunnel
 
 
 _DEFAULT_TIMEOUT = 60
-_MAX_PROXY_HEADER_BYTES = 65536
 
 
 class HTTPSConnectionError(OSError):
@@ -45,11 +47,12 @@ def open_https_connection(address, proxy_settings, timeout, insecure=False):
 		try:
 			raw_socket = _open_proxy_socket(proxy_settings, host, port, timeout_value)
 		except HTTPSProxyAuthenticationError as proxy_error:
-			if getattr(proxy_settings, "type", "") != "http" or getattr(proxy_settings, "username", ""):
+			proxy_utils = _proxy_utils()
+			if not proxy_utils.allows_windows_authentication(proxy_settings):
 				raise
 			try:
 				raw_socket = _open_sspi_tunnel(
-					_with_windows_authentication(proxy_settings),
+					proxy_utils.with_windows_authentication(proxy_settings),
 					host,
 					port,
 					timeout_value,
@@ -57,7 +60,7 @@ def open_https_connection(address, proxy_settings, timeout, insecure=False):
 			except Exception as error:
 				raise proxy_error from error
 	try:
-		context = _create_tls_context(insecure)
+		context = proxy_tunnel.create_tls_context(insecure)
 		tls_socket = context.wrap_socket(raw_socket, server_hostname=host)
 	except Exception:
 		raw_socket.close()
@@ -92,22 +95,20 @@ def is_certificate_verification_error(error):
 	return cause is not None and isinstance(cause, ssl.SSLCertVerificationError)
 
 
+def _proxy_utils():
+	"""Return the proxy helpers, whether the module runs inside the add-on or alone."""
+	try:
+		from . import proxy_utils
+	except ImportError:
+		import proxy_utils
+	return proxy_utils
+
+
 def _resolve_proxy_settings(proxy_settings, host: str, port: int):
 	if not getattr(proxy_settings, "auto_detect", False):
 		return proxy_settings
-	try:
-		from . import proxy_utils
-	except ImportError:
-		import proxy_utils
-	return proxy_utils.resolve_for_url(proxy_settings, f"https://{_format_authority(host, port)}/")
-
-
-def _with_windows_authentication(proxy_settings):
-	try:
-		from . import proxy_utils
-	except ImportError:
-		import proxy_utils
-	return proxy_utils.with_windows_authentication(proxy_settings)
+	url = f"https://{proxy_tunnel.format_authority(host, port)}/"
+	return _proxy_utils().resolve_for_url(proxy_settings, url)
 
 
 def _normalize_address(address):
@@ -123,24 +124,11 @@ def _normalize_address(address):
 	return host, port
 
 
-def _create_tls_context(insecure):
-	context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-	context.minimum_version = ssl.TLSVersion.TLSv1_2
-	if insecure:
-		context.check_hostname = False
-		context.verify_mode = ssl.CERT_NONE
-	else:
-		context.load_default_certs()
-		context.check_hostname = True
-		context.verify_mode = ssl.CERT_REQUIRED
-	return context
-
-
 def _open_proxy_socket(proxy_settings, host, port, timeout):
 	proxy_type = str(getattr(proxy_settings, "type", "http")).lower()
 	if proxy_type == "http":
 		return _open_http_connect_tunnel(proxy_settings, host, port, timeout)
-	if proxy_type in ("socks4", "socks4a", "socks5", "socks5h"):
+	if proxy_type in proxy_tunnel.SOCKS_TYPES:
 		return _open_socks_tunnel(proxy_settings, host, port, timeout)
 	if proxy_type in ("negotiate", "ntlm"):
 		return _open_sspi_tunnel(proxy_settings, host, port, timeout)
@@ -160,21 +148,16 @@ def _open_http_connect_tunnel(
 		raise HTTPSConnectionError("The HTTP proxy host and port must be configured")
 	socket_factory = socket_factory or socket.create_connection
 	proxy_socket = socket_factory((proxy_host, int(proxy_port)), timeout)
-	authority = _format_authority(target_host, target_port)
-	request = [
-		f"CONNECT {authority} HTTP/1.1",
-		f"Host: {authority}",
-		"Proxy-Connection: Keep-Alive",
-		"Connection: Keep-Alive",
-		"User-Agent: TeleNVDA",
-	]
+	authorization = ""
 	username = getattr(proxy_settings, "username", "")
 	if username:
 		credentials = f"{username}:{getattr(proxy_settings, 'password', '')}".encode("utf-8")
-		request.append(f"Proxy-Authorization: Basic {base64.b64encode(credentials).decode('ascii')}")
+		authorization = f"Basic {base64.b64encode(credentials).decode('ascii')}"
 	try:
-		proxy_socket.sendall(("\r\n".join(request) + "\r\n\r\n").encode("ascii"))
-		status, headers = _read_proxy_response(proxy_socket)
+		proxy_socket.sendall(
+			proxy_tunnel.build_connect_request(target_host, target_port, authorization),
+		)
+		status, headers = proxy_tunnel.read_connect_response(proxy_socket, HTTPSConnectionError)
 		if status == 200:
 			return proxy_socket
 		if status == 407:
@@ -185,59 +168,9 @@ def _open_http_connect_tunnel(
 		raise
 
 
-def _read_proxy_response(proxy_socket):
-	data = bytearray()
-	while b"\r\n\r\n" not in data:
-		if len(data) >= _MAX_PROXY_HEADER_BYTES:
-			raise HTTPSConnectionError("The HTTP proxy response headers are too large")
-		chunk = proxy_socket.recv(min(4096, _MAX_PROXY_HEADER_BYTES - len(data)))
-		if not chunk:
-			raise HTTPSConnectionError("The HTTP proxy closed the CONNECT response early")
-		data.extend(chunk)
-	header_bytes = bytes(data).split(b"\r\n\r\n", 1)[0]
-	lines = header_bytes.split(b"\r\n")
-	try:
-		status_line = lines.pop(0).decode("iso-8859-1")
-		status = int(status_line.split(" ", 2)[1])
-	except (IndexError, ValueError, UnicodeDecodeError) as error:
-		raise HTTPSConnectionError("The HTTP proxy returned an invalid response") from error
-	headers: dict[str, str] = {}
-	for line in lines:
-		if b":" not in line:
-			continue
-		name, value = line.split(b":", 1)
-		key = name.decode("iso-8859-1").strip().lower()
-		text = value.decode("iso-8859-1").strip()
-		headers[key] = f"{headers[key]}, {text}" if key in headers else text
-	return status, headers
-
-
 def _open_socks_tunnel(proxy_settings, target_host: str, target_port: int, timeout: float):
-	library_dir = Path(__file__).parent / _library_name()
-	library_dir_text = str(library_dir)
-	if library_dir_text not in sys.path:
-		sys.path.insert(0, library_dir_text)
 	try:
-		from python_socks._types import ProxyType
-		from python_socks.sync import Proxy
-	finally:
-		if sys.path and sys.path[0] == library_dir_text:
-			sys.path.pop(0)
-	proxy_type = {
-		"socks4": ProxyType.SOCKS4,
-		"socks4a": ProxyType.SOCKS4,
-		"socks5": ProxyType.SOCKS5,
-		"socks5h": ProxyType.SOCKS5,
-	}[str(proxy_settings.type).lower()]
-	try:
-		return Proxy.create(
-			proxy_type=proxy_type,
-			host=proxy_settings.host,
-			port=int(proxy_settings.port),
-			username=proxy_settings.username or None,
-			password=proxy_settings.password or None,
-			rdns=str(proxy_settings.type).lower() in ("socks4a", "socks5h"),
-		).connect(target_host, target_port, timeout=timeout)
+		return proxy_tunnel.open_socks_socket(proxy_settings, target_host, target_port, timeout)
 	except Exception as error:
 		raise HTTPSConnectionError("The SOCKS proxy connection failed") from error
 
@@ -256,18 +189,3 @@ def _open_sspi_tunnel(proxy_settings, target_host: str, target_port: int, timeou
 		)
 	except Exception as error:
 		raise HTTPSConnectionError("The Windows proxy authentication failed") from error
-
-
-def _library_name():
-	try:
-		import buildVersion
-
-		return "lib64" if buildVersion.version_year >= 2026 else "lib32"
-	except ImportError:
-		return "lib64"
-
-
-def _format_authority(host: str, port: int) -> str:
-	if ":" in host and not host.startswith("["):
-		host = f"[{host}]"
-	return f"{host}:{port}"
