@@ -4,6 +4,10 @@ When no keyboard or mouse activity has been detected for a configurable delay,
 speech is temporarily turned off, an F15 key press (a key which does nothing on
 Windows) is injected so that the system idle timer is reset, then speech is
 restored.
+
+Speech counts as activity as well: NVDA drops whatever it is asked to say while
+speech is off, and a say all stops for good when one of its chunks is dropped.
+While NVDA speaks, Windows is only told that the computer is in use.
 """
 
 import ctypes
@@ -19,6 +23,8 @@ from . import configuration
 VK_F15 = 0x7E
 KEYEVENTF_KEYUP = 0x0002
 MAPVK_VK_TO_VSC = 0
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_DISPLAY_REQUIRED = 0x00000002
 
 # Delay, in milliseconds, between the injected key press and the restoration of
 # the previous speech mode.
@@ -77,6 +83,8 @@ class KeepAwake:
 	"""Injects an F15 key press when the machine has been left unattended."""
 
 	def __init__(self, is_active=None):
+		self._last_speech = None
+		self._speech_hooked = False
 		self._timer = None
 		self._restore_timer = None
 		self._previous_speech_mode = None
@@ -105,7 +113,41 @@ class KeepAwake:
 		if not from_keep_awake and now >= self._ignore_input_until and not self._prevention_expired:
 			self._prevention_started = None
 
+	def notify_speech(self, **kwargs):
+		"""Record that NVDA was just asked to say something."""
+		self._last_speech = time.monotonic()
+
+	def _is_speaking(self, delay):
+		"""Return whether NVDA spoke within the delay, or is reading continuously."""
+		if self._last_speech is not None and time.monotonic() - self._last_speech < delay:
+			return True
+		try:
+			from speech.sayAll import SayAllHandler
+
+			return bool(SayAllHandler.isRunning())
+		except Exception:
+			return False
+
+	def _hook_speech(self):
+		if self._speech_hooked:
+			return
+		pre_speech = getattr(getattr(speech, "extensions", None), "pre_speech", None)
+		if pre_speech is None:
+			return
+		pre_speech.register(self.notify_speech)
+		self._speech_hooked = True
+
+	def _unhook_speech(self):
+		if not self._speech_hooked:
+			return
+		self._speech_hooked = False
+		try:
+			speech.extensions.pre_speech.unregister(self.notify_speech)
+		except Exception:
+			log.exception("Unable to stop following speech")
+
 	def start(self):
+		self._hook_speech()
 		self.notify_local_input()
 		self._prevention_started = None
 		self._prevention_expired = False
@@ -121,6 +163,7 @@ class KeepAwake:
 	def stop(self):
 		self._cancel_timer()
 		self._reset_prevention()
+		self._unhook_speech()
 
 	def _reset_prevention(self):
 		self._prevention_started = None
@@ -198,11 +241,15 @@ class KeepAwake:
 			log.debug("Stopped preventing the computer from going to sleep after the maximum duration")
 			return
 		idle = min(get_system_idle_seconds(), time.monotonic() - self._last_local_input)
-		if idle >= delay:
-			self._trigger(delay)
+		if idle < delay:
+			self._schedule(delay - idle)
+		elif self._is_speaking(delay):
+			log.debug("Keeping the computer awake without F15 while NVDA is speaking")
+			self._reset_idle_timers()
 			self._schedule(delay)
 		else:
-			self._schedule(delay - idle)
+			self._trigger(delay)
+			self._schedule(delay)
 
 	def _trigger(self, delay):
 		log.debug("Keeping the computer awake after %s seconds without activity" % delay)
@@ -210,6 +257,7 @@ class KeepAwake:
 		if self._prevention_started is None:
 			self._prevention_started = time.monotonic()
 		self._ignore_input_until = time.monotonic() + _KEEP_AWAKE_INPUT_IGNORE_SECONDS
+		self._reset_idle_timers()
 		if self._previous_speech_mode is None:
 			try:
 				self._previous_speech_mode = _get_speech_mode()
@@ -221,6 +269,13 @@ class KeepAwake:
 		if self._restore_timer is not None:
 			self._restore_timer.Stop()
 		self._restore_timer = wx.CallLater(_SPEECH_RESTORE_DELAY_MS, self._restore_speech_mode)
+
+	def _reset_idle_timers(self):
+		"""Tell Windows that the system and the display are in use, without any input."""
+		try:
+			ctypes.windll.kernel32.SetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
+		except Exception:
+			log.exception("Unable to reset the system idle timers")
 
 	def _send_f15(self):
 		try:

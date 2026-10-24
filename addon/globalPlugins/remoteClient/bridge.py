@@ -1,5 +1,6 @@
 import enum
 
+from . import e2e
 from . import screen_share
 from . import remote_keyboard
 
@@ -16,6 +17,10 @@ class BridgeTransport:
 		"client_joined",
 		"client_left",
 		"channel_joined",
+		# Each transport negotiates its own end-to-end keys with its own peers.
+		"encrypted",
+		e2e.MSG_HELLO,
+		e2e.MSG_KEY,
 		"set_braille_info",
 		"telenvda_capabilities",
 		"capabilities",

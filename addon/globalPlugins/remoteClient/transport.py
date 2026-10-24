@@ -9,7 +9,6 @@ import ssl
 import socket
 import select
 import hashlib
-import base64
 import json
 from typing import Tuple
 from urllib.parse import urlencode
@@ -27,8 +26,8 @@ sys.path.append(
 		"lib64" if buildVersion.version_year >= 2026 else "lib32",
 	),
 )
-from Cryptodome.Cipher import AES
 import websocket
+from . import e2e
 
 sys.path.remove(sys.path[-1])
 
@@ -80,8 +79,58 @@ class TransportEvents(Enum):
 	CONNECTED = "transport_connected"
 	CERTIFICATE_AUTHENTICATION_FAILED = "certificate_authentication_failed"
 	CONNECTION_FAILED = "transport_connection_failed"
+	WEBSOCKET_UPGRADE_REFUSED = "websocket_upgrade_refused"
 	CLOSING = "transport_closing"
 	DISCONNECTED = "transport_disconnected"
+
+
+class WebSocketUpgradeRefused(Exception):
+	"""The relay was reached over HTTPS, but something on the way refused the WebSocket upgrade.
+
+	Corporate gateways such as McAfee Web Gateway answer the handshake with an HTTP
+	error page of their own. HTTP itself goes through in that case, so the classic
+	HTTPS transport is expected to work where WebSocket never will.
+	"""
+
+	def __init__(self, status_code, description):
+		super().__init__("HTTP %s during the WebSocket handshake (%s)" % (status_code, description))
+		self.status_code = status_code
+		self.description = description
+
+	@classmethod
+	def from_error(cls, error):
+		"""Return the refusal carried by a failed handshake, or None when HTTPS would not help.
+
+		A 407 means that the proxy wants credentials, which HTTPS would be asked for as well.
+		"""
+		status_code = getattr(error, "status_code", None)
+		if not isinstance(status_code, int) or status_code in (101, 407):
+			return None
+		return cls(status_code, _describe_http_refusal(error))
+
+
+def _describe_http_refusal(error):
+	"""Name whoever refused the handshake in a few words, never with the whole page."""
+	headers = getattr(error, "resp_headers", None) or {}
+	body = getattr(error, "resp_body", None) or b""
+	if isinstance(body, str):
+		body = body.encode("utf-8", "replace")
+	title = ""
+	start = body.lower().find(b"<title>")
+	if start != -1:
+		end = body.lower().find(b"</title>", start)
+		if end != -1:
+			title = body[start + len(b"<title>") : end].decode("utf-8", "replace").strip()
+	server = str(headers.get("server", "") or "").strip()
+	return " / ".join(part[:80] for part in (title, server) if part) or "no description"
+
+
+def _end_to_end_enabled():
+	"""Whether the automatic end-to-end encryption is wanted, which is the default."""
+	try:
+		return bool(configuration.get_config()["controlserver"].get("end_to_end_encryption", True))
+	except Exception:
+		return True
 
 
 class Transport:
@@ -153,7 +202,22 @@ class TCPTransport(Transport):
 		self.encryption_hash = (
 			hashlib.sha256(encryption_key.encode("utf-8")).digest() if encryption_key else None
 		)
+		#: Automatic end-to-end encryption with the peers which support it. An
+		#: encryption password chosen by the user takes its place.
+		self.peer_encryption = None
+		if self.encryption_hash is None and e2e.available() and _end_to_end_enabled():
+			self.peer_encryption = e2e.PeerEncryption(
+				write=self.send,
+				flush=self._send_deferred,
+				connection_type=lambda: getattr(self, "connection_type", None),
+			)
 		self.send_alpn = True
+
+	def transport_connected(self):
+		if self.peer_encryption is not None:
+			# Peers and keys belong to one connection: a new one starts afresh.
+			self.peer_encryption.reset()
+		super().transport_connected()
 
 	def run(self):
 		self.closed = False
@@ -273,9 +337,15 @@ class TCPTransport(Transport):
 			self.parse(line)
 		self.buffer += data
 
-	def parse(self, line, isDecrypted=False):
+	def parse(self, line, isDecrypted=False, origin=None):
 		obj = self.serializer.deserialize(line)
 		if "type" not in obj:
+			return
+		if origin is not None and "origin" not in obj:
+			# The relay stamped the envelope, not the message sealed inside it.
+			obj["origin"] = origin
+		if self.peer_encryption is not None and not isDecrypted and self.peer_encryption.observe(obj):
+			# A greeting or a key of the end-to-end negotiation: nobody else needs it.
 			return
 		if self.encryption_hash is not None and not isDecrypted:
 			if obj["type"] in SIGNALING_TYPES:
@@ -284,20 +354,20 @@ class TCPTransport(Transport):
 					return
 			elif obj["type"] not in EXCLUDED_FROM_ENCRYPTION and obj["type"] not in SIGNALING_RELAY_TYPES:
 				return
-		if obj["type"] == "encrypted" and self.encryption_hash is not None:
-			cipher = AES.new(
-				self.encryption_hash,
-				AES.MODE_GCM,
-				nonce=base64.b64decode(obj["nonce"].encode("utf-8")),
-			)
-			try:
-				decrypted_data = cipher.decrypt_and_verify(
-					base64.b64decode(obj["data"].encode("utf-8")),
-					base64.b64decode(obj["tag"].encode("utf-8")),
-				)
-				return self.parse(decrypted_data, isDecrypted=True)
-			except Exception:
+		elif self.peer_encryption is not None and not isDecrypted and obj["type"] in SIGNALING_TYPES:
+			obj = self.open_signaling_envelope(obj)
+			if obj is None:
 				return
+		if obj["type"] == "encrypted" and (
+			self.encryption_hash is not None or self.peer_encryption is not None
+		):
+			if self.encryption_hash is not None:
+				decrypted_data = e2e.open_envelope(self.encryption_hash, obj)
+			else:
+				decrypted_data = self.peer_encryption.open(obj)
+			if decrypted_data is None:
+				return
+			return self.parse(decrypted_data, isDecrypted=True, origin=obj.get("origin"))
 		callback = "msg_" + obj["type"]
 		traffic_log.log_traffic(
 			traffic_log.INBOUND,
@@ -316,35 +386,35 @@ class TCPTransport(Transport):
 		"""
 		envelope = {key: kwargs[key] for key in SIGNALING_CLEAR_FIELDS if key in kwargs}
 		payload = {key: value for key, value in kwargs.items() if key not in SIGNALING_CLEAR_FIELDS}
-		cipher = AES.new(self.encryption_hash, AES.MODE_GCM)
-		data, tag = cipher.encrypt_and_digest(json.dumps(payload).encode("utf-8"))
-		envelope["enc"] = {
-			"nonce": base64.b64encode(cipher.nonce).decode(),
-			"data": base64.b64encode(data).decode(),
-			"tag": base64.b64encode(tag).decode(),
-		}
+		plaintext = json.dumps(payload).encode("utf-8")
+		if self.encryption_hash is not None:
+			envelope["enc"] = e2e.seal(self.encryption_hash, plaintext)
+		else:
+			sealed = self.peer_encryption.seal_for(kwargs.get("target"), plaintext)
+			if sealed is None:
+				# The peer never greeted us: it reads clear text, as agreed.
+				return kwargs
+			envelope["enc"] = sealed
 		return envelope
 
 	def open_signaling_envelope(self, obj):
 		"""Return the signalling message with its payload decrypted, or None when invalid.
 
 		A missing or unreadable payload means the message was not produced by a peer
-		holding the session password, so it is dropped rather than acted upon.
+		holding the session password, so it is dropped rather than acted upon. Without a
+		password, a peer which never shared a key with us is allowed to speak in clear.
 		"""
 		envelope = obj.pop("enc", None)
 		if not isinstance(envelope, dict):
+			if self.encryption_hash is None and not self.peer_encryption.expects_sealed(obj.get("origin")):
+				return obj
 			log.warning("Dropping an unencrypted %s signalling message" % obj["type"])
 			return None
+		if self.encryption_hash is not None:
+			decrypted = e2e.open_envelope(self.encryption_hash, envelope)
+		else:
+			decrypted = self.peer_encryption.open(envelope)
 		try:
-			cipher = AES.new(
-				self.encryption_hash,
-				AES.MODE_GCM,
-				nonce=base64.b64decode(envelope["nonce"].encode("utf-8")),
-			)
-			decrypted = cipher.decrypt_and_verify(
-				base64.b64decode(envelope["data"].encode("utf-8")),
-				base64.b64decode(envelope["tag"].encode("utf-8")),
-			)
 			payload = json.loads(decrypted.decode("utf-8"))
 		except Exception:
 			log.warning("Dropping a %s signalling message which could not be decrypted" % obj["type"])
@@ -369,7 +439,8 @@ class TCPTransport(Transport):
 				return
 
 	def send(self, type, **kwargs):
-		if self.encryption_hash is not None and type in SIGNALING_TYPES:
+		sealing = self.encryption_hash is not None or self.peer_encryption is not None
+		if sealing and type in SIGNALING_TYPES:
 			kwargs = self.seal_signaling_envelope(kwargs)
 		obj = self.serializer.serialize(type=type, **kwargs)
 		if type != "encrypted":
@@ -382,18 +453,33 @@ class TCPTransport(Transport):
 				transport=self.__class__.__name__,
 			)
 		if (
-			self.encryption_hash is not None
+			sealing
 			and type not in EXCLUDED_FROM_ENCRYPTION
 			and type not in SIGNALING_TYPES
 			and type not in SIGNALING_RELAY_TYPES
+			and type not in e2e.CONTROL_TYPES
 		):
-			cipher = AES.new(self.encryption_hash, AES.MODE_GCM)
-			nonce = base64.b64encode(cipher.nonce).decode()
-			data, tag = cipher.encrypt_and_digest(obj)
-			data = base64.b64encode(data).decode()
-			tag = base64.b64encode(tag).decode()
-			return self.send(type="encrypted", nonce=nonce, data=data, tag=tag)
+			if self.encryption_hash is not None:
+				return self.send(type="encrypted", **e2e.seal(self.encryption_hash, obj))
+			state = self.peer_encryption.state()
+			if state == e2e.PENDING:
+				self.peer_encryption.defer(obj)
+				return
+			if state == e2e.ENCRYPTED:
+				return self.send(type="encrypted", **self.peer_encryption.seal(obj))
 		self.write(obj)
+
+	def _send_deferred(self, items):
+		"""Send the messages held back while the end-to-end greeting was pending."""
+		for obj in items:
+			state = self.peer_encryption.state()
+			if state == e2e.PENDING:
+				# Another peer arrived meanwhile: wait for it as well.
+				self.peer_encryption.defer(obj)
+			elif state == e2e.ENCRYPTED:
+				self.send(type="encrypted", **self.peer_encryption.seal(obj))
+			else:
+				self.write(obj)
 
 	def write(self, obj):
 		"""Hand a serialised message over to the wire.
@@ -599,6 +685,14 @@ class WebSocketTransport(TCPTransport):
 			if not self._certificate_authentication_failed:
 				self._fire(TransportEvents.CERTIFICATE_AUTHENTICATION_FAILED)
 			raise
+		except websocket.WebSocketBadStatusException as error:
+			refusal = WebSocketUpgradeRefused.from_error(error)
+			if refusal is None:
+				self._fire(TransportEvents.CONNECTION_FAILED)
+				raise
+			self._fire(TransportEvents.WEBSOCKET_UPGRADE_REFUSED, status_code=refusal.status_code)
+			# The original exception carries the gateway's whole HTML page.
+			raise refusal from None
 		except Exception:
 			if not self._certificate_authentication_failed:
 				self._fire(TransportEvents.CONNECTION_FAILED)
@@ -1166,10 +1260,12 @@ class HTTPSStreamTransport(HTTPSTransport):
 			self._set_connection("send_connection", self._open_http_connection_with_certificate_policy())
 			self._create_session()
 			self._set_connection("poll_connection", self._open_http_connection_with_certificate_policy())
-			response = self._open_stream()
 			try:
+				# Gateways which scan whole responses, such as McAfee Web Gateway, hold back
+				# even the headers of a response which never ends.
+				response = self._open_stream()
 				self._await_ready(response)
-			except socket.timeout as error:
+			except (socket.timeout, TimeoutError) as error:
 				raise _HTTPSVersionUnavailable("The stream is buffered by an intermediary") from error
 			connection = self._get_connection("poll_connection")
 			if connection is not None and connection.sock is not None:

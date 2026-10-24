@@ -302,6 +302,54 @@ def test_stream_transport_negotiates_v2_and_receives_messages_after_ready():
 	assert send_connection.requests[-1][0:2] == ("DELETE", "/remote/http/v2/sessions/%s" % session_id)
 
 
+class HeldBackConnection(FakeConnection):
+	"""A gateway which never forwards the headers of an endless response."""
+
+	def getresponse(self):
+		raise TimeoutError("The read operation timed out")
+
+
+def test_stream_held_back_before_its_headers_falls_back_to_v1():
+	transport = transport_module.HTTPSStreamTransport(
+		serializer=FakeSerializer(),
+		address=("relay.example", 443),
+		insecure=True,
+	)
+	session_id = base64.urlsafe_b64encode(bytes(range(16))).decode("ascii").rstrip("=")
+	token = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii").rstrip("=")
+	send_connection = FakeConnection(
+		[
+			FakeResponse(
+				201,
+				json.dumps(
+					{
+						"sessionId": session_id,
+						"token": token,
+						"protocol": "nvdaremote-http/2",
+						"pollWaitSeconds": 25,
+						"maxBatchMessages": 32,
+						"maxMessageBytes": 1048576,
+						"streamKeepaliveSeconds": 15,
+					},
+				).encode("utf-8"),
+			),
+			FakeResponse(204),
+		],
+	)
+	connections = iter((send_connection, HeldBackConnection([])))
+	transport._open_http_connection = lambda: next(connections)
+	failures = []
+	transport.callback_manager.register_callback(
+		transport_module.TransportEvents.CONNECTION_FAILED,
+		lambda: failures.append(True),
+	)
+
+	with pytest.raises(transport_module._HTTPSVersionUnavailable):
+		transport.run()
+
+	assert failures == []
+
+
 def test_https_factory_falls_back_to_v1_for_the_same_route():
 	https_version.forget_all()
 	first = transport_module.create_https_relay_transport(
@@ -532,3 +580,73 @@ def test_messages_and_connection_events_reach_the_daily_log(tmp_path):
 	assert "traffic in type=speak bytes=%d transport=HTTPSTransport" % len(message) in content
 	assert "a secret spoken out loud" not in content
 	assert "connection transport_disconnected transport=HTTPSTransport address=relay.example:443" in content
+
+
+class FakeBadStatus(Exception):
+	def __init__(self, status_code, headers=None, body=b""):
+		super().__init__("Handshake status %s" % status_code)
+		self.status_code = status_code
+		self.resp_headers = headers or {}
+		self.resp_body = body
+
+
+GATEWAY_PAGE = (
+	b"<html><head><title>McAfee Web Gateway - Notification</title></head>"
+	b"<body>Upgrade to WebSocket is blocked.</body></html>"
+)
+
+
+def _failing_websocket_transport(monkeypatch, error):
+	monkeypatch.setattr(
+		transport_module.websocket,
+		"WebSocketBadStatusException",
+		FakeBadStatus,
+		raising=False,
+	)
+	transport = transport_module.WebSocketTransport(
+		serializer=FakeSerializer(),
+		address=("relay.example", 443),
+	)
+
+	def fail():
+		raise error
+
+	monkeypatch.setattr(transport, "create_websocket", fail)
+	events = []
+	transport.callback_manager.register_callback(
+		"*",
+		lambda event, **kwargs: events.append((event, kwargs)),
+	)
+	return transport, events
+
+
+def test_gateway_refusing_the_websocket_upgrade_is_reported_as_such(monkeypatch):
+	error = FakeBadStatus(403, {"content-type": "text/html"}, GATEWAY_PAGE)
+	transport, events = _failing_websocket_transport(monkeypatch, error)
+
+	with pytest.raises(transport_module.WebSocketUpgradeRefused) as raised:
+		transport.run()
+
+	assert raised.value.status_code == 403
+	assert "McAfee Web Gateway - Notification" in str(raised.value)
+	assert "Upgrade to WebSocket is blocked" not in str(raised.value)
+	assert raised.value.__suppress_context__ is True
+	assert events == [(transport_module.TransportEvents.WEBSOCKET_UPGRADE_REFUSED, {"status_code": 403})]
+
+
+def test_proxy_asking_for_credentials_is_not_a_websocket_refusal(monkeypatch):
+	transport, events = _failing_websocket_transport(monkeypatch, FakeBadStatus(407))
+
+	with pytest.raises(FakeBadStatus):
+		transport.run()
+
+	assert events == [(transport_module.TransportEvents.CONNECTION_FAILED, {})]
+
+
+def test_unreachable_relay_is_not_a_websocket_refusal(monkeypatch):
+	transport, events = _failing_websocket_transport(monkeypatch, OSError("unreachable"))
+
+	with pytest.raises(OSError):
+		transport.run()
+
+	assert events == [(transport_module.TransportEvents.CONNECTION_FAILED, {})]

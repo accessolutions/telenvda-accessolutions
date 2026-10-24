@@ -1609,6 +1609,10 @@ msgstr ""
 "Impossible de se connecter au serveur de contrôle. TeleNVDA continue "
 "d'essayer."
 
+#. Translators: Presented when the network refuses WebSocket and TeleNVDA reconnects over HTTPS.
+msgid "This network blocks WebSocket. TeleNVDA switches to classic HTTPS."
+msgstr "Ce réseau bloque WebSocket. TeleNVDA passe en HTTPS classique."
+
 #: addon\globalPlugins\remoteClient\__init__.py:1629
 msgid "Error Connecting"
 msgstr "Erreur de connexion"

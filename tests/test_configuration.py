@@ -177,3 +177,31 @@ def test_write_connection_migrates_only_tcp_port(monkeypatch, transport, expecte
 	configuration.write_connection_to_config(("nvdaremote.accessolutions.fr", 443), transport)
 
 	assert config["connections"]["last_connected"] == [expected]
+
+
+def test_refused_websocket_switches_the_saved_relay_to_https(monkeypatch):
+	config = _server_config(transport="websocket")
+	monkeypatch.setattr(configuration, "readonly", False)
+	monkeypatch.setattr(configuration, "get_config", lambda: config)
+
+	assert configuration.switch_saved_transport_to_https(("nvdaremote.accessolutions.fr", 443)) is True
+	assert config["controlserver"]["transport"] == "https"
+	assert config["controlserver"]["port"] == 443
+	assert config.written is True
+
+
+@pytest.mark.parametrize(
+	("values", "address"),
+	(
+		({"transport": "websocket"}, ("other.example", 443)),
+		({"transport": "websocket"}, ("nvdaremote.accessolutions.fr", 8443)),
+		({"transport": "websocket", "self_hosted": True}, ("nvdaremote.accessolutions.fr", 443)),
+		({"transport": "tcp"}, ("nvdaremote.accessolutions.fr", 443)),
+	),
+)
+def test_refused_websocket_leaves_other_saved_settings_alone(monkeypatch, values, address):
+	config = _server_config(**values)
+	monkeypatch.setattr(configuration, "get_config", lambda: config)
+
+	assert configuration.switch_saved_transport_to_https(address) is False
+	assert config["controlserver"]["transport"] == values["transport"]

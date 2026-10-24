@@ -1906,6 +1906,10 @@ class GlobalPlugin(_GlobalPlugin):
 			TransportEvents.CONNECTION_FAILED,
 			self.on_connected_as_master_failed,
 		)
+		transport.callback_manager.register_callback(
+			TransportEvents.WEBSOCKET_UPGRADE_REFUSED,
+			lambda status_code=None: self.fall_back_to_https(transport, "master", status_code),
+		)
 		transport.callback_manager.register_callback(TransportEvents.CLOSING, self.disconnecting_as_master)
 		transport.callback_manager.register_callback(
 			TransportEvents.DISCONNECTED,
@@ -1977,6 +1981,10 @@ class GlobalPlugin(_GlobalPlugin):
 			self.on_connected_as_slave_failed,
 		)
 		self.slave_transport.callback_manager.register_callback(
+			TransportEvents.WEBSOCKET_UPGRADE_REFUSED,
+			lambda status_code=None: self.fall_back_to_https(transport, "slave", status_code),
+		)
+		self.slave_transport.callback_manager.register_callback(
 			TransportEvents.DISCONNECTED,
 			self.on_disconnected_as_slave,
 		)
@@ -1985,6 +1993,48 @@ class GlobalPlugin(_GlobalPlugin):
 			self.menu.Insert(0, self.disconnect_item)
 		if self.menu.FindItemById(self.connect_item.Id):
 			self.menu.Remove(self.connect_item.Id)
+
+	def fall_back_to_https(self, transport, role, status_code=None):
+		"""Reconnect over classic HTTPS once the network has refused the WebSocket upgrade.
+
+		Retrying WebSocket would only meet the same refusal every few seconds for ever,
+		while the plain HTTPS requests of the other transport go through such gateways.
+		"""
+		current = self.slave_transport if role == "slave" else self.master_transport
+		if current is None or current is not transport:
+			return
+		address = transport.address
+		saved = configuration.switch_saved_transport_to_https(address)
+		log.warning(
+			"The WebSocket upgrade to %s was refused with HTTP %s, switching to classic HTTPS%s",
+			address,
+			status_code,
+			" and saving it" if saved else "",
+		)
+		traffic_log.log_connection(
+			"websocket_fallback_to_https",
+			address="%s:%s" % address,
+			status=status_code,
+			saved=saved,
+		)
+		if role == "slave":
+			self.disconnect_as_slave()
+			connect = self.connect_as_slave
+		else:
+			self.disconnect_as_master()
+			connect = self.connect_as_master
+		# Translators: Presented when the network refuses WebSocket and TeleNVDA reconnects over HTTPS.
+		ui.message(_("This network blocks WebSocket. TeleNVDA switches to classic HTTPS."))
+		cs = configuration.get_config()["controlserver"]
+		connect(
+			address,
+			transport.channel,
+			transport.encryption_key,
+			transport_type="https",
+			https_path=cs.get("https_path", DEFAULT_HTTPS_PATH),
+			https_preference=cs.get("https_version", https_version.AUTO),
+			https_path_v2=cs.get("https_path_v2", DEFAULT_HTTPS_PATH_V2),
+		)
 
 	def handle_certificate_failed(self, transport):
 		self.last_fail_address = transport.address

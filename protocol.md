@@ -597,6 +597,10 @@ of an AES-GCM operation keyed with the session password. A message arriving
 without a readable `enc` object was not produced by a peer holding that
 password, and is dropped.
 
+Without a session password, the same `enc` object is keyed with the sending key
+of the automatic end-to-end encryption described below and carries its `kid`.
+A clear message is then accepted only from a peer which never shared a key.
+
 #### ICE servers
 
 A client asks the relay for the servers it should use with a `turn_credentials`
@@ -847,11 +851,82 @@ protocol messages and require no relay change.
 }
 ```
 
+## End-to-end encryption
+
+TLS protects the connection between a client and the relay, but the relay reads
+every message it forwards. Two mechanisms hide their content from it; both use
+the same `encrypted` envelope, an AES-256-GCM operation whose base64 encoded
+`nonce`, `data` and `tag` wrap a whole serialised message:
+
+- A **session password**, chosen by the users and typed on both computers. The
+  key is the SHA-256 of the password. This is the historical mechanism; when it
+  is in use, every message which is not listed below must arrive sealed, or it
+  is dropped.
+- The **automatic negotiation** below, used whenever no session password is set.
+  It needs nothing from the users and nothing from the relay.
+
+The messages the relay needs are never sealed: `join`, `protocol_version`,
+`channel_joined`, `client_joined`, `client_left`, `motd`, `nvda_not_connected`,
+`ping`, `error`, `generate_key`, the relay's own `capabilities` and
+`turn_credentials`, the screen sharing signalling (see its *Encryption* section)
+and the two negotiation messages.
+
+### Automatic negotiation
+
+At every join, a client draws an ephemeral X25519 key pair and a random 32 byte
+*sending key* identified by a random 8 byte `kid`. A client entering a channel
+with other clients in it announces itself to them:
+
+```json
+{ "type": "e2e_hello", "pub": "<base64 X25519 public key>" }
+```
+
+Each peer which understands the protocol answers with its own sending key,
+wrapped for the newcomer alone, and the newcomer answers in kind:
+
+```json
+{
+  "type": "e2e_key",
+  "to": "<base64 public key of the recipient>",
+  "pub": "<base64 public key of the sender>",
+  "kid": "<base64 identifier of the sending key>",
+  "nonce": "...", "data": "...", "tag": "..."
+}
+```
+
+The wrapping key is `HKDF-SHA256(X25519(sender, recipient), info = "TeleNVDA
+end-to-end key wrap v1" || sorted(pub_a, pub_b))`, and the AES-GCM operation
+authenticates `pub_sender || pub_recipient` as associated data. A key addressed
+to another public key, or one which fails to unwrap, is ignored.
+
+From then on, every message a client sends is sealed with its own sending key,
+and the `encrypted` envelope carries the `kid` so that the recipient picks the
+right one. The `origin` the relay stamps on the envelope applies to the message
+inside. A client which leaves takes its key with it.
+
+The relay only forwards messages between the two sides of a channel, so a client
+waits only for the peers of the other side. While a newly arrived peer has not
+answered within three seconds, the messages which would have been sealed are
+held back. A peer which never answers does not know this protocol, an older
+add-on or the official NVDA Remote client for instance, and the session then
+goes on readable by the relay, as it always was: nothing is lost, but nothing is
+hidden either. A late answer upgrades the session at once. The automatic
+negotiation can be turned off with `end_to_end_encryption = False` in the
+`[controlserver]` section of the configuration.
+
+This protects the content of a session against the relay, its logs and its
+database. It does not protect it against someone who knows the channel key: such
+a person joins the channel like any other peer and is handed the sending keys.
+Nor does it resist a relay which actively withholds the negotiation messages to
+force a readable session; the session password does.
+
 ## Security Considerations
 
 - All connections are encrypted using SSL/TLS.
 - Clients can verify the server's certificate fingerprint to prevent man-in-the-middle attacks.
 - The channel key acts as a shared secret for authentication.
+- The content of a session is hidden from the relay by the automatic end-to-end
+  negotiation, or by a session password when one is set.
 - Screen sharing signalling is delivered to a single client, chosen by the relay
   from the `target` field, and stamped with an `origin` a client cannot forge.
   Its payload is sealed separately so that the relay routes the message without

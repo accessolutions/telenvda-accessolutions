@@ -58,6 +58,7 @@ configspec = StringIO("""
 	port = integer(default=6837)
 	key = string(default="")
 	encryption_key = string(default="")
+	end_to_end_encryption = boolean(default=True)
 	transport = option("tcp", "websocket", "https", default="tcp")
 	ws_path = string(default="/")
 	https_path = string(default="/remote/http/v1")
@@ -583,6 +584,29 @@ def write_connection_to_config(address, transport_type="tcp"):
 	conf["connections"]["last_connected"].append(address)
 	if not readonly:
 		conf.write()
+
+
+def switch_saved_transport_to_https(address):
+	"""Replace WebSocket by HTTPS in the saved relay settings when they designate this address.
+
+	Only the connection the user actually saved is changed: a one-off connection to
+	another relay must not rewrite the settings used at the next start.
+	"""
+	section = get_config()["controlserver"]
+	if section.get("self_hosted") or str(section.get("transport", "tcp")).lower() != "websocket":
+		return False
+	host, port = address
+	saved_host = normalize_server_host(section.get("host", ""))
+	try:
+		saved_port = int(section.get("port", socket_utils.SERVER_PORT))
+	except (TypeError, ValueError):
+		return False
+	if saved_host.casefold() != normalize_server_host(host).casefold() or saved_port != int(port):
+		return False
+	section["transport"] = "https"
+	if not readonly:
+		get_config().write()
+	return True
 
 
 def get_server_history():
