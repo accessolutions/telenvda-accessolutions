@@ -1286,8 +1286,8 @@ msgstr ""
 "Se connecter à un autre ordinateur exécutant Accès distant NVDA ou TeleNVDA"
 
 #: addon\globalPlugins\remoteClient\__init__.py:765
-msgid "Disconnect"
-msgstr "Se déconnecter"
+msgid "&Disconnect"
+msgstr "Se &déconnecter"
 
 #: addon\globalPlugins\remoteClient\__init__.py:766
 msgid "Disconnect from another computer running NVDA Remote Access or TeleNVDA"
@@ -1810,6 +1810,40 @@ msgstr ""
 "la souris lorsque son utilisateur l'autorise. Ajouter un transfert de "
 "fichiers par blocs qui n'est plus limité à 10 Mo, avec la progression, le "
 "débit et une vérification SHA-256."
+
+#. Translators: Shown when a proxy is configured but the TCP transport, which cannot use one, is selected.
+#: addon\globalPlugins\remoteClient\dialogs.py:106
+msgid ""
+"The TCP transport connects to the server directly and ignores the proxy. "
+"Behind a proxy, choose the WebSocket or HTTPS transport."
+msgstr ""
+"Le transport TCP se connecte directement au serveur et ignore le proxy. "
+"Derrière un proxy, choisissez le transport WebSocket ou HTTPS."
+
+#. Translators: Line of the connectivity test result naming the proxy route used.
+#: addon\globalPlugins\remoteClient\dialogs.py:542
+msgid "Proxy: %s"
+msgstr "Proxy : %s"
+
+#. Translators: Button of the connectivity test result copying the full diagnostic to the clipboard.
+#: addon\globalPlugins\remoteClient\dialogs.py:549
+msgid "&Copy diagnostic"
+msgstr "&Copier le diagnostic"
+
+#. Translators: Spoken when the relay cannot be reached over TCP and TeleNVDA tries WebSocket.
+#: addon\globalPlugins\remoteClient\__init__.py:2098
+msgid "The control server does not answer over TCP. TeleNVDA tries WebSocket."
+msgstr "Le serveur de contrôle ne répond pas en TCP. TeleNVDA essaie WebSocket."
+
+#. Translators: Spoken when the relay cannot be reached over WebSocket and TeleNVDA tries HTTPS.
+#: addon\globalPlugins\remoteClient\__init__.py:2101
+msgid "The control server does not answer over WebSocket. TeleNVDA tries classic HTTPS."
+msgstr "Le serveur de contrôle ne répond pas en WebSocket. TeleNVDA essaie le HTTPS classique."
+
+#. Translators: Spoken when a fallback transport reached the relay and became the saved setting.
+#: addon\globalPlugins\remoteClient\__init__.py:2137
+msgid "Connected over %s. TeleNVDA will use it from now on."
+msgstr "Connecté en %s. TeleNVDA l'utilisera désormais."
 
 #~ msgid ""
 #~ "The remote computer is no longer connected. Control returned to local "

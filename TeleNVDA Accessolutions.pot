@@ -1175,7 +1175,7 @@ msgid ""
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\__init__.py:765
-msgid "Disconnect"
+msgid "&Disconnect"
 msgstr ""
 
 #: addon\globalPlugins\remoteClient\__init__.py:766
@@ -1640,4 +1640,36 @@ msgid ""
 "sharing of the controlled computer, with mouse control when its user allows "
 "it. Add a chunked file transfer which is no longer limited to 10 MB, with "
 "progress, speed and a SHA-256 check."
+msgstr ""
+
+#. Translators: Shown when a proxy is configured but the TCP transport, which cannot use one, is selected.
+#: addon\globalPlugins\remoteClient\dialogs.py:106
+msgid ""
+"The TCP transport connects to the server directly and ignores the proxy. "
+"Behind a proxy, choose the WebSocket or HTTPS transport."
+msgstr ""
+
+#. Translators: Line of the connectivity test result naming the proxy route used.
+#: addon\globalPlugins\remoteClient\dialogs.py:542
+msgid "Proxy: %s"
+msgstr ""
+
+#. Translators: Button of the connectivity test result copying the full diagnostic to the clipboard.
+#: addon\globalPlugins\remoteClient\dialogs.py:549
+msgid "&Copy diagnostic"
+msgstr ""
+
+#. Translators: Spoken when the relay cannot be reached over TCP and TeleNVDA tries WebSocket.
+#: addon\globalPlugins\remoteClient\__init__.py:2098
+msgid "The control server does not answer over TCP. TeleNVDA tries WebSocket."
+msgstr ""
+
+#. Translators: Spoken when the relay cannot be reached over WebSocket and TeleNVDA tries HTTPS.
+#: addon\globalPlugins\remoteClient\__init__.py:2101
+msgid "The control server does not answer over WebSocket. TeleNVDA tries classic HTTPS."
+msgstr ""
+
+#. Translators: Spoken when a fallback transport reached the relay and became the saved setting.
+#: addon\globalPlugins\remoteClient\__init__.py:2137
+msgid "Connected over %s. TeleNVDA will use it from now on."
 msgstr ""

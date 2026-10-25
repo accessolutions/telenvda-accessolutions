@@ -79,6 +79,11 @@ configspec = StringIO("""
 [trusted_certs]
 	__many__ = string(default="")
 
+# Relay host -> "type://host:port" of the detected proxy which last carried a
+# connection to it. Reused when the automatic detection has nothing to offer.
+[proxy_memory]
+	__many__ = string(default="")
+
 [activity]
 	last_activity_timestamp = float(default=0.0)
 
@@ -592,8 +597,24 @@ def switch_saved_transport_to_https(address):
 	Only the connection the user actually saved is changed: a one-off connection to
 	another relay must not rewrite the settings used at the next start.
 	"""
+	return _switch_saved_transport(address, "https", ("websocket",))
+
+
+def switch_saved_transport_after_tcp_fallback(address, new_transport):
+	"""Save the transport which reached the relay once TCP could not.
+
+	``address`` is the one the fallback connected to, on the HTTPS port. The saved
+	settings still name the TCP port, so the comparison and the rewrite both map
+	the default TCP port to the HTTPS one.
+	"""
+	if new_transport not in ("websocket", "https"):
+		return False
+	return _switch_saved_transport(address, new_transport, ("tcp",), from_tcp=True)
+
+
+def _switch_saved_transport(address, new_transport, from_transports, from_tcp=False):
 	section = get_config()["controlserver"]
-	if section.get("self_hosted") or str(section.get("transport", "tcp")).lower() != "websocket":
+	if section.get("self_hosted") or str(section.get("transport", "tcp")).lower() not in from_transports:
 		return False
 	host, port = address
 	saved_host = normalize_server_host(section.get("host", ""))
@@ -601,9 +622,14 @@ def switch_saved_transport_to_https(address):
 		saved_port = int(section.get("port", socket_utils.SERVER_PORT))
 	except (TypeError, ValueError):
 		return False
-	if saved_host.casefold() != normalize_server_host(host).casefold() or saved_port != int(port):
+	expected_port = saved_port
+	if from_tcp and saved_port == socket_utils.SERVER_PORT:
+		expected_port = 443
+	if saved_host.casefold() != normalize_server_host(host).casefold() or expected_port != int(port):
 		return False
-	section["transport"] = "https"
+	section["transport"] = new_transport
+	if from_tcp:
+		section["port"] = int(port)
 	if not readonly:
 		get_config().write()
 	return True

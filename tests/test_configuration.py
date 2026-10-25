@@ -205,3 +205,41 @@ def test_refused_websocket_leaves_other_saved_settings_alone(monkeypatch, values
 
 	assert configuration.switch_saved_transport_to_https(address) is False
 	assert config["controlserver"]["transport"] == values["transport"]
+
+
+@pytest.mark.parametrize("new_transport", ("websocket", "https"))
+def test_tcp_fallback_switches_the_saved_relay_and_its_port(monkeypatch, new_transport):
+	config = _server_config(transport="tcp", port=configuration.socket_utils.SERVER_PORT)
+	monkeypatch.setattr(configuration, "readonly", False)
+	monkeypatch.setattr(configuration, "get_config", lambda: config)
+
+	switched = configuration.switch_saved_transport_after_tcp_fallback(
+		("nvdaremote.accessolutions.fr", 443),
+		new_transport,
+	)
+
+	assert switched is True
+	assert config["controlserver"]["transport"] == new_transport
+	assert config["controlserver"]["port"] == 443
+	assert config.written is True
+
+
+@pytest.mark.parametrize(
+	("values", "address", "new_transport"),
+	(
+		({"transport": "websocket"}, ("nvdaremote.accessolutions.fr", 443), "https"),
+		({"transport": "tcp", "self_hosted": True}, ("nvdaremote.accessolutions.fr", 443), "websocket"),
+		({"transport": "tcp"}, ("other.example", 443), "websocket"),
+		({"transport": "tcp"}, ("nvdaremote.accessolutions.fr", 443), "tcp"),
+	),
+)
+def test_tcp_fallback_leaves_other_saved_settings_alone(monkeypatch, values, address, new_transport):
+	config = _server_config(port=configuration.socket_utils.SERVER_PORT, **values)
+	monkeypatch.setattr(configuration, "get_config", lambda: config)
+
+	assert configuration.switch_saved_transport_after_tcp_fallback(address, new_transport) is False
+	assert config["controlserver"]["transport"] == values["transport"]
+
+
+def test_configspec_declares_the_proxy_memory_section():
+	assert "[proxy_memory]" in configuration.configspec.getvalue()

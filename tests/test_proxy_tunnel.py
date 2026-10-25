@@ -50,11 +50,14 @@ class ScriptedSocket:
 
 
 class FakeAuthenticator:
-	def __init__(self, mechanism, username="", password="", target_host=""):
+	instances = []
+
+	def __init__(self, mechanism, username="", password="", proxy_host=""):
 		self.mechanism = mechanism
-		self.target_host = target_host
+		self.proxy_host = proxy_host
 		self.challenges = []
 		self.closed = False
+		FakeAuthenticator.instances.append(self)
 
 	def initial_token(self):
 		return b"type1"
@@ -140,3 +143,18 @@ def test_sspi_tunnel_completes_a_multi_round_exchange_with_error_pages(monkeypat
 		"NTLM " + base64.b64encode(b"type3").decode("ascii"),
 	]
 	assert len(sock.sent) == 3
+	# Proxy authentication is negotiated with the proxy, so the Kerberos service
+	# principal must name the proxy, not the relay the tunnel leads to.
+	assert FakeAuthenticator.instances[-1].proxy_host == "proxy.example"
+
+
+def test_sspi_authenticator_names_the_proxy_in_its_service_principal(monkeypatch):
+	class FakeApi:
+		def AcquireCredentialsHandleW(self, *args):
+			return 0
+
+	monkeypatch.setattr(sspi_proxy, "_configure_sspi_api", lambda: FakeApi())
+
+	authenticator = sspi_proxy.SSPIProxyAuthenticator("negotiate", proxy_host="[proxy.corp.example]")
+
+	assert authenticator._target_name == "HTTP/proxy.corp.example"

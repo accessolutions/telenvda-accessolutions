@@ -70,12 +70,14 @@ else:
 from . import keep_awake
 from . import local_machine
 from . import mouse_hook
+from . import proxy_utils
 from . import remote_keyboard
 from . import serializer
 from . import server
 from . import traffic_log
 from . import updater
 from . import url_handler
+from . import ws_protocol
 from .https_protocol import DEFAULT_PATH as DEFAULT_HTTPS_PATH, DEFAULT_PATH_V2 as DEFAULT_HTTPS_PATH_V2
 from .socket_utils import SERVER_PORT, address_to_hostport, wrap_socket
 from .transport import (
@@ -216,6 +218,8 @@ class GlobalPlugin(_GlobalPlugin):
 		url_handler.register_url_handler(self.verify_connect)
 		self.master_transport = None
 		self.slave_transport = None
+		#: Per role, the transports still to try once TCP could not reach the relay.
+		self._transport_fallbacks = {}
 		self.server = None
 		self.hook_thread = None
 		self.mouse_hook_thread = None
@@ -282,7 +286,10 @@ class GlobalPlugin(_GlobalPlugin):
 		globalVars.teleNVDA = None
 		# Sleep prevention is useful only while this computer is connected as a
 		# slave. A master must remain free to enter sleep when it is unattended.
-		self.keep_awake = keep_awake.KeepAwake(is_active=self._is_slave_connected)
+		self.keep_awake = keep_awake.KeepAwake(
+			is_active=self._is_slave_connected,
+			current_activity=self._slave_activity,
+		)
 		self.keep_awake.start()
 		self.start_mouse_hook()
 		if buildVersion.version_year >= 2025:
@@ -760,9 +767,10 @@ class GlobalPlugin(_GlobalPlugin):
 		)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.do_connect, self.connect_item)
 		# Translators: Item in TeleNVDA submenu to disconnect from a remote computer.
+		# The accelerator is on the D of "Disconnect"; S is already used by "Request &screenshot".
 		self.disconnect_item = self.menu.Append(
 			wx.ID_ANY,
-			_("Disconnect"),
+			_("&Disconnect"),
 			_("Disconnect from another computer running NVDA Remote Access or TeleNVDA"),
 		)
 		gui.mainFrame.sysTrayIcon.Bind(wx.EVT_MENU, self.on_disconnect_item, self.disconnect_item)
@@ -1448,6 +1456,8 @@ class GlobalPlugin(_GlobalPlugin):
 		ui.message(_("Ctrl+Alt+Delete has been sent to the remote machine"))
 
 	def disconnect(self):
+		# The user gave up this connection: whatever fallback was under way goes with it.
+		self._transport_fallbacks.clear()
 		if self.master_transport is None and self.slave_transport is None:
 			return
 		if self.server is not None:
@@ -1476,6 +1486,26 @@ class GlobalPlugin(_GlobalPlugin):
 
 	def _is_slave_connected(self):
 		return self.slave_transport is not None and self.slave_transport.connected
+
+	def _slave_activity(self):
+		"""Return what keeps this controlled computer busy without any input, or None.
+
+		Used by keep awake: a transfer or a sharing in progress means the computer is
+		in use, even when nobody touches it.
+		"""
+		session = self.slave_session
+		if session is None:
+			return None
+		transfers = getattr(session, "file_transfer_manager", None)
+		if transfers is not None and (transfers.outgoing is not None or transfers.incoming is not None):
+			return "a file transfer"
+		screen_share = getattr(session, "screen_share", None)
+		if screen_share is not None and screen_share.active:
+			return "screen sharing"
+		remote_audio = getattr(session, "remote_audio", None)
+		if remote_audio is not None and remote_audio.active:
+			return "audio sharing"
+		return None
 
 	def _remote_slave_available(self):
 		"""Whether a controlled computer is actually reachable.
@@ -1609,6 +1639,8 @@ class GlobalPlugin(_GlobalPlugin):
 		"""
 		if self.slave_transport is None or self.slave_transport.successful_connects:
 			return
+		if self._try_transport_fallback("slave"):
+			return
 		if self._slave_connection_failure_reported:
 			return
 		self._slave_connection_failure_reported = True
@@ -1622,6 +1654,8 @@ class GlobalPlugin(_GlobalPlugin):
 		if self.master_transport is None:
 			return
 		if self.master_transport.successful_connects == 0:
+			if self._try_transport_fallback("master"):
+				return
 			self.disconnect_as_master()
 			# Translators: Title of the connection error dialog.
 			gui.messageBox(
@@ -1782,6 +1816,7 @@ class GlobalPlugin(_GlobalPlugin):
 	def on_connected_as_master(self):
 		was_interrupted = self.master_connection_interrupted
 		self.master_connection_interrupted = False
+		self._finish_transport_fallback("master", self.master_transport)
 		configuration.write_connection_to_config(
 			self.master_transport.address,
 			"https"
@@ -1994,6 +2029,146 @@ class GlobalPlugin(_GlobalPlugin):
 		if self.menu.FindItemById(self.connect_item.Id):
 			self.menu.Remove(self.connect_item.Id)
 
+	#: Transports tried, in this order, once TCP could not reach the relay.
+	TCP_FALLBACK_TRANSPORTS = ("websocket", "https")
+
+	def _fallback_address(self, address):
+		"""Return the address the secure transports use for a relay dialled over TCP."""
+		host, port = address
+		return (host, 443 if int(port) == SERVER_PORT else int(port))
+
+	def _tcp_fallback_applies(self, transport):
+		"""Return whether a TCP relay which cannot be reached is worth retrying over HTTPS ports.
+
+		The TCP transport dials the relay directly, so a proxy, configured or detected,
+		never carries it: on such a network only WebSocket and HTTPS stand a chance. The
+		public relay is known to offer them, so it is tried too even without a proxy,
+		its TCP port being the one firewalls close first. A self-hosted server or an
+		unknown relay may not speak them at all, and gets the usual failure report.
+		"""
+		if not isinstance(transport, RelayTransport) or isinstance(transport, WebSocketRelayTransport):
+			return False
+		if configuration.get_config()["controlserver"].get("self_hosted"):
+			return False
+		host, port = transport.address
+		public_relay = configuration.DEFAULT_SERVER_HOST.casefold()
+		if configuration.normalize_server_host(host).casefold() == public_relay:
+			return True
+		fallback_host, fallback_port = self._fallback_address(transport.address)
+		try:
+			route = proxy_utils.resolve_for_url(
+				proxy_utils.from_config(configuration.get_config()),
+				ws_protocol.websocket_url(fallback_host, fallback_port),
+			)
+		except Exception:
+			log.debug("Unable to tell whether a proxy applies to %s", transport.address, exc_info=True)
+			return False
+		return bool(route.enabled)
+
+	def _try_transport_fallback(self, role):
+		"""Reconnect over the next transport of the chain when TCP has failed. Returns whether it did.
+
+		The chain is TCP, then WebSocket, then classic HTTPS. Nothing is saved until one
+		of them actually connects: the failure may be a passing one, and the settings
+		must not end up pointing at a transport which never worked either.
+		"""
+		transport = self.slave_transport if role == "slave" else self.master_transport
+		if transport is None or transport.successful_connects:
+			return False
+		state = self._transport_fallbacks.get(role)
+		if state is None:
+			if not self._tcp_fallback_applies(transport):
+				return False
+			state = {
+				"remaining": list(self.TCP_FALLBACK_TRANSPORTS),
+				"origin": "tcp",
+				"address": transport.address,
+			}
+			self._transport_fallbacks[role] = state
+		if not state["remaining"]:
+			# Every transport of the chain failed: the usual report takes over.
+			self._transport_fallbacks.pop(role, None)
+			return False
+		next_type = state["remaining"].pop(0)
+		address = self._fallback_address(state["address"])
+		current_type = self._transport_type_of(transport)
+		log.warning(
+			"The relay %s:%s could not be reached over %s, trying %s on %s:%s",
+			state["address"][0],
+			state["address"][1],
+			current_type,
+			next_type,
+			address[0],
+			address[1],
+		)
+		traffic_log.log_connection(
+			"transport_fallback",
+			role=role,
+			address="%s:%s" % address,
+			from_transport=current_type,
+			to_transport=next_type,
+		)
+		cs = configuration.get_config()["controlserver"]
+		channel, encryption_key = transport.channel, transport.encryption_key
+		if role == "slave":
+			self.disconnect_as_slave()
+			connect = self.connect_as_slave
+		else:
+			self.disconnect_as_master()
+			connect = self.connect_as_master
+		ui.message(
+			# Translators: Spoken when the relay cannot be reached over TCP and TeleNVDA tries WebSocket.
+			_("The control server does not answer over TCP. TeleNVDA tries WebSocket.")
+			if next_type == "websocket"
+			# Translators: Spoken when the relay cannot be reached over WebSocket and TeleNVDA tries HTTPS.
+			else _("The control server does not answer over WebSocket. TeleNVDA tries classic HTTPS."),
+		)
+		connect(
+			address,
+			channel,
+			encryption_key,
+			transport_type=next_type,
+			ws_path=cs.get("ws_path", "/") or "/",
+			https_path=cs.get("https_path", DEFAULT_HTTPS_PATH),
+			https_preference=cs.get("https_version", https_version.AUTO),
+			https_path_v2=cs.get("https_path_v2", DEFAULT_HTTPS_PATH_V2),
+		)
+		return True
+
+	def _finish_transport_fallback(self, role, transport):
+		"""Once a fallback transport connected, make it the saved one and say so."""
+		state = self._transport_fallbacks.pop(role, None)
+		if state is None:
+			return
+		transport_type = self._transport_type_of(transport)
+		saved = configuration.switch_saved_transport_after_tcp_fallback(transport.address, transport_type)
+		log.info(
+			"The relay was reached over %s after %s failed%s",
+			transport_type,
+			state["origin"],
+			", the saved connection now uses it" if saved else "",
+		)
+		traffic_log.log_connection(
+			"transport_fallback_succeeded",
+			role=role,
+			transport=transport_type,
+			saved=saved,
+		)
+		if saved:
+			ui.message(
+				# Translators: Spoken when a fallback transport reached the relay and became the saved setting.
+				_("Connected over %s. TeleNVDA will use it from now on.")
+				% ("HTTPS" if transport_type == "https" else "WebSocket"),
+			)
+
+	@staticmethod
+	def _transport_type_of(transport):
+		if isinstance(transport, (HTTPSRelayTransport, HTTPSStreamRelayTransport)):
+			return "https"
+		if isinstance(transport, WebSocketRelayTransport):
+			return "websocket"
+		return "tcp"
+
 	def fall_back_to_https(self, transport, role, status_code=None):
 		"""Reconnect over classic HTTPS once the network has refused the WebSocket upgrade.
 
@@ -2003,6 +2178,10 @@ class GlobalPlugin(_GlobalPlugin):
 		current = self.slave_transport if role == "slave" else self.master_transport
 		if current is None or current is not transport:
 			return
+		state = self._transport_fallbacks.get(role)
+		if state is not None and "https" in state["remaining"]:
+			# The chain started at TCP reaches HTTPS through this refusal.
+			state["remaining"].remove("https")
 		address = transport.address
 		saved = configuration.switch_saved_transport_to_https(address)
 		log.warning(
@@ -2103,6 +2282,7 @@ class GlobalPlugin(_GlobalPlugin):
 	def on_connected_as_slave(self):
 		log.info("Control connector connected")
 		self._slave_connection_failure_reported = False
+		self._finish_transport_fallback("slave", self.slave_transport)
 		cues.control_server_connected()
 		# Translators: Presented in direct (client to server) remote connection when the controlled computer is ready.
 		speech.speakMessage(_("Connected to control server"))

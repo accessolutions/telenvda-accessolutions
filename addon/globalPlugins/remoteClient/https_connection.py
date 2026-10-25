@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import http.client
+import logging
 import socket
 import ssl
 from typing import Callable
@@ -12,6 +13,7 @@ try:
 except ImportError:
 	import proxy_tunnel
 
+log = logging.getLogger("proxy")
 
 _DEFAULT_TIMEOUT = 60
 
@@ -41,28 +43,67 @@ def open_https_connection(address, proxy_settings, timeout, insecure=False):
 		or (getattr(proxy_settings, "host", "") and getattr(proxy_settings, "port", 0)),
 	)
 	timeout_value = timeout or _DEFAULT_TIMEOUT
-	if not proxy_enabled:
-		raw_socket = socket.create_connection((host, port), timeout_value)
-	else:
-		try:
-			raw_socket = _open_proxy_socket(proxy_settings, host, port, timeout_value)
-		except HTTPSProxyAuthenticationError as proxy_error:
-			proxy_utils = _proxy_utils()
-			if not proxy_utils.allows_windows_authentication(proxy_settings):
-				raise
+	proxy_utils = _proxy_utils()
+	route = _describe_route(proxy_settings) if proxy_enabled else "direct"
+	log.debug("Opening HTTPS connection to %s:%s (proxy %s)", host, port, route)
+	try:
+		if not proxy_enabled:
+			raw_socket = socket.create_connection((host, port), timeout_value)
+		else:
 			try:
-				raw_socket = _open_sspi_tunnel(
-					proxy_utils.with_windows_authentication(proxy_settings),
-					host,
-					port,
-					timeout_value,
+				raw_socket = _open_proxy_socket(proxy_settings, host, port, timeout_value)
+			except HTTPSProxyAuthenticationError as proxy_error:
+				if not proxy_utils.allows_windows_authentication(proxy_settings):
+					log.warning(
+						"The proxy %s requires authentication (407) and TeleNVDA has no way to answer: "
+						"offered %r",
+						route,
+						proxy_error.headers.get("proxy-authenticate", ""),
+					)
+					raise
+				log.info(
+					"The proxy %s answered 407 to the HTTPS CONNECT (offered %r), "
+					"retrying with Windows credentials",
+					route,
+					proxy_error.headers.get("proxy-authenticate", ""),
 				)
-			except Exception as error:
-				raise proxy_error from error
+				try:
+					raw_socket = _open_sspi_tunnel(
+						proxy_utils.with_windows_authentication(proxy_settings),
+						host,
+						port,
+						timeout_value,
+					)
+				except Exception as error:
+					log.warning(
+						"Windows authentication against the proxy %s failed: %s: %s",
+						route,
+						type(error).__name__,
+						error,
+					)
+					raise proxy_error from error
+	except Exception as error:
+		log.debug(
+			"HTTPS connection to %s:%s through %s failed before TLS: %s: %s",
+			host,
+			port,
+			route,
+			type(error).__name__,
+			error,
+		)
+		raise
 	try:
 		context = proxy_tunnel.create_tls_context(insecure)
 		tls_socket = context.wrap_socket(raw_socket, server_hostname=host)
-	except Exception:
+	except Exception as error:
+		log.debug(
+			"TLS handshake with %s:%s through %s failed: %s: %s",
+			host,
+			port,
+			route,
+			type(error).__name__,
+			error,
+		)
 		raw_socket.close()
 		raise
 	connection = http.client.HTTPSConnection(host, port, timeout=timeout_value, context=context)
@@ -102,6 +143,17 @@ def _proxy_utils():
 	except ImportError:
 		import proxy_utils
 	return proxy_utils
+
+
+def _describe_route(proxy_settings):
+	"""Describe the proxy for the logs without its password."""
+	username = getattr(proxy_settings, "username", "") or ""
+	return "%s://%s%s:%s" % (
+		getattr(proxy_settings, "type", "http"),
+		username + "@" if username else "",
+		getattr(proxy_settings, "host", ""),
+		getattr(proxy_settings, "port", ""),
+	)
 
 
 def _resolve_proxy_settings(proxy_settings, host: str, port: int):

@@ -9,6 +9,7 @@ the proxy username is empty; explicit credentials are supported as well.
 
 import base64
 import ctypes
+import logging
 import os
 import re
 import socket
@@ -18,6 +19,8 @@ try:
 	from . import proxy_tunnel
 except ImportError:
 	import proxy_tunnel
+
+log = logging.getLogger("proxy")
 
 
 class SSPIProxyError(Exception):
@@ -144,7 +147,15 @@ def _configure_sspi_api():
 class SSPIProxyAuthenticator:
 	"""Stateful NTLM or Negotiate token generator backed by Windows SSPI."""
 
-	def __init__(self, mechanism, username="", password="", target_host=""):
+	def __init__(self, mechanism, username="", password="", proxy_host=""):
+		"""Prepare the Windows credentials used to authenticate against ``proxy_host``.
+
+		``proxy_host`` is the host name of the proxy, not of the relay behind it.
+		Proxy authentication (RFC 7235 section 4.3) is a dialogue with the proxy, so
+		the Kerberos service principal must be ``HTTP/<proxy>``: the domain knows no
+		ticket for the relay, and asking for one makes Negotiate fail or fall back to
+		NTLM at best. With a name the domain does know, Kerberos goes through.
+		"""
 		mechanism = str(mechanism).lower()
 		if mechanism not in ("negotiate", "ntlm"):
 			raise ValueError(f"Unsupported SSPI mechanism: {mechanism}")
@@ -159,7 +170,13 @@ class SSPIProxyAuthenticator:
 		self._context_initialized = False
 		self._identity = None
 		self._identity_buffers = []
-		self._target_name = f"HTTP/{target_host.strip('[]')}"
+		self._target_name = f"HTTP/{str(proxy_host).strip('[]')}"
+		log.debug(
+			"SSPI %s authentication prepared for %s with %s credentials",
+			mechanism,
+			self._target_name,
+			"explicit" if username else "logged-on",
+		)
 		self._acquire_credentials(username, password)
 
 	def _acquire_credentials(self, username, password):
@@ -319,32 +336,68 @@ def _select_proxy_challenge(value, mechanism):
 	return None, None
 
 
+class _ProxyWithType:
+	"""The same proxy settings, authenticated with another SSPI mechanism."""
+
+	def __init__(self, proxy, mechanism):
+		self.host = proxy.host
+		self.port = proxy.port
+		self.username = getattr(proxy, "username", "")
+		self.password = getattr(proxy, "password", "")
+		self.type = mechanism
+
+
 def open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout=60):
 	"""Open an HTTP CONNECT tunnel authenticated with NTLM or Negotiate.
 
 	The returned socket is connected to the target through the proxy but is not
 	wrapped in TLS.  The caller owns the socket and must wrap it before sending
 	WebSocket traffic.
+
+	Negotiate normally picks Kerberos and falls back to NTLM by itself, but some
+	proxies reject the Negotiate exchange outright (no SPN, Kerberos disabled)
+	while accepting plain NTLM. When the proxy offered both and Negotiate failed
+	at the authentication stage, the tunnel is tried once more with NTLM.
 	"""
 	if proxy.type not in ("negotiate", "ntlm"):
 		raise ValueError(f"Unsupported SSPI proxy type: {proxy.type}")
+	try:
+		return _open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout)
+	except SSPIProxyError as error:
+		if proxy.type != "negotiate" or not getattr(error, "ntlm_offered", False):
+			raise
+		log.info(
+			"Negotiate authentication against the proxy %s:%s failed (%s); "
+			"the proxy offers NTLM too, retrying with it",
+			proxy.host,
+			proxy.port,
+			error,
+		)
+		return _open_sspi_proxy_tunnel(_ProxyWithType(proxy, "ntlm"), target_host, target_port, timeout)
+
+
+def _open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout):
 	if not proxy.host or not proxy.port:
 		raise SSPIProxyError("The SSPI proxy host and port must be configured")
 
 	sock = None
+	ntlm_offered = False
+	proxy_address = f"{proxy.host}:{proxy.port}"
+	target = f"{target_host}:{target_port}"
 	authenticator = SSPIProxyAuthenticator(
 		proxy.type,
 		username=proxy.username,
 		password=proxy.password,
-		target_host=target_host,
+		proxy_host=proxy.host,
 	)
 	try:
+		log.debug("Opening SSPI %s CONNECT tunnel to %s through %s", proxy.type, target, proxy_address)
 		sock = socket.create_connection((proxy.host, int(proxy.port)), timeout=timeout or None)
 		sock.settimeout(timeout or None)
 		scheme = "Negotiate" if proxy.type == "negotiate" else "NTLM"
 		token = None
 		started = False
-		for _ in range(_MAX_AUTH_ROUNDS):
+		for round_number in range(1, _MAX_AUTH_ROUNDS + 1):
 			authorization = ""
 			if token:
 				authorization = f"{scheme} {base64.b64encode(token).decode('ascii')}"
@@ -352,20 +405,45 @@ def open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout=60):
 				proxy_tunnel.build_connect_request(target_host, target_port, authorization),
 			)
 			status, headers = proxy_tunnel.read_connect_response(sock, SSPIProxyError)
+			log.debug(
+				"SSPI round %d: proxy %s answered HTTP %s (Proxy-Authenticate: %s)",
+				round_number,
+				proxy_address,
+				status,
+				headers.get("proxy-authenticate", "") or "-",
+			)
 			if status == 200:
 				authenticator.close()
+				log.debug(
+					"SSPI tunnel to %s established through %s in %d round(s)",
+					target,
+					proxy_address,
+					round_number,
+				)
 				return sock
 			if status != 407:
 				raise SSPIProxyError(f"The proxy rejected CONNECT with HTTP status {status}")
 			# The authentication rounds continue on this socket, so the error
 			# page returned with the challenge must not stay in the stream.
 			proxy_tunnel.drain_response_body(sock, headers)
+			if re.search(r"(?i)\bNTLM\b", headers.get("proxy-authenticate", "")):
+				ntlm_offered = True
 			selected_scheme, challenge = _select_proxy_challenge(
 				headers.get("proxy-authenticate", ""),
 				proxy.type,
 			)
 			if not selected_scheme:
-				raise SSPIProxyError("The proxy did not offer the selected SSPI authentication scheme")
+				raise SSPIProxyError(
+					"The proxy did not offer the selected SSPI authentication scheme "
+					f"(wanted {scheme}, offered: {headers.get('proxy-authenticate', '') or 'nothing'})",
+				)
+			if selected_scheme.lower() != scheme.lower():
+				log.debug(
+					"The proxy %s offers %s rather than %s, following it",
+					proxy_address,
+					selected_scheme,
+					scheme,
+				)
 			scheme = selected_scheme
 			if challenge is None:
 				if started:
@@ -378,7 +456,19 @@ def open_sspi_proxy_tunnel(proxy, target_host, target_port, timeout=60):
 			if not token:
 				raise SSPIProxyError("Windows SSPI did not return another proxy authentication token")
 		raise SSPIProxyError("The proxy authentication exchange exceeded the maximum number of rounds")
-	except Exception:
+	except Exception as error:
+		log.warning(
+			"SSPI %s tunnel to %s through %s failed: %s: %s",
+			proxy.type,
+			target,
+			proxy_address,
+			type(error).__name__,
+			error,
+		)
+		if isinstance(error, SSPIProxyError):
+			# Tells the caller whether retrying with NTLM makes sense: the proxy
+			# did challenge us, and NTLM was among the schemes it offered.
+			error.ntlm_offered = ntlm_offered
 		if sock is not None:
 			sock.close()
 		authenticator.close()

@@ -617,7 +617,16 @@ class WebSocketTransport(TCPTransport):
 		return {"cert_reqs": ssl.CERT_REQUIRED}
 
 	def _open_websocket(self, proxy_settings, insecure):
-		"""Open the WebSocket through the resolved proxy, if any."""
+		"""Open the WebSocket through the resolved proxy, trying its alternatives in turn."""
+		connection, _candidate = proxy_utils.open_through_candidates(
+			proxy_settings,
+			self._websocket_url(),
+			lambda candidate: self._open_websocket_through(candidate, insecure),
+		)
+		return connection
+
+	def _open_websocket_through(self, proxy_settings, insecure):
+		"""Open the WebSocket through one proxy, or directly when there is none."""
 		if proxy_utils.uses_sspi(proxy_settings):
 			return self._create_sspi_websocket(proxy_settings, insecure=insecure)
 		kwargs = {
@@ -631,7 +640,15 @@ class WebSocketTransport(TCPTransport):
 		except Exception as error:
 			if not proxy_utils.needs_windows_authentication(proxy_settings, error):
 				raise
-			log.debug("The proxy requires authentication, retrying with Windows credentials")
+			log.info(
+				"The proxy %s answered 407 to the WebSocket CONNECT, retrying with Windows credentials",
+				proxy_utils.describe(proxy_settings),
+			)
+			traffic_log.log_connection(
+				"websocket_proxy_authentication",
+				proxy=proxy_utils.describe(proxy_settings),
+				error=str(error),
+			)
 			return self._create_sspi_websocket(
 				proxy_utils.with_windows_authentication(proxy_settings),
 				insecure=insecure,
@@ -642,16 +659,24 @@ class WebSocketTransport(TCPTransport):
 		conf = configuration.get_config().get("controlserver", {})
 		url = self._websocket_url()
 		proxy_settings = proxy_utils.resolve_for_url(proxy_utils.from_config(conf), url)
-		proxy_description = (
-			f"{proxy_settings.type}://{proxy_settings.host}:{proxy_settings.port}"
-			if proxy_settings.enabled
-			else "none"
-		)
+		proxy_description = proxy_utils.describe(proxy_settings)
 		log.debug("Opening %s (proxy %s)", url, proxy_description)
-		traffic_log.log_connection("websocket_opening", url=url, proxy=proxy_description)
+		traffic_log.log_connection(
+			"websocket_opening",
+			url=url,
+			proxy=proxy_description,
+			proxy_mode=conf.get("proxy_mode", "auto"),
+		)
 		try:
 			return self._open_websocket(proxy_settings, self.insecure)
 		except Exception as error:
+			log.debug(
+				"Opening %s through proxy %s failed: %s: %s",
+				url,
+				proxy_description,
+				type(error).__name__,
+				error,
+			)
 			ssl_error = error if isinstance(error, ssl.SSLError) else error.__cause__
 			if self.insecure or not isinstance(ssl_error, ssl.SSLError):
 				raise
@@ -826,15 +851,45 @@ class HTTPSTransport(TCPTransport):
 	def _resolve_proxy(self):
 		config = configuration.get_config()
 		proxy_settings = proxy_utils.from_config(config)
-		return proxy_utils.resolve_for_url(proxy_settings, self._relay_url())
+		resolved = proxy_utils.resolve_for_url(proxy_settings, self._relay_url())
+		url = self._relay_url()
+		log.debug("Opening %s (proxy %s)", url, proxy_utils.describe(resolved))
+		traffic_log.log_connection(
+			"https_opening",
+			url=url,
+			transport=self.__class__.__name__,
+			proxy=proxy_utils.describe(resolved),
+			proxy_mode=config.get("controlserver", {}).get("proxy_mode", "auto"),
+		)
+		return resolved
 
 	def _open_http_connection(self):
-		return https_connection.open_https_connection(
-			self.address,
-			self._proxy_settings,
-			self.timeout,
-			insecure=self.insecure,
+		"""Open one HTTPS connection, trying each proxy candidate in turn.
+
+		The candidate which answered becomes the route of this transport, so the
+		next connection (the polling one, or a reopened one) does not pay for the
+		candidates which failed again.
+		"""
+		proxy_settings = self._proxy_settings
+		if not isinstance(proxy_settings, proxy_utils.ProxySettings):
+			return https_connection.open_https_connection(
+				self.address,
+				proxy_settings,
+				self.timeout,
+				insecure=self.insecure,
+			)
+		connection, candidate = proxy_utils.open_through_candidates(
+			proxy_settings,
+			self._relay_url(),
+			lambda candidate: https_connection.open_https_connection(
+				self.address,
+				candidate,
+				self.timeout,
+				insecure=self.insecure,
+			),
 		)
+		self._proxy_settings = candidate
+		return connection
 
 	def _open_http_connection_with_certificate_policy(self):
 		self._certificate_authentication_failed = False

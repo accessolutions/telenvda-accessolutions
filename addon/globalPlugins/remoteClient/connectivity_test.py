@@ -10,6 +10,7 @@ from . import configuration
 from . import https_connection
 from . import https_protocol
 from . import proxy_utils
+from . import ws_protocol
 from .transport import WebSocketRelayTransport
 
 try:
@@ -40,9 +41,17 @@ def test_endpoint(host, port, transport_type="tcp", ws_path="/", timeout=10):
 				insecure=False,
 				timeout=timeout,
 			)
+			_record_proxy(
+				result,
+				ws_protocol.websocket_url(host, int(port), ws_protocol.normalize_path(ws_path)),
+			)
 			socket_obj = transport.create_websocket()
 			socket_obj.close()
 		else:
+			# The TCP transport dials the relay directly: a proxy, configured or
+			# detected, never applies to it. Saying so in the result spares a
+			# long search when only this transport fails behind a proxy.
+			result["proxy"] = "not applicable (TCP connects directly)"
 			context = ssl.create_default_context()
 			with socket.create_connection((host, int(port)), timeout=timeout) as raw:
 				with context.wrap_socket(raw, server_hostname=host):
@@ -66,10 +75,7 @@ def _test_https_endpoint(host, port, path, timeout, result, started):
 	try:
 		relay_path = https_protocol.normalize_https_path(path)
 		url = https_protocol.https_url(host, port, relay_path)
-		proxy_settings = proxy_utils.resolve_for_url(
-			proxy_utils.from_config(configuration.get_config()),
-			url,
-		)
+		proxy_settings = _record_proxy(result, url)
 		connection = https_connection.open_https_connection(
 			(host, port),
 			proxy_settings,
@@ -135,6 +141,19 @@ def _test_https_endpoint(host, port, path, timeout, result, started):
 			except Exception:
 				pass
 	return _complete_result(result, started)
+
+
+def _record_proxy(result, url):
+	"""Resolve the proxy for ``url`` and write the route and its reason into the result."""
+	proxy_settings = proxy_utils.resolve_for_url(
+		proxy_utils.from_config(configuration.get_config()),
+		url,
+	)
+	result["proxy"] = proxy_utils.describe(proxy_settings)
+	decision = proxy_utils.last_decision(url)
+	if decision is not None:
+		result["proxy_reason"] = decision[1]
+	return proxy_settings
 
 
 def _https_request(connection, method, path, body=None, token=None):

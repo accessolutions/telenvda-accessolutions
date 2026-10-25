@@ -101,6 +101,14 @@ def _proxy_mode_choices():
 	)
 
 
+def _proxy_ignored_by_tcp_hint():
+	# Translators: Shown when a proxy is configured but the TCP transport, which cannot use one, is selected.
+	return _(
+		"The TCP transport connects to the server directly and ignores the proxy. "
+		"Behind a proxy, choose the WebSocket or HTTPS transport.",
+	)
+
+
 def _keep_awake_max_duration_choices():
 	return (
 		# Translators: Maximum duration for which sleep prevention is active.
@@ -195,6 +203,8 @@ class ClientPanel(wx.Panel):
 		self.proxy_password = wx.TextCtrl(box, wx.ID_ANY, style=wx.TE_PASSWORD)
 		self.proxy_box.Add(self.proxy_password)
 		sizer.Add(self.proxy_box)
+		self.proxy_hint = wx.StaticText(self, wx.ID_ANY, label=_proxy_ignored_by_tcp_hint())
+		sizer.Add(self.proxy_hint)
 
 	def load_settings(self):
 		"""Preload the transport and proxy fields from the saved configuration."""
@@ -254,6 +264,12 @@ class ClientPanel(wx.Panel):
 		transport_type = self.get_transport_type()
 		show_proxy = transport_type in SECURE_TRANSPORT_TYPES
 		self.main_sizer.Show(self.proxy_box, show_proxy, recursive=True)
+		# A proxy is configured but the chosen transport cannot use it: say so where
+		# the user is looking, rather than letting the connection fail in silence.
+		self.main_sizer.Show(
+			self.proxy_hint,
+			not show_proxy and PROXY_MODES[self.proxy_mode.GetSelection()] != "none",
+		)
 		self.main_sizer.Show(self.ws_path_label, transport_type == "websocket")
 		self.main_sizer.Show(self.ws_path, transport_type == "websocket")
 		self.main_sizer.Show(self.https_path_label, transport_type == "https")
@@ -510,9 +526,42 @@ class ConnectivityDialog(wx.Dialog):
 
 	def on_result(self, result):
 		wx.CallAfter(self.test_button.Enable, True)
+		wx.CallAfter(self._show_result, result)
+
+	def _show_result(self, result):
+		"""Show the outcome with the proxy route, and offer to copy the whole diagnostic.
+
+		The route matters as much as the outcome: on a managed network, "could not be
+		reached" means one thing when a proxy carried the request and another when none
+		did. The copy gives support everything the test knows, in one paste.
+		"""
 		message = result.get("message", _("Unknown error"))
-		style = wx.OK | (wx.ICON_INFORMATION if result.get("success") else wx.ICON_ERROR)
-		wx.CallAfter(gui.messageBox, message, _("Connectivity test"), style, self)
+		proxy = result.get("proxy")
+		if proxy:
+			# Translators: Line of the connectivity test result naming the proxy route used.
+			message += "\n\n" + _("Proxy: %s") % proxy
+			reason = result.get("proxy_reason")
+			if reason:
+				message += "\n" + reason
+		style = wx.YES_NO | (wx.ICON_INFORMATION if result.get("success") else wx.ICON_ERROR)
+		dialog = wx.MessageDialog(self, message, _("Connectivity test"), style)
+		# Translators: Button of the connectivity test result copying the full diagnostic to the clipboard.
+		dialog.SetYesNoLabels(_("&Copy diagnostic"), _("Close"))
+		try:
+			if dialog.ShowModal() == wx.ID_YES:
+				self._copy_diagnostic(result)
+		finally:
+			dialog.Destroy()
+
+	def _copy_diagnostic(self, result):
+		lines = ["%s: %s" % (key, value) for key, value in sorted(result.items())]
+		lines.insert(0, "TeleNVDA connectivity test")
+		try:
+			import api
+
+			api.copyToClip("\n".join(lines))
+		except Exception:
+			log.exception("Unable to copy the connectivity diagnostic")
 
 
 class ServerPanel(wx.Panel):
@@ -729,9 +778,9 @@ class OptionsDialog(SettingsPanel):
 		self.autoconnect = wx.CheckBox(self, wx.ID_ANY, label=_("Auto-connect to control server on startup"))
 		self.autoconnect.Bind(wx.EVT_CHECKBOX, self.on_autoconnect)
 		sizer.Add(self.autoconnect)
-		# Translators: A checkbox in add-on options dialog to enable update checks when NVDA starts.
-		self.check_updates = wx.CheckBox(self, wx.ID_ANY, label=_("Check for TeleNVDA updates on startup"))
-		sizer.Add(self.check_updates)
+		# The controls are created in the order they are read and tabbed through: the
+		# connection itself first (who connects to what, over which transport and
+		# through which proxy), then the behaviour of the session, the update check last.
 		# Translators: Whether or not to use a relay server when autoconnecting
 		self.client_or_server = wx.RadioBox(
 			self,
@@ -748,29 +797,6 @@ class OptionsDialog(SettingsPanel):
 		self.connection_type.SetSelection(0)
 		self.connection_type.Enable(False)
 		sizer.Add(self.connection_type)
-		# Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a configurable period without any real remote control activity.
-		self.disable_autoconnect_inactivity = wx.CheckBox(
-			self,
-			wx.ID_ANY,
-			label=_("Automatically disable auto-connect without any remote control activity"),
-		)
-		self.disable_autoconnect_inactivity.Bind(wx.EVT_CHECKBOX, self.on_disable_autoconnect_inactivity)
-		self.disable_autoconnect_inactivity.Enable(False)
-		sizer.Add(self.disable_autoconnect_inactivity)
-		# Translators: Label for the inactivity duration field. The value uses days:hours:minutes.
-		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Inactivity duration (days:hours:minutes):")))
-		self.inactivity_duration = wx.TextCtrl(
-			self,
-			wx.ID_ANY,
-			value=configuration.format_inactivity_duration(
-				configuration.DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS,
-			),
-		)
-		self.inactivity_duration.SetToolTip(
-			_("Format: days:hours:minutes. For example, 30:00:00 means 30 days and 00:00:01 means 1 minute."),
-		)
-		self.inactivity_duration.Enable(False)
-		sizer.Add(self.inactivity_duration)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Transport:")))
 		self.transport = wx.Choice(self, wx.ID_ANY, choices=_transport_choices())
 		self.transport.SetSelection(0)
@@ -793,10 +819,6 @@ class OptionsDialog(SettingsPanel):
 			),
 		)
 		sizer.Add(self.port)
-		# Translators: label of a checkbox which allows forwarding a port using UPNP
-		self.useUPNP = wx.CheckBox(self, wx.ID_ANY, label=_("Use &UPNP to forward this port if possible"))
-		self.useUPNP.Enable(False)
-		sizer.Add(self.useUPNP)
 		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("&Key:")))
 		self.key = wx.TextCtrl(self, wx.ID_ANY)
 		self.key.Enable(False)
@@ -860,6 +882,37 @@ class OptionsDialog(SettingsPanel):
 		self.proxy_password = wx.TextCtrl(self, wx.ID_ANY, style=wx.TE_PASSWORD)
 		self.proxy_password.Enable(False)
 		sizer.Add(self.proxy_password)
+		self.proxy_hint = wx.StaticText(self, wx.ID_ANY, label=_proxy_ignored_by_tcp_hint())
+		self.proxy_hint.Hide()
+		sizer.Add(self.proxy_hint)
+		self.proxy_sizer = sizer
+		# Translators: label of a checkbox which allows forwarding a port using UPNP
+		self.useUPNP = wx.CheckBox(self, wx.ID_ANY, label=_("Use &UPNP to forward this port if possible"))
+		self.useUPNP.Enable(False)
+		sizer.Add(self.useUPNP)
+		# Translators: A checkbox in add-on options dialog to set whether auto-connect is automatically turned off after a configurable period without any real remote control activity.
+		self.disable_autoconnect_inactivity = wx.CheckBox(
+			self,
+			wx.ID_ANY,
+			label=_("Automatically disable auto-connect without any remote control activity"),
+		)
+		self.disable_autoconnect_inactivity.Bind(wx.EVT_CHECKBOX, self.on_disable_autoconnect_inactivity)
+		self.disable_autoconnect_inactivity.Enable(False)
+		sizer.Add(self.disable_autoconnect_inactivity)
+		# Translators: Label for the inactivity duration field. The value uses days:hours:minutes.
+		sizer.Add(wx.StaticText(self, wx.ID_ANY, label=_("Inactivity duration (days:hours:minutes):")))
+		self.inactivity_duration = wx.TextCtrl(
+			self,
+			wx.ID_ANY,
+			value=configuration.format_inactivity_duration(
+				configuration.DEFAULT_INACTIVITY_AUTO_DISABLE_SECONDS,
+			),
+		)
+		self.inactivity_duration.SetToolTip(
+			_("Format: days:hours:minutes. For example, 30:00:00 means 30 days and 00:00:01 means 1 minute."),
+		)
+		self.inactivity_duration.Enable(False)
+		sizer.Add(self.inactivity_duration)
 		# Translators: A checkbox in add-on options dialog to set whether sounds play instead of beeps.
 		self.play_sounds = wx.CheckBox(self, wx.ID_ANY, label=_("Play sounds instead of beeps"))
 		sizer.Add(self.play_sounds)
@@ -1028,6 +1081,9 @@ class OptionsDialog(SettingsPanel):
 		self.screenshot_directory_browse.Bind(wx.EVT_BUTTON, self.on_browse_screenshot_directory)
 		screenshot_directory_sizer.Add(self.screenshot_directory_browse, 0, wx.LEFT, 5)
 		sizer.Add(screenshot_directory_sizer, 0, wx.EXPAND)
+		# Translators: A checkbox in add-on options dialog to enable update checks when NVDA starts.
+		self.check_updates = wx.CheckBox(self, wx.ID_ANY, label=_("Check for TeleNVDA updates on startup"))
+		sizer.Add(self.check_updates, 0, wx.TOP, 10)
 
 	def on_keep_awake(self, evt):
 		enabled = bool(self.keep_awake.GetValue())
@@ -1098,6 +1154,13 @@ class OptionsDialog(SettingsPanel):
 		self.proxy_type.Enable(proxy_state and manual_proxy)
 		self.proxy_username.Enable(proxy_state and manual_proxy)
 		self.proxy_password.Enable(proxy_state and manual_proxy)
+		# Saved settings naming a proxy and the TCP transport will never meet: warn here.
+		self.proxy_hint.Show(
+			client_state
+			and transport_type == "tcp"
+			and PROXY_MODES[self.proxy_mode.GetSelection()] != "none",
+		)
+		self.proxy_sizer.Layout()
 		self.port.Enable(state)
 		self.useUPNP.Enable(bool(self.client_or_server.GetSelection()) and state)
 
