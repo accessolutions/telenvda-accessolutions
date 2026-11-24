@@ -121,6 +121,8 @@ def test_machine_settings_are_read_from_the_registry(monkeypatch):
 
 	monkeypatch.setattr(windows_proxy, "_registry_value", registry_value)
 	monkeypatch.setattr(windows_proxy.os, "name", "nt")
+	# winreg only exists on Windows; the registry reads are faked above anyway.
+	monkeypatch.setitem(sys.modules, "winreg", SimpleNamespace(HKEY_LOCAL_MACHINE=object()))
 
 	settings = windows_proxy._read_machine_settings()
 
