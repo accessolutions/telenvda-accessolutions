@@ -2092,7 +2092,7 @@ class GlobalPlugin(_GlobalPlugin):
 		next_type = state["remaining"].pop(0)
 		address = self._fallback_address(state["address"])
 		current_type = self._transport_type_of(transport)
-		log.warning(
+		log.info(
 			"The relay %s:%s could not be reached over %s, trying %s on %s:%s",
 			state["address"][0],
 			state["address"][1],

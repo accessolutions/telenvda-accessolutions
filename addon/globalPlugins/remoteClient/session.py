@@ -11,6 +11,7 @@ import ui
 import braille
 import buildVersion
 from logHandler import log
+from . import braille_compat
 from . import configuration
 from . import nvda_patcher
 from . import compat_screenshot
@@ -162,9 +163,13 @@ class SlaveSession(RemoteSession):
 		self.transport.callback_manager.register_callback("msg_set_braille_info", self.handle_braille_info)
 		self.transport.callback_manager.register_callback("msg_set_display_size", self.set_display_size)
 		if buildVersion.version_year >= 2023 and buildVersion.version_year < 2025:
-			braille.filter_displaySize.register(self.local_machine.handle_filter_displaySize)
+			braille_compat.extension_point("filter_displaySize").register(
+				self.local_machine.handle_filter_displaySize,
+			)
 		if buildVersion.version_year >= 2025:
-			braille.filter_displayDimensions.register(self.local_machine.handle_filter_displayDimensions)
+			braille_compat.extension_point("filter_displayDimensions").register(
+				self.local_machine.handle_filter_displayDimensions,
+			)
 		self.transport.callback_manager.register_callback("msg_braille_input", self.handle_braille_input)
 		self.transport.callback_manager.register_callback("msg_send_SAS", self.handle_send_SAS)
 		self.transport.callback_manager.register_callback(

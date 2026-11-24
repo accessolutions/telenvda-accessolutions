@@ -689,8 +689,14 @@ class WebSocketTransport(TCPTransport):
 				if certificate_socket:
 					fingerprint = hashlib.sha256(certificate_socket.getpeercert(True)).hexdigest().lower()
 				probe.close()
-			except Exception:
-				log.exception("Unable to read the WebSocket certificate fingerprint")
+			except Exception as probe_error:
+				# The relay could not be reached at all, so there was no certificate to read.
+				log.debug(
+					"Unable to read the WebSocket certificate fingerprint: %s: %s",
+					type(probe_error).__name__,
+					probe_error,
+					exc_info=True,
+				)
 			trusted = (
 				configuration.get_config().get("trusted_certs", {}).get(hostport_to_address(self.address))
 			)
@@ -910,8 +916,14 @@ class HTTPSTransport(TCPTransport):
 					fingerprint = https_connection.peer_certificate_fingerprint(probe)
 				finally:
 					probe.close()
-			except Exception:
-				log.exception("Unable to read the HTTPS certificate fingerprint")
+			except Exception as probe_error:
+				# The relay could not be reached at all, so there was no certificate to read.
+				log.debug(
+					"Unable to read the HTTPS certificate fingerprint: %s: %s",
+					type(probe_error).__name__,
+					probe_error,
+					exc_info=True,
+				)
 			trusted = (
 				configuration.get_config()
 				.get("trusted_certs", {})
@@ -1439,16 +1451,18 @@ class ConnectorThread(threading.Thread):
 		"""Say why a connection attempt failed, once in full and then briefly.
 
 		This loop retries every few seconds for as long as the user asks to be
-		connected. The first failure is worth a traceback, the following ones would
-		only fill the log with the same one.
+		connected. The first failure is reported, with its traceback in the debug
+		log; the following ones only go to the daily log, which is at debug level.
 		"""
 		self.failures += 1
 		summary = "%s: %s" % (type(error).__name__, error)
 		address = getattr(self.connector, "address", None)
 		if self.failures == 1:
-			log.warning("Connection to %s failed: %s", address, summary, exc_info=True)
+			log.warning("Connection to %s failed: %s", address, summary)
+			log.debug("Connection to %s failed", address, exc_info=True)
 		else:
-			log.warning(
+			# The user has already been told once; every retry stays in the daily log.
+			log.debug(
 				"Connection to %s failed again (attempt %d): %s",
 				address,
 				self.failures,

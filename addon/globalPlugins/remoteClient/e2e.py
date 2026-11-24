@@ -321,7 +321,8 @@ class PeerEncryption:
 			log.info("End-to-end encryption established with %d peer(s)", len(self._peers))
 		elif self._peers:
 			unanswered = [str(peer.id) for peer in self._peers.values() if not peer.key_sent]
-			log.warning(
+			# An older TeleNVDA or the official NVDA Remote client: expected, not a fault.
+			log.info(
 				"Peer(s) %s do not support end-to-end encryption: the session stays readable by the relay",
 				", ".join(unanswered),
 			)

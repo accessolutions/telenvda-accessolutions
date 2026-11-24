@@ -1,6 +1,7 @@
 import os
 import globalVars
 import wx
+from . import braille_compat
 from . import input
 from . import cues
 from . import configuration
@@ -63,11 +64,11 @@ class LocalMachine:
 		self.receiving_braille = False
 		self._cached_sizes = None
 		if buildVersion.version_year >= 2023:
-			braille.decide_enabled.register(self.handle_decide_enabled)
+			braille_compat.extension_point("decide_enabled").register(self.handle_decide_enabled)
 
 	def terminate(self):
 		if buildVersion.version_year >= 2023:
-			braille.decide_enabled.unregister(self.handle_decide_enabled)
+			braille_compat.extension_point("decide_enabled").unregister(self.handle_decide_enabled)
 
 	def play_wave(self, fileName):
 		"""Instructed by remote machine to play a wave file."""
@@ -148,7 +149,7 @@ class LocalMachine:
 			return value._replace(numRows=1)
 		sizes = self._cached_sizes + [value.numCols]
 		try:
-			return braille.DisplayDimensions(numRows=1, numCols=min(i for i in sizes if i > 0))
+			return braille_compat.display_dimensions(numRows=1, numCols=min(i for i in sizes if i > 0))
 		except ValueError:
 			return value._replace(numRows=1)
 

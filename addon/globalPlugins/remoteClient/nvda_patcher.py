@@ -1,10 +1,10 @@
+from . import braille_compat
 from . import callback_manager
 import tones
 import nvwave
 import speech
 import inputCore
 import braille
-import brailleInput
 import scriptHandler
 import buildVersion
 
@@ -60,8 +60,8 @@ class NVDAPatcher(callback_manager.CallbackManager):
 
 	def patch_set_display(self):
 		if buildVersion.version_year >= 2023:
-			braille.displayChanged.register(self.handle_displayChanged)
-			braille.displaySizeChanged.register(self.handle_displaySizeChanged)
+			braille_compat.extension_point("displayChanged").register(self.handle_displayChanged)
+			braille_compat.extension_point("displaySizeChanged").register(self.handle_displaySizeChanged)
 			return
 		if self.orig_setDisplayByName is not None:
 			return
@@ -70,8 +70,8 @@ class NVDAPatcher(callback_manager.CallbackManager):
 
 	def unpatch_set_display(self):
 		if buildVersion.version_year >= 2023:
-			braille.displaySizeChanged.unregister(self.handle_displaySizeChanged)
-			braille.displayChanged.unregister(self.handle_displayChanged)
+			braille_compat.extension_point("displaySizeChanged").unregister(self.handle_displaySizeChanged)
+			braille_compat.extension_point("displayChanged").unregister(self.handle_displayChanged)
 			return
 		if self.orig_setDisplayByName is None:
 			return
@@ -151,7 +151,7 @@ class NVDASlavePatcher(NVDAPatcher):
 
 	def patch_braille(self):
 		if buildVersion.version_year >= 2023:
-			braille.pre_writeCells.register(self.handle_pre_writeCells)
+			braille_compat.extension_point("pre_writeCells").register(self.handle_pre_writeCells)
 			return
 		if self.orig_display is not None:
 			return
@@ -197,7 +197,7 @@ class NVDASlavePatcher(NVDAPatcher):
 
 	def unpatch_braille(self):
 		if buildVersion.version_year >= 2023:
-			braille.pre_writeCells.unregister(self.handle_pre_writeCells)
+			braille_compat.extension_point("pre_writeCells").unregister(self.handle_pre_writeCells)
 			return
 		if self.orig_display is None:
 			return
@@ -336,7 +336,7 @@ class NVDAMasterPatcher(NVDAPatcher):
 		self.unpatch_braille_input()
 
 	def handle_decide_executeGesture(self, gesture):
-		if isinstance(gesture, (braille.BrailleDisplayGesture, brailleInput.BrailleInputGesture)):
+		if isinstance(gesture, (braille_compat.BrailleDisplayGesture, braille_compat.BrailleInputGesture)):
 			dict = {
 				key: gesture.__dict__[key]
 				for key in gesture.__dict__

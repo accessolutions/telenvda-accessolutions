@@ -195,8 +195,11 @@ class Player:
 				player.feed(block)
 				underruns = self._buffer.underruns
 				if underruns > self._reported_underruns:
+					# A slow network makes this happen many times a minute: the first
+					# one is worth a line, the others only matter when debugging.
+					report = logger.info if self._reported_underruns == 0 else logger.debug
 					self._reported_underruns = underruns
-					logger.warning(
+					report(
 						"Remote audio playback underflow: depth=%d ms underruns=%d",
 						self._buffer.buffered_ms,
 						underruns,

@@ -7,13 +7,13 @@ from ctypes import (
 	c_ulong,
 	Union,
 )
-import braille
-import brailleInput
 import globalPluginHandler
 import scriptHandler
 import api
 import vision
 import baseObject
+
+from . import braille_compat
 
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
@@ -106,7 +106,7 @@ class INPUT(Structure):
 	)
 
 
-class BrailleInputGesture(braille.BrailleDisplayGesture, brailleInput.BrailleInputGesture):
+class BrailleInputGesture(braille_compat.BrailleDisplayGesture, braille_compat.BrailleInputGesture):
 	def __init__(self, **kwargs):
 		super().__init__()
 		for key, value in kwargs.items():

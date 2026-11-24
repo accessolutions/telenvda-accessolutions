@@ -4,7 +4,7 @@
 ##
 ##    http://www.opensource.org/licenses/mit-license.php
 ##
-"""
+r"""
 
   regobj:  Pythonic object-based access to the Windows Registry
 
